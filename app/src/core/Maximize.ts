@@ -1,0 +1,67 @@
+import { screen, type BrowserWindow, type Rectangle } from "electron";
+
+// Electron can't maximize a transparent window on Windows (the mpv player needs one): maximize()
+// stretches it over the screen, but it still says it isn't maximized, Restore does nothing, and the
+// title bar went on dragging it, growing it as it went. Full screen didn't take either. Those windows
+// are maximized (and made full screen) by hand here: filled to the screen's work area (or the whole
+// screen), with the size they had kept to go back to.
+
+interface Manual { maximized: boolean; fullScreen: boolean; normal: Rectangle | null; beforeFull: Rectangle | null }
+const manual = new WeakMap<BrowserWindow, Manual>();
+
+export function useManualMaximize(win: BrowserWindow, transparent: boolean): void {
+    if (process.platform === "win32" && transparent) manual.set(win, { maximized: false, fullScreen: false, normal: null, beforeFull: null });
+}
+
+export function isFullScreen(win: BrowserWindow): boolean {
+    const state = manual.get(win);
+    return state ? state.fullScreen : win.isFullScreen();
+}
+
+export function setFullScreen(win: BrowserWindow, on: boolean): void {
+    const state = manual.get(win);
+    if (!state) return win.setFullScreen(on);
+    if (state.fullScreen === on) return;
+    if (on) {
+        state.beforeFull = win.getBounds();
+        state.fullScreen = true;
+        win.setBounds(screen.getDisplayMatching(state.beforeFull).bounds);
+        win.emit("enter-full-screen");
+    } else {
+        state.fullScreen = false;
+        if (state.beforeFull) win.setBounds(state.beforeFull);
+        win.emit("leave-full-screen");
+    }
+}
+
+export function isMaximized(win: BrowserWindow): boolean {
+    const state = manual.get(win);
+    return state ? state.maximized : win.isMaximized();
+}
+
+// The size and place it goes back to when it's no longer maximized
+export function normalBounds(win: BrowserWindow): Rectangle {
+    const state = manual.get(win);
+    if (!state) return win.getNormalBounds();
+    if (state.maximized && state.normal) return state.normal;
+    return (state.fullScreen && state.beforeFull) || win.getBounds();
+}
+
+export function maximize(win: BrowserWindow): void {
+    const state = manual.get(win);
+    if (!state) return win.maximize();
+    if (state.maximized) return;
+    state.normal = win.getBounds();
+    state.maximized = true;
+    win.setBounds(screen.getDisplayMatching(state.normal).workArea);
+    win.emit("maximize");
+}
+
+export function unmaximize(win: BrowserWindow): void {
+    const state = manual.get(win);
+    if (!state) return win.unmaximize();
+    if (!state.maximized) return;
+    state.maximized = false;
+    if (state.normal) win.setBounds(state.normal);
+    win.emit("unmaximize");
+}

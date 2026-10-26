@@ -80,6 +80,7 @@ export const IPC_CHANNELS = {
     DRAG_WINDOW: 'drag-window',
     IS_MAXIMIZED: 'is-window-maximized',
     CLOSE_WINDOW: 'close-window',
+    UI_READY: 'ui-ready',
     EXTERNAL_PLAYER_LAUNCHED: 'external-player-launched',
     EXTERNAL_PLAYER_POSITION: 'external-player-position',
     EXTERNAL_PLAYER_CLOSED: 'external-player-closed',

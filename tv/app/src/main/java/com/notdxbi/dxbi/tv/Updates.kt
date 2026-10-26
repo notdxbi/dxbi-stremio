@@ -44,6 +44,14 @@ object Updates {
         return bundled
     }
 
+    /**
+     * The plugin as the TV runs it: without the intro film and the picture enhancer's shaders, which
+     * dx.bi TV never uses: about 40% smaller, so a 2 GB TV has that much less to hold while starting.
+     */
+    fun forTv(source: String): String = source
+        .replace(Regex("""(\n  function introVideoData\(\) \{\n    return )"[^\n]*"""), "$1\"\";")
+        .replace(Regex("""(\n  function anime4kShaders\(\) \{\n    return )\{[^\n]*"""), "$1{};")
+
     fun checkPlugin(context: Context) = thread(name = "dxbi-plugin-update") {
         try {
             val text = get(PLUGIN_URL) ?: return@thread

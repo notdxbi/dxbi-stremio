@@ -24,6 +24,7 @@ import { offerEnhancedImport, seedBuiltInPlugin } from "./core/BuiltIn";
 import MpvShell from "./core/MpvShell";
 import { ipcMain } from "electron";
 import { restoreWindowState } from "./core/WindowState";
+import { isFullScreen, maximize, setFullScreen, useManualMaximize } from "./core/Maximize";
 import { setupAutoUpdate } from "./core/AutoUpdate";
 
 app.setName("dxbi");
@@ -100,7 +101,19 @@ async function createWindow() {
     });
     
     mainWindow.setMenu(null);
-    restoreWindowState(mainWindow);
+    useManualMaximize(mainWindow, transparencyEnabled);
+    const openMaximized = restoreWindowState(mainWindow);
+    // Shown once dx.bi has dressed the page: plugins load when the page has fully loaded, and until
+    // then plain Stremio was on screen for a moment. Never kept hidden for long if that's slow.
+    const win = mainWindow;
+    const reveal = () => {
+        if (win.isDestroyed() || win.isVisible()) return;
+        if (openMaximized) maximize(win);
+        win.show();
+    };
+    ipcMain.once(IPC_CHANNELS.UI_READY, reveal);
+    win.webContents.once("did-fail-load", reveal);
+    setTimeout(reveal, 6000);
     mainWindow.loadURL(URLS.STREMIO_WEB);
         
     if (transparencyEnabled) {
@@ -354,7 +367,7 @@ app.on('browser-window-created', (_, window) => {
             
             // Toggles fullscreen on F11
             case input.key === 'F11':
-            window.setFullScreen(!window.isFullScreen());
+            setFullScreen(window, !isFullScreen(window));
             event.preventDefault();
             break;
             

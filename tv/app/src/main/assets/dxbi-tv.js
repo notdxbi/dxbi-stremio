@@ -36,7 +36,16 @@
     }
     if (meta.content !== VIEWPORT) meta.content = VIEWPORT;
   }
-  new MutationObserver(fitViewport).observe(document.documentElement, { childList: true, subtree: true });
+  // Watched only until <head> exists, then only <head> itself: a whole-page watcher ran on every change
+  // the page made, for as long as it was open
+  const viewportWatch = new MutationObserver(() => {
+    fitViewport();
+    if (!document.head) return;
+    viewportWatch.disconnect();
+    new MutationObserver(fitViewport).observe(document.head, { childList: true });
+  });
+  if (document.head) new MutationObserver(fitViewport).observe(document.head, { childList: true });
+  else viewportWatch.observe(document.documentElement, { childList: true, subtree: true });
   fitViewport();
 
   // ---------------------------------------------------------------------------
@@ -129,6 +138,8 @@
     .dxtv-btn { padding: 11px 22px; border: 0; border-radius: 8px; background: rgba(255,255,255,.14); color: #fff; font: 600 16px Inter, system-ui, sans-serif; cursor: pointer; transition: transform .15s, background-color .15s; }
     .dxtv-btn:focus { outline: none; background: #fff; color: #000; transform: scale(1.06); }
     .dxtv-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: 100%; margin: 0 0 8px; padding: 14px 16px; border: 0; border-radius: 10px; background: rgba(255,255,255,.06); color: #fff; text-align: left; font: 500 16px Inter, system-ui, sans-serif; cursor: pointer; }
+    .dxtv-group { margin: 22px 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8d8d96; }
+    .dxtv-sheet h2 + .dxtv-group { margin-top: 6px; }
     .dxtv-row:focus { outline: none; background: rgba(255,255,255,.18); transform: scale(1.015); }
     .dxtv-row small { display: block; margin-top: 4px; color: #9a9a9a; font-size: 13px; line-height: 1.4; }
     .dxtv-row b { flex: none; color: #e50914; font-weight: 700; }
@@ -218,9 +229,11 @@
     const render = (focusKey) => {
       const current = values();
       el.innerHTML = `<div class="dxtv-sheet" role="dialog"><h2>dx.bi settings</h2>
-        ${schema.map((o) => {
+        ${schema.map((o, i) => {
           const v = current[o.key] === undefined ? o.defaultValue : current[o.key];
-          return `<button class="dxtv-row" data-key="${esc(o.key)}"><span>${esc(o.label)}${o.description ? `<small>${esc(o.description)}</small>` : ""}</span><b>${esc(shown(o, v))}</b></button>`;
+          // a heading wherever a new group of settings starts
+          const heading = o.group && o.group !== (schema[i - 1] || {}).group ? `<h3 class="dxtv-group">${esc(o.group)}</h3>` : "";
+          return `${heading}<button class="dxtv-row" data-key="${esc(o.key)}"><span>${esc(o.label)}${o.description ? `<small>${esc(o.description)}</small>` : ""}</span><b>${esc(shown(o, v))}</b></button>`;
         }).join("")}
         <div class="dxtv-buttons"><button class="dxtv-btn" data-close>Done</button></div></div>`;
       const target = (focusKey && el.querySelector(`[data-key="${CSS.escape(focusKey)}"]`)) || el.querySelector(".dxtv-row, .dxtv-btn");
@@ -386,11 +399,22 @@
     const subtitles = await pickSubtitles([...(stream.subtitles || []), ...(state.subtitles || [])]);
     const episode = video && video.season != null ? `S${video.season} E${video.episode}${video.title || video.name ? ` · ${video.title || video.name}` : ""}` : "";
 
+    const profile = await profileSettings();
     handoff = { hash, videoId, started: Date.now() };
     native.play(JSON.stringify({
       hash,
       videoId,
-      audioLanguage: (await profileSettings()).audioLanguage || "",
+      audioLanguage: profile.audioLanguage || "",
+      // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player
+      subtitleStyle: {
+        size: profile.subtitlesSize,
+        offset: profile.subtitlesOffset,
+        bold: profile.subtitlesBold,
+        text: profile.subtitlesTextColor,
+        background: profile.subtitlesBackgroundColor,
+        outline: profile.subtitlesOutlineColor,
+        opacity: profile.subtitlesOpacity,
+      },
       url,
       title: meta.name || state.title || stream.title || "dx.bi",
       subtitle: episode,
@@ -528,9 +552,32 @@
     document.body.append(script);
   }
 
+  // An actor's or director's name on a title opens Search with the name filled in. Stremio then
+  // puts the cursor in the search box, and the TV's keyboard covered the results: the results get
+  // the remote instead (Up still reaches the box to type)
+  let searchWatch = 0;
+  function resultsFirst() {
+    clearInterval(searchWatch);
+    const since = Date.now();
+    searchWatch = setInterval(() => {
+      if (!/^#\/search\?search=./.test(location.hash) || Date.now() - since > 4000) {
+        clearInterval(searchWatch);
+        return;
+      }
+      const field = document.activeElement;
+      const first = document.querySelector('#app [class*="search-content"] [class*="meta-item-container"] a[href], #app [class*="search-content"] [class*="meta-item-container"] [tabindex]');
+      if (field && field.tagName === "INPUT") field.blur();
+      if (first) {
+        first.focus({ preventScroll: true });
+        clearInterval(searchWatch);
+      }
+    }, 100);
+  }
+
   function onRoute() {
     ensureSettingsEntry();
     if (/^#\/player\//.test(location.hash)) startHandoff();
+    if (/^#\/search\?search=./.test(location.hash) && document.activeElement && document.activeElement.tagName !== "INPUT") resultsFirst();
   }
 
   window.addEventListener("hashchange", onRoute);

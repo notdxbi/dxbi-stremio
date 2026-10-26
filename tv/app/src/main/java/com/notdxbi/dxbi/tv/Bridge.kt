@@ -23,7 +23,7 @@ class Bridge(private val activity: MainActivity) {
     /** The dx.bi plugin: the one built in, or a newer one it has updated itself to */
     @JavascriptInterface
     fun pluginSource(token: String): String = if (!allowed(token)) "" else try {
-        Updates.pluginSource(activity)
+        Updates.forTv(Updates.pluginSource(activity))
     } catch (_: Exception) {
         ""
     }

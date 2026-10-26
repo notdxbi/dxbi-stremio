@@ -7,5 +7,7 @@
     </style>
     <style name="Theme.Dxbi.Player">
         <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:selectableItemBackground">@drawable/player_focus</item>
+        <item name="android:selectableItemBackgroundBorderless">@drawable/player_focus</item>
     </style>
 </resources>

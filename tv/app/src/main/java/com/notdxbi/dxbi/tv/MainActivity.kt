@@ -2,6 +2,7 @@ package com.notdxbi.dxbi.tv
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -77,7 +78,10 @@ class MainActivity : AppCompatActivity() {
             injectedAtStart = true
         }
 
-        web.webChromeClient = WebChromeClient()
+        web.webChromeClient = object : WebChromeClient() {
+            // A video that hasn't drawn its first frame shows WebView's grey play button: show nothing
+            override fun getDefaultVideoPoster(): Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        }
         web.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                 // Older WebViews can't run a script before the page: run it as early as possible instead

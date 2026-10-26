@@ -2,8 +2,9 @@ import { app, screen, type BrowserWindow, type Rectangle } from "electron";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getLogger } from "../utils/logger";
+import { isFullScreen, isMaximized, normalBounds } from "./Maximize";
 
-// The window opens the way it was left: maximized, or at its last size and place. The first time
+// The window opens the way it was left (main.ts shows it once dx.bi is up): maximized, or at its last size and place. The first time
 // it opens maximized.
 
 const logger = getLogger("WindowState");
@@ -25,18 +26,18 @@ function onScreen(bounds: Rectangle): boolean {
         bounds.y >= a.y - 20 && bounds.y < a.y + a.height - 100);
 }
 
-export function restoreWindowState(win: BrowserWindow): void {
+// Returns whether it should open maximized: done as it's shown (maximize() would show it now)
+export function restoreWindowState(win: BrowserWindow): boolean {
     const saved = read();
     if (saved?.bounds && onScreen(saved.bounds)) win.setBounds(saved.bounds);
-    if (!saved || saved.maximized !== false) win.maximize();
-    win.show();
+    const maximized = !saved || saved.maximized !== false;
 
     // Saved whenever it changes (a quick exit or a crash skips the close event)
     let timer: NodeJS.Timeout | null = null;
     const save = () => {
         if (win.isDestroyed() || win.isMinimized()) return;
-        // getNormalBounds: the size it goes back to when un-maximized
-        const state: SavedState = { bounds: win.getNormalBounds(), maximized: win.isMaximized() || win.isFullScreen() };
+        // the size it goes back to when un-maximized
+        const state: SavedState = { bounds: normalBounds(win), maximized: isMaximized(win) || isFullScreen(win) };
         try { writeFileSync(statePath(), JSON.stringify(state)); } catch (err) { logger.warn(`Couldn't save the window state: ${err}`); }
     };
     const later = () => {
@@ -45,5 +46,6 @@ export function restoreWindowState(win: BrowserWindow): void {
     };
     for (const event of ["resize", "move", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen"] as const) win.on(event as any, later);
     win.on("close", save);
-    save();
+    win.once("show", save);
+    return maximized;
 }

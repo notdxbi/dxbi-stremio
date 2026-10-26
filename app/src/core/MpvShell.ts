@@ -5,6 +5,7 @@ import { connect, type Socket } from "net";
 import { join } from "path";
 import { IPC_CHANNELS } from "../constants";
 import { getLogger } from "../utils/logger";
+import { isFullScreen, setFullScreen } from "./Maximize";
 
 // dx.bi plays video the way the official Stremio desktop app does: in mpv, behind the page.
 //
@@ -361,7 +362,7 @@ export default class MpvShell {
                 this.measureBars().then((bars) => this.signal("dxbi-bars", bars)).catch(() => this.signal("dxbi-bars", null));
                 break;
             case "win-set-visibility":
-                if (data && typeof data.fullscreen === "boolean") this.mainWindow?.setFullScreen(data.fullscreen);
+                if (data && typeof data.fullscreen === "boolean" && this.mainWindow) setFullScreen(this.mainWindow, data.fullscreen);
                 break;
             case "quit":
                 app.quit();
@@ -468,7 +469,7 @@ export default class MpvShell {
     }
 
     private static sendVisibility(): void {
-        const fullscreen = !!this.mainWindow?.isFullScreen();
+        const fullscreen = !!this.mainWindow && isFullScreen(this.mainWindow);
         this.signal("win-visibility-changed", { visible: true, visibility: 1, isFullscreen: fullscreen });
     }
 

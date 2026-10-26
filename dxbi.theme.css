@@ -472,6 +472,11 @@ body[data-dx-route="board"] #app [class*="board-container"] [class*="nav-content
     --dx-row-hot: 1;
 }
 
+/* (set on See All alone: on the whole row it would restyle every title in it at each key press) */
+#app [class*="meta-row"]:focus-within [class*="see-all-container"] {
+    --dx-row-hot: 1;
+}
+
 #app [class*="meta-row"] [class*="see-all-container"]:hover,
 #app [class*="meta-row"] [class*="see-all-container"]:focus-visible {
     background: rgba(255, 255, 255, 0.07);
@@ -1338,6 +1343,12 @@ body[data-dx-route="board"] #app [class*="board-container"] [class*="nav-content
 
 /* Hover preview — unfolds out of the card like Netflix's mini-modal. The outer box carries the
    shadow (it follows the clipped shape), the inner layer is revealed from the card's outline. */
+/* The title under an open hover card: hidden once the card has grown over it, back at once as it closes */
+#app [data-dx-covered] [class*="poster-container"] {
+    opacity: 0;
+    transition: opacity 0.15s 0.2s;
+}
+
 .dx-preview {
     position: fixed;
     z-index: 900;
@@ -4354,6 +4365,39 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
 .dx-win .context-menu-portal [class*="menu-container"],
 .dx-tv #app [class*="menu-container"] {
     background: rgb(22, 22, 27) !important;
+}
+
+/* TV: what the remote is on must be plain to see from the sofa. A white ring on everything but
+   titles (they lift and open their card). See All always shows: it's at the end of each row. */
+.dx-tv #app :is(a, button, input, [tabindex]):not([class*="meta-item-link"]):focus-visible {
+    outline: 3px solid #fff !important;
+    outline-offset: 3px;
+    border-radius: var(--dx-radius-s);
+}
+
+.dx-tv #app [class*="meta-row"] [class*="see-all-container"] {
+    --dx-row-hot: 1;
+}
+
+/* TV: a stick's graphics chip redraws whatever moves or is blurred, every frame, and the remote
+   waits behind it. The billboard's slow zoom, the rows' faded edges (each row drawn twice) and the
+   blurred Continue Watching backdrops are left out. */
+.dx-tv .dx-hero-backdrop {
+    animation: none !important;
+}
+
+.dx-tv #app [class*="meta-row"] > [class*="meta-items-container"] {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+}
+
+.dx-tv .dx-wide-blur {
+    filter: brightness(0.45);
+}
+
+/* TV: rows jump instead of gliding, so the selection never waits off screen for a slow scroll */
+.dx-tv #app * {
+    scroll-behavior: auto !important;
 }
 
 /* TV: the hover card's glow and soft shadow are big blurred layers redrawn as it opens */

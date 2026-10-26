@@ -1,5 +1,7 @@
 package com.notdxbi.dxbi.tv
 
+import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -26,7 +28,9 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -76,6 +80,8 @@ class PlayerActivity : AppCompatActivity() {
             visibility = if (text.isNullOrEmpty()) View.GONE else View.VISIBLE
         }
 
+        stream.optJSONObject("subtitleStyle")?.let { styleSubtitles(it) }
+
         val url = stream.optString("url")
         if (url.isEmpty()) {
             finishWith(error = "no stream address")
@@ -108,6 +114,9 @@ class PlayerActivity : AppCompatActivity() {
             .build()
         player = exo
         playerView.player = exo
+        // Animated, the controls never fully go: they shrink to a thin bar, and the title (which
+        // follows them) stayed on screen over the film
+        playerView.setControllerAnimationEnabled(false)
         playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
             titleBar.visibility = visibility
             // The remote starts on play/pause, and the arrows move between the controls from there
@@ -241,6 +250,47 @@ class PlayerActivity : AppCompatActivity() {
         player?.release()
         player = null
         super.onDestroy()
+    }
+
+    /**
+     * Stremio's subtitle settings (size, colours, outline, position) instead of the player's white
+     * text on black boxes. Colours come as #RRGGBB or #RRGGBBAA.
+     */
+    private fun styleSubtitles(style: JSONObject) {
+        val view = playerView.subtitleView ?: return
+        fun color(key: String, fallback: Int): Int {
+            val hex = style.optString(key).removePrefix("#")
+            val v = hex.toLongOrNull(16) ?: return fallback
+            return when (hex.length) {
+                6 -> (0xFF000000 or v).toInt()
+                8 -> ((v and 0xFF) shl 24 or (v ushr 8)).toInt()
+                else -> fallback
+            }
+        }
+        val opacity = (style.optDouble("opacity", 100.0) / 100).coerceIn(0.0, 1.0)
+        val text = color("text", Color.WHITE).let { Color.argb((Color.alpha(it) * opacity).toInt(), Color.red(it), Color.green(it), Color.blue(it)) }
+        val outline = color("outline", Color.BLACK)
+        val typeface = if (style.optBoolean("bold")) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        view.setStyle(CaptionStyleCompat(
+            text,
+            color("background", Color.TRANSPARENT),
+            Color.TRANSPARENT,
+            if (Color.alpha(outline) > 0) CaptionStyleCompat.EDGE_TYPE_OUTLINE else CaptionStyleCompat.EDGE_TYPE_NONE,
+            outline,
+            typeface,
+        ))
+        // the file's own colours and sizes would win over these otherwise
+        view.setApplyEmbeddedStyles(false)
+        view.setApplyEmbeddedFontSizes(false)
+        val size = style.optDouble("size", 100.0).coerceIn(50.0, 300.0) / 100
+        view.setFractionalTextSize((SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * size).toFloat())
+        // Stremio's offset is how far up from the bottom of the picture the lines sit
+        val offset = style.optDouble("offset", 5.0).coerceIn(0.0, 40.0) / 100
+        view.setBottomPaddingFraction(0f)
+        view.addOnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+            val pad = ((bottom - top) * offset).toInt()
+            if (v.paddingBottom != pad) v.post { v.setPadding(0, 0, 0, pad) }
+        }
     }
 
     private fun subtitleMime(url: String): String {

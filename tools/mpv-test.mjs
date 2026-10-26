@@ -305,9 +305,35 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   const full = screen("4-fullscreen", { x: sw * 0.2, y: sh * 0.2, width: sw * 0.6, height: sh * 0.6 });
   if (full >= 10) pass("fullscreen shows the video");
   else fail(`fullscreen doesn't show the video (${full} points changed)`);
-  await evaluate(`window.chrome.webview.postMessage(JSON.stringify({ id: 0, type: 6, args: ["win-set-visibility", { fullscreen: false }] })); true`);
+  const cover = await evaluate(`[outerWidth, outerHeight, screen.width, screen.height]`);
+  if (Math.abs(cover[0] - cover[2]) <= 2 && Math.abs(cover[1] - cover[3]) <= 2) pass(`fullscreen covers the screen (${cover[0]}×${cover[1]})`);
+  else fail(`fullscreen doesn't cover the screen: window ${cover[0]}×${cover[1]}, screen ${cover[2]}×${cover[3]}`);
+  // Escape leaves full screen and stays in the player when Stremio's "Esc exits full screen" is on (issue #13)
+  const escExits = await evaluate(`window.core.getState("ctx").then((c) => c.profile.settings.escExitFullscreen)`);
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await sleep(1500);
+  const afterEsc = await evaluate(`[location.hash.startsWith("#/player"), outerWidth < screen.width - 2 || outerHeight < screen.height - 2]`);
+  if (escExits !== false) {
+    if (afterEsc[0] && afterEsc[1]) pass("Escape leaves full screen and keeps playing");
+    else fail(`Escape with "Esc exits full screen" on: still in player ${afterEsc[0]}, left full screen ${afterEsc[1]}`);
+  } else console.log("  (Esc exits full screen is off in this profile: Escape check skipped)");
+  if (afterEsc[0]) await evaluate(`window.chrome.webview.postMessage(JSON.stringify({ id: 0, type: 6, args: ["win-set-visibility", { fullscreen: false }] })); true`);
   await sleep(1500);
   switcher("after fullscreen");
+
+  // Maximize and restore from the title bar (a transparent window can't use Windows' own, issue #6)
+  const before = await evaluate(`[outerWidth, outerHeight]`);
+  await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
+  await sleep(1500);
+  const max = await evaluate(`[outerWidth, outerHeight, screen.availWidth, screen.availHeight]`);
+  if (Math.abs(max[0] - max[2]) <= 2 && Math.abs(max[1] - max[3]) <= 2) pass(`maximize fills the work area (${max[0]}×${max[1]})`);
+  else fail(`maximize: window ${max[0]}×${max[1]}, work area ${max[2]}×${max[3]}`);
+  await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
+  await sleep(1500);
+  const restored = await evaluate(`[outerWidth, outerHeight]`);
+  if (Math.abs(restored[0] - before[0]) <= 2 && Math.abs(restored[1] - before[1]) <= 2) pass(`restore goes back to ${restored[0]}×${restored[1]}`);
+  else fail(`restore: ${restored[0]}×${restored[1]}, was ${before[0]}×${before[1]}`);
 
   // Leaving the player puts the page back
   await evaluate("history.back(); true");

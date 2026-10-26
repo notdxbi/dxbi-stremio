@@ -107,6 +107,7 @@
 			"!dist/**/*.map",
 			"static/**/*",
 			"version",
+			"LICENSE.md",
 			"images/icon.png",
 			"images/icon.ico",
 			"package.json"

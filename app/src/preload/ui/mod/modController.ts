@@ -148,6 +148,7 @@ export const modController = {
 
                     const modalElement = document.getElementById(modalId);
                     if (!modalElement) return;
+                    pluginOptionsModal.wire(modalElement);
 
                     const toggles = modalElement.querySelectorAll('.plugin-setting-toggle');
                     toggles.forEach(toggle => {
