@@ -10,7 +10,21 @@ interface Manual { maximized: boolean; fullScreen: boolean; normal: Rectangle | 
 const manual = new WeakMap<BrowserWindow, Manual>();
 
 export function useManualMaximize(win: BrowserWindow, transparent: boolean): void {
-    if (process.platform === "win32" && transparent) manual.set(win, { maximized: false, fullScreen: false, normal: null, beforeFull: null });
+    if (process.platform !== "win32" || !transparent) return;
+    const state: Manual = { maximized: false, fullScreen: false, normal: null, beforeFull: null };
+    manual.set(win, state);
+    // Moved or resized by something else while maximized (Windows snapping, Win+arrow keys): it
+    // isn't maximized any more, and its next Maximize must fill the screen again
+    const check = () => {
+        if (!state.maximized || state.fullScreen || win.isDestroyed()) return;
+        const b = win.getBounds();
+        const a = screen.getDisplayMatching(b).workArea;
+        if (Math.abs(b.x - a.x) + Math.abs(b.y - a.y) + Math.abs(b.width - a.width) + Math.abs(b.height - a.height) <= 4) return;
+        state.maximized = false;
+        win.emit("unmaximize");
+    };
+    win.on("resized", check);
+    win.on("moved", check);
 }
 
 export function isFullScreen(win: BrowserWindow): boolean {

@@ -322,7 +322,10 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   await sleep(1500);
   switcher("after fullscreen");
 
-  // Maximize and restore from the title bar (a transparent window can't use Windows' own, issue #6)
+  // Maximize and restore from the title bar (a transparent window can't use Windows' own, issue #6),
+  // from a window smaller than the screen
+  await place(Math.round(sw * 0.1), Math.round(sh * 0.1), Math.round(sw * 0.6), Math.round(sh * 0.6));
+  await sleep(1000);
   const before = await evaluate(`[outerWidth, outerHeight]`);
   await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
   await sleep(1500);

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.15.5
+- **dx.bi TV no longer closes straight back to the home screen** on 2 GB sticks like the Chromecast with Google TV: the intro is a light logo animation on TVs, dx.bi TV runs a much smaller plugin (about 40% less to load), and the grey "play" icon at start is gone. If the TV still runs out of memory, dx.bi restarts its page instead of closing.
+- **dx.bi TV is faster on Fire TV, Onn and other sticks**: rows jump to the next titles instead of gliding (your selection no longer disappears for a moment when you move quickly), and the slow billboard zoom, faded row edges and blurred backdrops are left out on TVs. Hover cards wait a moment longer, and their trailers are off by default on TVs (switch them on in dx.bi settings).
+- **Easier with a remote**: a clear white ring shows what's selected (the top bar included), **See All** is at the end of every row, and choosing an actor or director shows their titles instead of opening the keyboard.
+- **TV subtitles follow Stremio's subtitle settings** (size, colour, outline, background and position) instead of always white text on black boxes. The player's buttons show which one is selected, and the title no longer stays on screen after the controls hide.
+- **dx.bi's settings are grouped** (Look, Home, Player, Subtitles…) **with a search box** in the app, and in sections on TV.
+- **Windows: maximize, restore and full screen work with the mpv player.** The window opens properly maximized, Restore brings back its size, dragging no longer makes it grow, and the full screen button works, so **Esc leaves full screen instead of closing the video** (#6, #13).
+- The app shows its window once dx.bi is ready, so plain Stremio no longer flashes up first.
+- Hover cards: the title's own poster no longer shows around the edges of the card.
+
 ## 2.15.4
 - **dx.bi is no longer listed twice under Settings → Plugins** after turning on Discord Rich Presence.
 - **Discord shows one dx.bi activity**, not two identical ones, after Discord restarts or presence is switched off and on quickly.

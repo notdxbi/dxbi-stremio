@@ -1,7 +1,8 @@
 name: Discord release post
 
 # Posts each new release in the dx.bi Discord's #announcements: version, what's new, downloads.
-# Uses the repository secret DISCORD_RELEASE_WEBHOOK (the channel's webhook URL).
+# Uses the repository secret DISCORD_RELEASE_WEBHOOK (the channel's webhook URL), and pings the
+# release role given by the repository variable DISCORD_RELEASE_ROLE_ID (the role's ID; no ping if unset).
 # Run it by hand to preview the post for a release without sending it.
 
 on:
@@ -25,17 +26,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          ROLE: ${{ vars.DISCORD_RELEASE_ROLE_ID }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
           SEND: ${{ github.event_name == 'release' || inputs.send }}
         run: |
           set -euo pipefail
           gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json tagName,name,body,url > release.json
           base="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
-          jq --arg base "$base" '
+          jq --arg base "$base" --arg role "$ROLE" '
             # what is new: the notes without their Download list, kept within Discord limits
             (.body | split("\n## Download")[0] | gsub("\r"; "") | gsub("^\\s+|\\s+$"; "")) as $notes
             | {
                 username: "dx.bi",
+                # the release role is pinged (and only it: never @everyone or anyone named in the notes)
+                content: (if $role != "" then "<@&\($role)>" else null end),
+                allowed_mentions: { parse: [], roles: (if $role != "" then [$role] else [] end) },
                 embeds: [{
                   title: ("dx.bi " + (.tagName | ltrimstr("v")) + " is out"),
                   url: .url,
