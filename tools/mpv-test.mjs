@@ -382,11 +382,12 @@ ${steps.map(([kind, x, y]) => kind === "move" ? `[M]::SetCursorPos(${x}, ${y}) |
   {
     const [wx, wy, ww, wh] = await pos();
     const ex = Math.round((wx + ww - 2) * (bar ? bar.dpr : 1)), ey = Math.round((wy + wh / 2) * (bar ? bar.dpr : 1));
-    mouse([["move", ex, ey], ["down"], ["move", ex + 30, ey], ["move", ex + 60, ey], ["move", ex + 90, ey], ["up"]]);
+    // pulled inwards: the CI screen is small, and the window's edge is already near its right side
+    mouse([["move", ex, ey], ["down"], ["move", ex - 30, ey], ["move", ex - 60, ey], ["move", ex - 90, ey], ["up"]]);
     await sleep(800);
     const [, , w2] = await pos();
-    if (Math.abs(w2 - ww - 90) <= 3) pass(`the right edge resizes the window (${ww} → ${w2})`);
-    else fail(`the right edge: width ${ww} → ${w2} (expected +90)`);
+    if (Math.abs(ww - w2 - 90) <= 3) pass(`the right edge resizes the window (${ww} → ${w2})`);
+    else fail(`the right edge: width ${ww} → ${w2} (expected −90)`);
   }
 }
 
