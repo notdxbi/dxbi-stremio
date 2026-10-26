@@ -16,13 +16,13 @@
 
 <p align="center">
   <a href="https://github.com/notdxbi/dxbi-stremio/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/notdxbi/dxbi-stremio?label=release&color=e50914&style=flat-square"></a>
-  <img alt="Windows · macOS · Linux · Android TV" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV-222?style=flat-square">
+  <img alt="Windows · macOS · Linux · Android TV · Fire TV" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV%20·%20Fire%20TV-222?style=flat-square">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-222?style=flat-square"></a>
   <a href="https://discord.gg/nnVBjqZ84F"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/notdxbi/dxbi-stremio/releases/download/v2.5.1/dxbi-promo.mp4"><b>▶ Watch the 50-second preview</b></a>
+  <a href="https://github.com/notdxbi/dxbi-stremio/releases/download/v2.15.9/dxbi-promo.mp4"><b>▶ Watch the 1-minute preview</b></a> (computer and TV)
 </p>
 
 <p align="center">
@@ -58,7 +58,7 @@ Not sure which Mac you have? Click the Apple menu  → *About This Mac*. "Chip: 
 3. dx.bi installs and opens by itself. It's then in your Start menu.
 4. Sign in with your Stremio account.
 
-The first time, dx.bi asks how to run Stremio's streaming server (it's what plays torrents and some video formats). Choose **Stremio Service** (recommended); dx.bi downloads it for you.
+dx.bi sets up Stremio's streaming server by itself (it's what plays torrents), and plays videos with its built-in mpv player, so every format plays as it is: HEVC, 10-bit, Dolby Vision, DTS and TrueHD sound, MKV.
 
 <details>
 <summary>Prefer not to install anything?</summary>
@@ -101,7 +101,7 @@ Some distributions need *FUSE* for AppImages. On Ubuntu and Debian: `sudo apt in
 
 ### On a TV
 
-dx.bi TV runs on Android TV, Google TV and Fire TV (Fire TV Sticks, Cubes and Fire TV televisions). Everything works with the remote: the arrows move around, OK opens, Back goes back.
+dx.bi TV runs on Android TV, Google TV and Fire TV (Fire TV Sticks, Cubes and Fire TV televisions), and on TCL, Sony, Hisense and other TVs that run Google TV or Android TV. Everything works with the remote: the arrows move around, OK opens, Back goes back.
 
 **1. Install Downloader.** On the TV, search for *Downloader* (by AFTVnews) in the Play Store or Amazon's Appstore, and install it.
 
@@ -125,13 +125,13 @@ Good to know:
 
 - Debrid streams play straight away. Torrents need Stremio's streaming server, which a TV doesn't have: keep Stremio (or the dx.bi app) running on a computer on the same network, and enter that computer's address under *Settings → Streaming* on the TV.
 
-- The 2025 *Fire TV Stick 4K Select* runs Amazon's Vega OS instead of Fire OS and can't install dx.bi.
+- Not supported: LG (webOS), Samsung (Tizen), Roku and Apple TV can't install Android apps. A cheap Google TV or Fire TV stick plugged into one of them works. The 2025 *Fire TV Stick 4K Select* runs Amazon's Vega OS instead of Fire OS and can't install dx.bi either.
 
 - If dx.bi says the TV needs an update, update *Android System WebView* from the Play Store (on Fire TV: *Settings → My Fire TV → About → Check for Updates*).
 
 ### After installing
 
-dx.bi keeps itself up to date: it tells you when there's a new version.
+dx.bi keeps itself up to date. On Windows and Linux it downloads new versions in the background and offers to restart; on a Mac it tells you and you download the new version; on a TV it offers the update when it starts.
 
 - **Already used Stremio Enhanced?** The first time the computer app opens, it offers to copy your sign-in, library, settings and plugins over. Stremio Enhanced itself isn't changed.
 
@@ -215,7 +215,9 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 ### The player
 
-- **Redesigned controls** — seek-bar thumbnails, time remaining, ±10 seconds, Next Episode, and clean subtitle and speed menus.
+- **Plays everything on Windows** — the app plays videos with mpv, like Stremio's own app: HEVC, 10-bit, Dolby Vision, AV1, DTS and TrueHD, MKV and embedded subtitles, with hardware decoding and no converting. Switch it off under *Play videos with mpv*.
+
+- **Redesigned controls** — seek-bar thumbnails, time remaining, ±10 seconds, Next Episode, and clean subtitle and speed menus. The title shortens rather than ever covering a button.
 
 - **Picture & sound panel** — the sliders button in the player:
   - remove black bars that are part of the video (great on ultrawide screens), or zoom in
@@ -239,6 +241,31 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 - **Remembers volume and speed** — and keys <kbd>0</kbd>–<kbd>9</kbd> jump through a video. Press <kbd>?</kbd> for every shortcut.
 
+### On your TV
+
+<p align="center">
+  <img src="screenshots/tv-remote.webp" alt="Browsing dx.bi TV with the remote" width="100%">
+</p>
+
+- **Made for the remote** — a clear ring shows what's selected and moves the moment you press (pick white, your accent colour or yellow). Holding a direction moves at a steady pace, and See All sits at the end of every row.
+- **Android's own player** — smooth playback on TV hardware, ±10 s with left and right, and subtitles drawn the way you set them in Stremio (size, colour, outline, position).
+- **Light on cheaper sticks** — no heavy effects, a small built-in plugin, and hover cards off by default (switch them on in dx.bi settings).
+- **Search boxes don't trap the remote** — the arrows move past them; press OK to type.
+- **dx.bi settings in sections**, at the top of Stremio's *Settings*.
+
+<table>
+  <tr>
+    <td><img src="screenshots/tv-home.jpg" alt="dx.bi TV Home"></td>
+    <td><img src="screenshots/tv-series.jpg" alt="dx.bi TV series page"></td>
+    <td><img src="screenshots/tv-player.jpg" alt="dx.bi TV player"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Home</sub></td>
+    <td align="center"><sub>Seasons and episodes</sub></td>
+    <td align="center"><sub>The TV player</sub></td>
+  </tr>
+</table>
+
 ### Series and anime
 
 - **Anime filler guide** — filler episodes marked in long anime, with an option to skip them.
@@ -249,7 +276,7 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 ### Your library and addons
 
-- **Library sorting** — newest, oldest or top rated, plus a genre filter.
+- **Library sorting** — newest, oldest or top rated, plus a genre filter. Stremio's *Watched* and *Not watched* really filter the list.
 
 - **Stream sorting and filters** — by quality, seeds, size, language, source, provider, instant (cached) and HDR.
 
@@ -258,6 +285,8 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 ### Together and personal
 
 - **Watch party** — watch in sync with friends, with chat and reactions. End-to-end encrypted.
+
+- **Discord status** — show what you're watching on Discord, with time left (the app, under *Discord Rich Presence*).
 
 - **Who's watching?** — separate viewers, each with their own stats and volume.
 
@@ -398,33 +427,20 @@ It reads what your addons already show, so it works with any stream addon. Your 
 
 ## Settings
 
-Find them in *Settings → dx.bi → Plugins → dx.bi → ⚙* in the app (*Settings → Enhanced → …* with the plugin). Changes apply instantly.
+In the app, open *Settings → dx.bi → Plugins → dx.bi → ⚙* (*Settings → Enhanced → …* with the plugin). On a TV, *dx.bi settings* is at the top of Stremio's *Settings*. Changes apply instantly.
 
-<img src="screenshots/settings.jpg" alt="DX.BI settings" width="380" align="right">
+<img src="screenshots/settings.jpg" alt="DX.BI settings" width="420" align="right">
 
-Look
-- accent colour, built-in theme
-- billboard: on/off, content and speed
-- hover previews, trailers, ratings, wide Continue Watching
-- reviews on title pages, with optional TMDB and MDBList keys
-- only movie, series and anime rows on Home
-- watched titles: show, dim or hide
+The settings are grouped, with a list to jump between groups and a search box:
 
-Player
-- player extras, seek-bar previews, time remaining
-- picture enhancement, the Picture & sound panel and stream stats
-- skip buttons and auto-skip, up next countdown
-- subtitle style and font, subtitles on HDR, whether subtitles start on
-- convert videos this PC can't play
-- picture-in-picture, Open in mpv / VLC
-- get the next episode ready
-
-Everything else
-- library sorting, stream sorting, addon order and backup
-- anime filler guide, new episode badges, airing row
-- remember volume and speed, keyboard shortcuts
-- watch stats, Who's watching?, watch party options
-- intro animation and sound, interface sounds
+- **Look** — accent colour, the TV's selection highlight, built-in theme, ratings, wide Continue Watching
+- **Home** — billboard and its content and speed, video-only rows, new episode badges, airing row, Who's watching?
+- **Hover cards & trailers** — previews, trailers and their delay
+- **Browsing & library** — watched titles, library sorting, stream sorting, addon tools, watch stats, reviews and their keys
+- **Player** — player extras, time remaining, seek-bar previews, picture enhancement, the Picture & sound panel, stream stats, remember volume and speed, shortcuts, picture-in-picture, Open in mpv / VLC, converting
+- **Subtitles** — style, font, whether they start on, HDR
+- **Episodes & skipping** — skip buttons and auto-skip, up next, next episode ready, filler guide
+- **Watch party** and **Intro & sounds**
 
 <br clear="right">
 
@@ -458,8 +474,8 @@ Home's rows come from the catalog addons on your account, not from DX.BI. On a f
 
 Stremio couldn't play that file, and DX.BI shows why underneath. Usually it's one of two things:
 
-- Stremio's streaming server isn't running. Torrents and formats like MKV, HEVC and Dolby Vision need it. Restart dx.bi (or Stremio Enhanced) and let it set the streaming server up; on Windows, *Stremio Service* is easiest. *Settings → Streaming* shows whether it's online.
-- The format doesn't play on that computer (common on Windows 10). DX.BI has the streaming server convert these automatically. If it still fails, pick an x264 or WEB-DL release, or use *Open in mpv / VLC*.
+- Stremio's streaming server isn't running. Torrents and formats like MKV, HEVC and Dolby Vision need it. Restart dx.bi (or Stremio Enhanced) and let it set the streaming server up. *Settings → Streaming* shows whether it's online.
+- The format doesn't play on that computer. The Windows app plays these with mpv (check *Play videos with mpv* is on). On a Mac, on Linux and with the plugin, DX.BI has the streaming server convert them automatically. If it still fails, pick an x264 or WEB-DL release, or use *Open in mpv / VLC*.
 
 ### Windows: "Probe process exited with code: 3221225781"
 
@@ -502,7 +518,7 @@ With the plugin, that comes from a preview build of Stremio Enhanced (the dx.bi 
 
 ### Does it work on my phone or TV?
 
-On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). Phones and iPhones aren't supported.
+On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). The same APK also installs on Android phones and tablets (it runs in landscape). iPhones, iPads, LG (webOS) and Samsung (Tizen) TVs aren't supported.
 
 ### A friend can't connect to a party
 
