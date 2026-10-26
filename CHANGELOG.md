@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.17.0
+- **dx.bi TV is much smoother.** Tested on a Fire TV Stick 4K: moving down Home's rows went from about 15 to 40 frames a second, sideways from about 45 to 56, and the long freezes (up to a second and a half) are gone. The first trip down Home no longer stalls while rows load, and pressing towards an edge with nothing there no longer hangs for half a second.
+- **dx.bi TV: hover cards are back on by default.** A card opens when a title stays selected for a moment, and on TVs it fades in rather than unfolding. Switch it off in dx.bi settings → Hover cards & trailers.
+- **dx.bi TV: rows glide sideways** to their next titles again (moving down the page still jumps, which keeps it quick).
+- **dx.bi TV: Home's rows load as Home opens**, instead of one by one as you scroll to them.
+- **dx.bi TV: Discover shows the selection ring** on the title you're on.
+- **Up from the first row** reaches the billboard's buttons again whichever picture is showing, and on Search it reaches the search box and top bar.
+
 ## 2.16.0
 - **One bar on Windows.** With the mpv player, the app no longer has a separate title bar above dx.bi's top bar: the minimise, maximise and close buttons sit at the right end of the top bar, and in the player they hide with its controls.
 - **Move and resize the window like any other** (Windows): drag an empty part of the top bar to move it, double-click it to maximise or restore, pull a maximised window down to restore it, and resize from any edge or corner.

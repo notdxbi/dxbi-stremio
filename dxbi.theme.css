@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Cinematic, Netflix-inspired interface for dx.bi. Pair it with the dx.bi plugin for the billboard, carousels, previews, ratings and player extras.
- * @version 2.15.2
+ * @version 2.17.0
  * @author dx.bi
  * @requirements ["dxbi.plugin.js"]
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.theme.css
@@ -153,7 +153,8 @@ body[data-dx-route="board"] #app [class*="main-nav-bars-container"] > nav[class*
     background: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.25) 70%, transparent 100%);
 }
 
-body.dx-scrolled #app [class*="main-nav-bars-container"] > nav[class*="horizontal-nav-bar"] {
+body.dx-scrolled #app [class*="main-nav-bars-container"] > nav[class*="horizontal-nav-bar"],
+body #app [class*="main-nav-bars-container"] > nav[class*="horizontal-nav-bar"][data-dx-scrolled] {
     background-color: rgba(11, 11, 13, 0.97);
     box-shadow: 0 1px 0 var(--dx-line), 0 10px 30px rgba(0, 0, 0, 0.35);
 }
@@ -4479,7 +4480,8 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
     transform: none !important;
 }
 
-.dx-tv #app [class*="meta-item-container"]:focus-within [class*="poster-container"]::after {
+.dx-tv #app [class*="meta-item-container"]:focus-within [class*="poster-container"]::after,
+.dx-tv body #app [class*="discover-content"] [class*="meta-item-container"].selected:focus-within:not(.hovered):not(.active) [class*="poster-container"]::after {
     box-shadow: inset 0 0 0 3px var(--dx-focus, #fff);
 }
 
@@ -4490,16 +4492,52 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
     animation: none !important;
 }
 
+/* TV: only the billboard picture on show (and one fading out) is kept on the graphics chip: each of
+   the others was a full-screen layer held in memory. The top bar turns solid at once, as its fade
+   was redrawn in full on every frame of the jump down into the rows. */
+.dx-tv .dx-hero-backdrop {
+    will-change: auto;
+}
+
+.dx-tv #app nav[class*="horizontal-nav-bar"] {
+    transition: none !important;
+}
+
+/* TV: Home rows well out of view aren't drawn at all until you get near them. Every frame that
+   changed anything reworked all twenty-odd rows, which held the jump from row to row back. */
+.dx-tv #app [class*="board-content-"]:not([class*="board-content-container"]) > [class*="board-row"] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 380px;
+}
+
 .dx-tv #app [class*="meta-row"] > [class*="meta-items-container"] {
     -webkit-mask-image: none !important;
     mask-image: none !important;
+}
+
+/* TV: a title's lift (a 3D move) and the rows' rise kept every poster and row on a layer of its
+   own, well over 200 on Home, all reworked with each press: flat cards and rows instead (the
+   selected title keeps its ring) */
+.dx-tv #app .animation-fade-in {
+    animation: none !important;
+}
+
+.dx-tv #app [class*="meta-item-container"] [class*="poster-container"] {
+    transform: none !important;
+    scale: none !important;
+}
+
+/* TV: badges appear as they are, rather than fading in together (a row's worth at a time) */
+.dx-tv .dx-badge {
+    animation: none;
 }
 
 .dx-tv .dx-wide-blur {
     filter: brightness(0.45);
 }
 
-/* TV: rows jump instead of gliding, so the selection never waits off screen for a slow scroll */
+/* TV: the page jumps instead of gliding, so the selection never waits off screen for a slow scroll
+   (rows still glide sideways: the plugin asks for that itself) */
 .dx-tv #app * {
     scroll-behavior: auto !important;
 }
@@ -4508,4 +4546,30 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
 .dx-tv .dx-preview-aura,
 .dx-tv .dx-preview::before {
     display: none;
+}
+
+/* TV: the card fades and grows in place rather than unfolding from the poster's outline (a moving
+   clip the stick redrew in full on every frame), and its artwork holds still */
+.dx-tv .dx-preview {
+    scale: 0.94;
+    transition: scale 0.18s ease, opacity 0.18s ease, visibility 0s linear 0.18s;
+}
+
+.dx-tv .dx-preview.is-open {
+    scale: 1;
+    transition: scale 0.18s ease, opacity 0.18s ease, visibility 0s;
+}
+
+.dx-tv .dx-preview-inner {
+    clip-path: none !important;
+    transition: none;
+    will-change: auto;
+}
+
+.dx-tv .dx-preview-ghost {
+    display: none;
+}
+
+.dx-tv .dx-preview.is-open .dx-preview-media::before {
+    animation: none;
 }
