@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.8
+- **The player's title no longer runs under the buttons.** It sits in the space between the left and right controls, shortens with "…" as that space shrinks (the episode name first), and steps aside when there's no room.
+- **No more grey box behind the player's right-hand buttons** on Windows (and TVs): all the controls are see-through, like the rest of the bar.
+- **The billboard fits smaller and shorter screens** (phones on their side, small windows): its label and logo no longer slide up under the top bar or off the screen. The logo shrinks first, then the description gets shorter, then it's left out on very short screens.
+
 ## 2.15.7
 - **Library: Watched and Not watched now filter.** Stremio only reordered the list with them (watched titles first, or last), so watched titles still showed under Not watched. Now each shows only what it says, straight away when you switch, and says so when there's nothing to show.
 - **Ratings on posters** and **New episode badges**: switching them off now clears every badge at once, including titles further along the rows.

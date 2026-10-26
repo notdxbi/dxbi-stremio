@@ -905,11 +905,37 @@ body[data-dx-route="board"] #app [class*="board-container"] [class*="nav-content
     z-index: 2;
     left: var(--dx-gutter);
     bottom: calc(6vw + 4.5rem);
+    /* never higher than just under the top bar: on short screens (phones on their side, small
+       windows) the logo gives way first, so nothing slides up under the bar or off the screen */
+    top: calc(var(--dx-nav-h) + 0.75rem);
     width: min(36rem, 42vw);
     display: flex;
     flex-direction: column;
+    justify-content: flex-end;
     align-items: flex-start;
-    gap: 1rem;
+    gap: min(1rem, 1.8vh);
+}
+
+.dx-hero-content > * {
+    flex-shrink: 0;
+}
+
+.dx-hero-content > .dx-hero-logo {
+    flex: 0 1 auto;
+    min-height: 2.75rem;
+}
+
+/* Shorter screens: a two-line description, then none, so the logo keeps a sensible size */
+@media (max-height: 680px) {
+    .dx-hero-desc {
+        -webkit-line-clamp: 2;
+    }
+}
+
+@media (max-height: 540px) {
+    .dx-hero-desc {
+        display: none !important;
+    }
 }
 
 /* Old text fades out first, then the new text fades in — never both at once, never moving,
@@ -2740,6 +2766,14 @@ html[class*="active-slider-within"] #app [class*="player-container"] [class*="se
     background: transparent !important;
 }
 
+/* Narrow windows: Stremio folds these buttons into a pop-up behind "⋯", which needs its panel */
+@media only screen and (max-width: 640px) {
+    #app [class*="player-container"] [class*="control-bar-buttons-menu-container"] {
+        background: rgb(22, 22, 27) !important;
+        border-radius: 12px !important;
+    }
+}
+
 #app [class*="player-container"] [class*="control-bar-button-"],
 #app [class*="player-container"] [class*="control-bar-buttons-menu-button"],
 #app [class*="player-container"] .dxp-player-btn,
@@ -2814,22 +2848,33 @@ html[class*="active-slider-within"] #app [class*="player-container"] [class*="co
     opacity: 1;
 }
 
-/* Title in the middle of the bar (plugin) */
+/* Title in the bar (plugin): in the free space between the left and right buttons. It shortens
+   with "…" as the space shrinks (episode name first) and steps aside when there's no room left. */
+#app [class*="player-container"] [class*="control-bar-buttons-container"] > [class*="spacing"] {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    container-type: inline-size;
+}
+
 .dx-player-title {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    max-width: 32%;
     display: flex;
     align-items: baseline;
+    justify-content: center;
     gap: 0.6rem;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0 1rem;
+    box-sizing: border-box;
     white-space: nowrap;
     pointer-events: none;
-    order: 9;
 }
 
 .dx-player-title b {
+    flex: 0 1 auto;
+    min-width: 0;
     font-size: 1.2rem;
     font-weight: 700;
     color: #fff;
@@ -2838,6 +2883,8 @@ html[class*="active-slider-within"] #app [class*="player-container"] [class*="co
 }
 
 .dx-player-title span {
+    flex: 0 1000 auto;
+    min-width: 0;
     font-size: 1.05rem;
     font-weight: 500;
     color: var(--dx-text-2);
@@ -2845,7 +2892,7 @@ html[class*="active-slider-within"] #app [class*="player-container"] [class*="co
     text-overflow: ellipsis;
 }
 
-@media (max-width: 1400px) {
+@container (max-width: 180px) {
     .dx-player-title {
         display: none;
     }
@@ -4361,9 +4408,9 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
     background: rgb(19, 19, 23) !important;
 }
 
-.dx-win #app [class*="menu-container"],
+.dx-win #app [class*="menu-container"]:not([class*="buttons-menu-container"]),
 .dx-win .context-menu-portal [class*="menu-container"],
-.dx-tv #app [class*="menu-container"] {
+.dx-tv #app [class*="menu-container"]:not([class*="buttons-menu-container"]) {
     background: rgb(22, 22, 27) !important;
 }
 
