@@ -342,6 +342,41 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   if (!(await evaluate("document.documentElement.hasAttribute('data-dx-mpv-showing')"))) pass("the page is solid again after leaving the player");
   else fail("the page stayed see-through after leaving the player");
   screen("5-back", area);
+
+  // One bar: the window buttons sit at the end of Stremio's own top bar, its empty space moves the
+  // window and the edges resize it. Driven with the real mouse (user32), not page events.
+  await sleep(1000);
+  const bar = await evaluate(`(()=>{const nav=document.querySelector('[class*="horizontal-nav-bar"]');const btns=document.querySelector(".title-bar-buttons");if(!nav||!btns)return null;const n=nav.getBoundingClientRect(),b=btns.getBoundingClientRect();const under=[...nav.querySelectorAll('a,input,[class*="button"]')].filter(k=>k.offsetParent&&k.getBoundingClientRect().right>b.left+1).length;let spot=null;for(let x=Math.round(n.left+n.width*0.45);x<b.left-20&&!spot;x+=10){const el=document.elementFromPoint(x,Math.round(n.top+n.height/2));if(el&&!el.closest('a,button,input,[class*="button"],[class*="search-bar"],[class*="menu"],[class*="logo"]'))spot=[x,Math.round(n.top+n.height/2)]}return {navTop:Math.round(n.top),under,spot,dpr:devicePixelRatio}})()`);
+  if (bar && bar.navTop === 0 && bar.under === 0) pass("one bar: window buttons in Stremio's top bar, none of its buttons under them");
+  else fail(`window bar: ${JSON.stringify(bar)}`);
+  const mouse = (steps) => execFileSync("powershell", ["-NoProfile", "-Command", `
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public class M { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, IntPtr e); }
+"@
+${steps.map(([kind, x, y]) => kind === "move" ? `[M]::SetCursorPos(${x}, ${y}) | Out-Null; Start-Sleep -Milliseconds 30` : `[M]::mouse_event(${kind === "down" ? 2 : 4}, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60`).join("\n")}`], { encoding: "utf8" });
+  const pos = () => evaluate("[screenX, screenY, outerWidth, outerHeight]");
+  if (bar && bar.spot) {
+    const [wx, wy] = await pos();
+    const sx = Math.round((wx + bar.spot[0]) * bar.dpr), sy = Math.round((wy + bar.spot[1]) * bar.dpr);
+    const path = [["move", sx, sy], ["down"]];
+    for (let i = 1; i <= 8; i++) path.push(["move", sx + i * 10, sy + i * 5]);
+    path.push(["up"]);
+    mouse(path);
+    await sleep(800);
+    const [ax, ay] = await pos();
+    if (Math.abs(ax - wx - 80) <= 3 && Math.abs(ay - wy - 40) <= 3) pass(`dragging the empty top bar moves the window (80, 40 → ${ax - wx}, ${ay - wy})`);
+    else fail(`dragging the top bar moved the window by ${ax - wx}, ${ay - wy} (expected 80, 40)`);
+  } else fail("no empty spot on the top bar to drag");
+  {
+    const [wx, wy, ww, wh] = await pos();
+    const ex = Math.round((wx + ww - 2) * (bar ? bar.dpr : 1)), ey = Math.round((wy + wh / 2) * (bar ? bar.dpr : 1));
+    mouse([["move", ex, ey], ["down"], ["move", ex + 30, ey], ["move", ex + 60, ey], ["move", ex + 90, ey], ["up"]]);
+    await sleep(800);
+    const [, , w2] = await pos();
+    if (Math.abs(w2 - ww - 90) <= 3) pass(`the right edge resizes the window (${ww} → ${w2})`);
+    else fail(`the right edge: width ${ww} → ${w2} (expected +90)`);
+  }
 }
 
 let exitCode = 0;

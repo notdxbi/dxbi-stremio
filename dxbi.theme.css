@@ -579,6 +579,38 @@ body[data-dx-route="board"] #app [class*="board-container"] [class*="nav-content
     transform: translateY(-4px) scale(1.035);
 }
 
+/* Titles on anime artwork (plugin): the name over a soft shade at the bottom of the card */
+.dx-anime-title {
+    position: absolute;
+    z-index: 4;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 2.2rem 0.6rem 0.55rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.55) 55%, transparent);
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* Discover selects its first title by itself (to fill its side panel): no lift or ring for that one
+   until a title is picked (the plugin sets the flag) */
+body:not(.dx-discover-picked) #app [class*="discover-content"] [class*="meta-item-container"].selected:not(.hovered):not(.active) [class*="poster-container"] {
+    box-shadow: none !important;
+    transform: none;
+}
+
+body:not(.dx-discover-picked) #app [class*="discover-content"] [class*="meta-item-container"].selected:not(.hovered):not(.active) [class*="poster-container"]::after {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
 /* keyboard highlight: the poster lifts like it does under the mouse, and the hover card shows
    what's selected: no outline or ring around the card */
 #app [class*="meta-item-link"]:focus-visible {
@@ -4414,6 +4446,12 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
 .dx-win .context-menu-portal [class*="menu-container"],
 .dx-tv #app [class*="menu-container"]:not([class*="buttons-menu-container"]) {
     background: rgb(22, 22, 27) !important;
+}
+
+/* THE DX.BI APP: the top bar's fullscreen button repeats the window's own buttons (F11 still
+   toggles full screen, and the player keeps its fullscreen button) */
+.dx-app #app [class*="horizontal-nav-bar"] [title*="ullscreen"] {
+    display: none !important;
 }
 
 /* TV: what the remote is on must be plain to see from the sofa. A white ring on everything but

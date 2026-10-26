@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.16.0
+- **One bar on Windows.** With the mpv player, the app no longer has a separate title bar above dx.bi's top bar: the minimise, maximise and close buttons sit at the right end of the top bar, and in the player they hide with its controls.
+- **Move and resize the window like any other** (Windows): drag an empty part of the top bar to move it, double-click it to maximise or restore, pull a maximised window down to restore it, and resize from any edge or corner.
+- **No more fullscreen button in the app's top bar**: it repeated the window buttons. F11 still toggles full screen, and the player keeps its own fullscreen button.
+- **Titles on anime artwork.** Anime catalogs' cover art usually has no title on it, so dx.bi writes the name at the bottom of each card in Home and Search rows (switch it off in dx.bi settings → Look).
+- **Discover no longer highlights its first title** when you arrive: a title only shows as selected once you pick one.
+- **dx.bi is now licensed under the GNU GPL, version 3 or later.** You can still use, change and share it freely; shared copies must stay open source and keep the credit. Versions up to 2.15.9 stay MIT. See NOTICE.md.
+
 ## 2.15.9
 - **dx.bi TV: the selection moves instantly.** Titles no longer grow, zoom and fade as you move, which left the previous title looking selected for a moment on slower sticks (Onn, Shield, Bravia). The selected title gets a ring in your Selection highlight colour.
 - **dx.bi TV: holding a direction moves at a steady pace** and stops when you let go (the extra presses used to queue up and keep it going).
