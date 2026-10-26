@@ -344,8 +344,14 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   screen("5-back", area);
 
   // One bar: the window buttons sit at the end of Stremio's own top bar, its empty space moves the
-  // window and the edges resize it. Driven with the real mouse (user32), not page events.
+  // window and the edges resize it. Driven with the real mouse (user32), not page events, from a
+  // normal (not maximized) window: edges only resize one
   await sleep(1000);
+  if (await evaluate(`document.body.classList.contains("is-maximized")`)) {
+    await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
+    await sleep(1500);
+  }
+  console.log("  (window before the drag:", JSON.stringify(await evaluate("[screenX, screenY, outerWidth, outerHeight, document.body.className]")), ")");
   const bar = await evaluate(`(()=>{const nav=document.querySelector('[class*="horizontal-nav-bar"]');const btns=document.querySelector(".title-bar-buttons");if(!nav||!btns)return null;const n=nav.getBoundingClientRect(),b=btns.getBoundingClientRect();const under=[...nav.querySelectorAll('a,input,[class*="button"]')].filter(k=>k.offsetParent&&k.getBoundingClientRect().right>b.left+1).length;let spot=null;for(let x=Math.round(n.left+n.width*0.45);x<b.left-20&&!spot;x+=10){const el=document.elementFromPoint(x,Math.round(n.top+n.height/2));if(el&&!el.closest('a,button,input,[class*="button"],[class*="search-bar"],[class*="menu"],[class*="logo"]'))spot=[x,Math.round(n.top+n.height/2)]}return {navTop:Math.round(n.top),under,spot,dpr:devicePixelRatio}})()`);
   if (bar && bar.navTop === 0 && bar.under === 0) pass("one bar: window buttons in Stremio's top bar, none of its buttons under them");
   else fail(`window bar: ${JSON.stringify(bar)}`);
@@ -362,7 +368,10 @@ ${steps.map(([kind, x, y]) => kind === "move" ? `[M]::SetCursorPos(${x}, ${y}) |
     const path = [["move", sx, sy], ["down"]];
     for (let i = 1; i <= 8; i++) path.push(["move", sx + i * 10, sy + i * 5]);
     path.push(["up"]);
+    console.log("  (drag spot", JSON.stringify(bar.spot), "under it:", await evaluate(`(()=>{const e=document.elementFromPoint(${bar.spot[0]},${bar.spot[1]});return e?e.tagName+"."+String(e.className).slice(0,60):"none"})()`), ")");
+    await evaluate(`window.__dxDown=0;document.addEventListener("pointerdown",()=>window.__dxDown++,true);true`);
     mouse(path);
+    console.log("  (pointerdowns the page saw:", await evaluate("window.__dxDown"), ")");
     await sleep(800);
     const [ax, ay] = await pos();
     if (Math.abs(ax - wx - 80) <= 3 && Math.abs(ay - wy - 40) <= 3) pass(`dragging the empty top bar moves the window (80, 40 → ${ax - wx}, ${ay - wy})`);
