@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.7
+- **Library: Watched and Not watched now filter.** Stremio only reordered the list with them (watched titles first, or last), so watched titles still showed under Not watched. Now each shows only what it says, straight away when you switch, and says so when there's nothing to show.
+- **Ratings on posters** and **New episode badges**: switching them off now clears every badge at once, including titles further along the rows.
+- Checked every dx.bi setting in the app against what it should do (including Trailer delay: the trailer starts 0, 1, 3 or 5 seconds after the card opens, as set).
+
 ## 2.15.6
 - **dx.bi TV: the remote moves freely past text boxes.** The keyboard used to open as soon as the selection reached a search box (Search, an episode list's search), and then it held on to the arrows. Now a text box is just a stop on the way; press OK on it to type, and Back closes the keyboard.
 - **dx.bi TV: changes in dx.bi settings now take effect.** They were saved, but the TV never applied them (#14).

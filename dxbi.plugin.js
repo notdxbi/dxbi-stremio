@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.15.6
+ * @version 2.15.7
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -17,7 +17,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.15.6"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.15.7"; // kept in step with @version by tools/bundle-theme.mjs
   const log = (...args) => console.log("[dx.bi]", ...args);
   // dx.bi also comes as its own desktop app (built on Stremio Enhanced): messages name the app
   // you're in, and the folder its streaming server lives in
@@ -1259,7 +1259,8 @@
     if (badge) badge.remove();
     const place = (score) => {
       const current = cardInfo(card);
-      if (!score || !current || `${current.type}:${current.id}` !== key) return;
+      // (switched off while the score was on its way)
+      if (!score || !settings.ratings || !current || `${current.type}:${current.id}` !== key) return;
       if (poster.querySelector(":scope > .dx-badge")) return;
       const b = document.createElement("div");
       b.className = score.label === "IMDb" ? "dx-badge" : "dx-badge is-anime";
@@ -1280,6 +1281,9 @@
       const wide = !!row.querySelector(".dx-wide-art");
       if (wide !== row.hasAttribute("data-dx-wide-row")) row.toggleAttribute("data-dx-wide-row", wide);
     }
+    // Switched off: every badge goes at once (titles out of view were only redone when scrolled to)
+    if (!settings.ratings) document.querySelectorAll('#app [class*="poster-container"] > .dx-badge').forEach((b) => b.remove());
+    if (!settings.newEpisodes) document.querySelectorAll("#app .dxe-new-ep").forEach((b) => b.remove());
     for (const card of allCards()) {
       if (markWatched) {
         // Continue Watching is never dimmed or hidden
@@ -6222,7 +6226,7 @@
     if (currentRoute() === "detail") steps.push(() => streamTools.ensure());
     steps.push(() => reviews.ensure());
     if (currentRoute() !== "player") {
-      steps.push(() => hero.ensure(), filterRows, updateAllArrows, syncCards, () => librarySort.ensure(), applyWatchedTitles);
+      steps.push(() => hero.ensure(), filterRows, updateAllArrows, syncCards, () => librarySort.ensure(), () => libraryWatched.ensure(), applyWatchedTitles);
     }
     // One failing step must never stop the others
     for (const step of steps) {
@@ -6235,6 +6239,9 @@
       // Ignore changes we made ourselves
       if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn")) continue;
       scheduleSync();
+      // Library's watched filters hide titles in the same frame Stremio draws them (a whole sync
+      // later, the wrong titles were on screen for a moment)
+      if (currentRoute() === "library") { try { libraryWatched.ensure(); } catch (_) { /* next sync */ } }
       return;
     }
   });
@@ -6551,7 +6558,8 @@
   #app .dxl-sorted [class*="selectable-inputs-container"] [class*="chip"][class*="active"] { background: transparent !important; border-color: rgba(255,255,255,.14) !important; color: rgba(255,255,255,.6) !important; }
   .dxl-opt { height: 2.3rem; padding: 0 1rem; border-radius: 1.15rem; font-size: .84rem !important; }
   .dxl-select { height: 2.3rem; border-radius: 1.15rem; }
-  .dxl-off { display: none !important; }
+  .dxl-off, .dxl-watch-off { display: none !important; }
+  .dxl-empty { padding: 3rem var(--dx-gutter, 4%); color: var(--dx-text-2, #a3a3ab); font-size: 1.05rem; }
 
   body.dx-watched-dim:is([data-dx-route="discover"], [data-dx-route="search"], [data-dx-route="board"]) #app [data-dx-watched] { opacity: .38; transition: opacity .2s ease; }
   body.dx-watched-dim:is([data-dx-route="discover"], [data-dx-route="search"], [data-dx-route="board"]) #app [data-dx-watched]:hover, body.dx-watched-dim:is([data-dx-route="discover"], [data-dx-route="search"], [data-dx-route="board"]) #app [data-dx-watched]:focus-visible { opacity: 1; }
@@ -10677,6 +10685,57 @@
       lib.classList.remove("dxl-sorted");
       lib.querySelectorAll('[class*="meta-item-container"]').forEach((c) => { c.style.order = ""; c.classList.remove("dxl-off"); });
       this.key = "";
+    },
+  };
+
+  // Stremio's Library "Watched" and "Not watched" only reorder the list (watched titles first, or
+  // last), so a watched title still showed under "Not watched". Here each shows only what it says.
+  const libraryWatched = {
+    flags: new Map(), // library item id → watched
+    at: 0,
+    busy: false,
+
+    ensure() {
+      const lib = currentRoute() === "library" ? document.querySelector('#app [class*="library-container"]') : null;
+      if (!lib) return;
+      const sort = new URLSearchParams(location.hash.split("?")[1] || "").get("sort") || "";
+      const want = sort === "watched" ? true : sort === "notwatched" ? false : null;
+      if (want !== null) this.refresh();
+      const cards = [...lib.querySelectorAll('[class*="meta-items-container"] > [class*="meta-item-container"]')];
+      let shown = 0;
+      for (const c of cards) {
+        const info = cardInfo(c);
+        const watched = info ? this.flags.get(info.id) : undefined;
+        // (until Stremio's answer first arrives, nothing: the wrong titles flashed up otherwise)
+        const off = want !== null && (this.at === 0 || (watched !== undefined && watched !== want));
+        c.classList.toggle("dxl-watch-off", off);
+        if (!off) shown++;
+      }
+      // nothing left to show: say so, rather than an empty page
+      let note = lib.querySelector(".dxl-empty");
+      const empty = want !== null && this.at > 0 && cards.length > 0 && shown === 0;
+      if (empty && !note) {
+        note = document.createElement("div");
+        note.className = "dxl-empty";
+        (lib.querySelector('[class*="meta-items-container"]') || lib).before(note);
+      }
+      if (note) {
+        if (!empty) note.remove();
+        else note.textContent = want ? "Nothing in your library is watched yet." : "You've watched everything in your library.";
+      }
+    },
+
+    // Stremio's own record of what's watched (the same one behind its watched marks)
+    refresh() {
+      if (this.busy || Date.now() - this.at < 1500) return;
+      this.busy = true;
+      core().getState("library").then((state) => {
+        const next = new Map(((state && state.catalog) || []).map((item) => [item._id, !!item.watched]));
+        const changed = next.size !== this.flags.size || [...next].some(([id, w]) => this.flags.get(id) !== w);
+        this.flags = next;
+        this.at = Date.now();
+        if (changed) scheduleSync();
+      }).catch(() => { /* core busy: next sync */ }).finally(() => { this.busy = false; });
     },
   };
 
