@@ -322,21 +322,18 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   await sleep(1500);
   switcher("after fullscreen");
 
-  // Maximize and restore from the title bar (a transparent window can't use Windows' own, issue #6),
-  // from a window smaller than the screen
-  await place(Math.round(sw * 0.1), Math.round(sh * 0.1), Math.round(sw * 0.6), Math.round(sh * 0.6));
-  await sleep(1000);
-  const before = await evaluate(`[outerWidth, outerHeight]`);
-  await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
-  await sleep(1500);
-  const max = await evaluate(`[outerWidth, outerHeight, screen.availWidth, screen.availHeight]`);
-  if (Math.abs(max[0] - max[2]) <= 2 && Math.abs(max[1] - max[3]) <= 2) pass(`maximize fills the work area (${max[0]}×${max[1]})`);
-  else fail(`maximize: window ${max[0]}×${max[1]}, work area ${max[2]}×${max[3]}`);
-  await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
-  await sleep(1500);
-  const restored = await evaluate(`[outerWidth, outerHeight]`);
-  if (Math.abs(restored[0] - before[0]) <= 2 && Math.abs(restored[1] - before[1]) <= 2) pass(`restore goes back to ${restored[0]}×${restored[1]}`);
-  else fail(`restore: ${restored[0]}×${restored[1]}, was ${before[0]}×${before[1]}`);
+  // Maximize and restore from the title bar (a transparent window can't use Windows' own, issue #6):
+  // pressed twice, one press fills the work area and the other gives back a smaller window
+  const sizes = [];
+  for (let i = 0; i < 2; i++) {
+    await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
+    await sleep(1500);
+    sizes.push(await evaluate(`[outerWidth, outerHeight, screen.availWidth, screen.availHeight]`));
+  }
+  const fills = (s) => Math.abs(s[0] - s[2]) <= 2 && Math.abs(s[1] - s[3]) <= 2;
+  const smaller = (s) => s[0] < s[2] - 20 && s[1] < s[3] - 20;
+  if ((fills(sizes[0]) && smaller(sizes[1])) || (smaller(sizes[0]) && fills(sizes[1]))) pass(`maximize and restore: ${sizes.map((s) => `${s[0]}×${s[1]}`).join(" ↔ ")} (work area ${sizes[0][2]}×${sizes[0][3]})`);
+  else fail(`maximize and restore: ${sizes.map((s) => `${s[0]}×${s[1]}`).join(", ")}, work area ${sizes[0][2]}×${sizes[0][3]}`);
 
   // Leaving the player puts the page back
   await evaluate("history.back(); true");

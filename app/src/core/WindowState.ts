@@ -30,6 +30,13 @@ function onScreen(bounds: Rectangle): boolean {
 export function restoreWindowState(win: BrowserWindow): boolean {
     const saved = read();
     if (saved?.bounds && onScreen(saved.bounds)) win.setBounds(saved.bounds);
+    else {
+        // the size it un-maximizes to the first time: most of the screen, never bigger than it
+        const area = screen.getDisplayMatching(win.getBounds()).workArea;
+        const width = Math.min(1500, Math.round(area.width * 0.8));
+        const height = Math.min(850, Math.round(area.height * 0.8));
+        win.setBounds({ x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2), width, height });
+    }
     const maximized = !saved || saved.maximized !== false;
 
     // Saved whenever it changes (a quick exit or a crash skips the close event)
