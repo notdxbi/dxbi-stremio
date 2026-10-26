@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.6
+- **dx.bi TV: the remote moves freely past text boxes.** The keyboard used to open as soon as the selection reached a search box (Search, an episode list's search), and then it held on to the arrows. Now a text box is just a stop on the way; press OK on it to type, and Back closes the keyboard.
+- **dx.bi TV: changes in dx.bi settings now take effect.** They were saved, but the TV never applied them (#14).
+- **Selection highlight** (dx.bi TV, Settings → dx.bi settings → Look): white, your accent colour or yellow.
+
 ## 2.15.5
 - **dx.bi TV no longer closes straight back to the home screen** on 2 GB sticks like the Chromecast with Google TV: the intro is a light logo animation on TVs, dx.bi TV runs a much smaller plugin (about 40% less to load), and the grey "play" icon at start is gone. If the TV still runs out of memory, dx.bi restarts its page instead of closing.
 - **dx.bi TV is faster on Fire TV, Onn and other sticks**: rows jump to the next titles instead of gliding (your selection no longer disappears for a moment when you move quickly), and the slow billboard zoom, faded row edges and blurred backdrops are left out on TVs. Hover cards wait a moment longer, and their trailers are off by default on TVs (switch them on in dx.bi settings).

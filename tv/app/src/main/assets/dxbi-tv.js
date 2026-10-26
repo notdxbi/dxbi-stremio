@@ -107,7 +107,9 @@
       }
       return true;
     },
-    registerSettings: (plugin, schema) => { schemas[plugin] = schema; },
+    // a promise, like Stremio Enhanced's (dx.bi chains on it: without one it stopped before loading
+    // the TV's saved settings, so changes in dx.bi settings never took effect)
+    registerSettings: async (plugin, schema) => { schemas[plugin] = schema; },
     onSettingsSaved: (plugin, callback) => { (savedListeners[plugin] = savedListeners[plugin] || []).push(callback); },
     showAlert: (type, title, message, buttons) => dialog({ title, message, buttons: buttons && buttons.length ? buttons : ["OK"] }),
     showPrompt: (plugin, title, message, defaultValue) => dialog({ title, message, buttons: ["OK", "Cancel"], input: defaultValue == null ? "" : String(defaultValue) })
@@ -551,6 +553,36 @@
     })();`;
     document.body.append(script);
   }
+
+  // Text boxes (Search, an episode list's search): the TV's keyboard opened the moment the
+  // selection reached one and took over the arrows, so the remote seemed stuck. A box is just a
+  // stop on the way until OK is pressed on it; then the keyboard opens.
+  const typable = (t) => t && t.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset|color|file|range|hidden)$/.test(t.type);
+  window.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (!typable(t) || t.readOnly || t.dataset.dxtvTyping || t.closest(".dxtv-modal")) return;
+    t.readOnly = true;
+    t.dataset.dxtvLocked = "1";
+  }, true);
+  window.addEventListener("focusout", (e) => {
+    const t = e.target;
+    if (!t || !t.dataset) return;
+    if (t.dataset.dxtvLocked) {
+      t.readOnly = false;
+      delete t.dataset.dxtvLocked;
+    }
+    delete t.dataset.dxtvTyping;
+  }, true);
+  window.addEventListener("keydown", (e) => {
+    const t = e.target;
+    if (e.key !== "Enter" || !typable(t) || !t.dataset.dxtvLocked) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    t.blur();
+    t.dataset.dxtvTyping = "1";
+    t.focus();
+    t.click(); // what makes Android bring up its keyboard
+  }, true);
 
   // An actor's or director's name on a title opens Search with the name filled in. Stremio then
   // puts the cursor in the search box, and the TV's keyboard covered the results: the results get

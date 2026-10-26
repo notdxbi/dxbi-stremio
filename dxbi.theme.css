@@ -4370,7 +4370,7 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
 /* TV: what the remote is on must be plain to see from the sofa. A white ring on everything but
    titles (they lift and open their card). See All always shows: it's at the end of each row. */
 .dx-tv #app :is(a, button, input, [tabindex]):not([class*="meta-item-link"]):focus-visible {
-    outline: 3px solid #fff !important;
+    outline: 3px solid var(--dx-focus, #fff) !important;
     outline-offset: 3px;
     border-radius: var(--dx-radius-s);
 }
