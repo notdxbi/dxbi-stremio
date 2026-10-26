@@ -66,11 +66,10 @@ jobs:
         if: github.event_name == 'release'
         shell: bash
         # each platform only makes some of these kinds of file; latest*.yml and the block maps are
-        # what the app's self-updater reads (core/AutoUpdate.ts)
-        # Both Mac builds write latest-mac.yml, and two uploads of it at once failed (2.15.8); the Mac
-        # app doesn't update itself, so only the Intel build sends it
+        # what the app's self-updater reads (core/AutoUpdate.ts, Windows and Linux only). The Mac app
+        # doesn't update itself, so Mac releases carry just the .dmg
         run: |
-          if [ "${{ matrix.target }}-${{ matrix.arch }}" = "mac-arm64" ]; then rm -f release-builds/latest-mac.yml; fi
+          if [ "${{ matrix.target }}" = "mac" ]; then rm -f release-builds/latest-mac.yml release-builds/*.blockmap; fi
           gh release upload "${{ github.event.release.tag_name }}" $(ls release-builds/*.exe release-builds/*.dmg release-builds/*.AppImage release-builds/latest*.yml release-builds/*.blockmap 2>/dev/null) --clobber
         env:
           GH_TOKEN: ${{ github.token }}
