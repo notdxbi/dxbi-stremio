@@ -347,12 +347,14 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   // window and the edges resize it. Driven with the real mouse (user32), not page events, from a
   // normal (not maximized) window: edges only resize one
   await sleep(1000);
+  // a fresh profile can show Stremio's announcement pop-up over the page: close it first
+  await evaluate(`(document.querySelectorAll('[class*="event-modal"], [class*="modal-container"]').forEach((m) => m.remove()), true)`);
   if (await evaluate(`document.body.classList.contains("is-maximized")`)) {
     await evaluate(`document.querySelector("#maximizeApp-btn").click(); true`);
     await sleep(1500);
   }
   console.log("  (window before the drag:", JSON.stringify(await evaluate("[screenX, screenY, outerWidth, outerHeight, document.body.className]")), ")");
-  const bar = await evaluate(`(()=>{const nav=document.querySelector('[class*="horizontal-nav-bar"]');const btns=document.querySelector(".title-bar-buttons");if(!nav||!btns)return null;const n=nav.getBoundingClientRect(),b=btns.getBoundingClientRect();const under=[...nav.querySelectorAll('a,input,[class*="button"]')].filter(k=>k.offsetParent&&k.getBoundingClientRect().right>b.left+1).length;let spot=null;for(let x=Math.round(n.left+n.width*0.45);x<b.left-20&&!spot;x+=10){const el=document.elementFromPoint(x,Math.round(n.top+n.height/2));if(el&&!el.closest('a,button,input,[class*="button"],[class*="search-bar"],[class*="menu"],[class*="logo"]'))spot=[x,Math.round(n.top+n.height/2)]}return {navTop:Math.round(n.top),under,spot,dpr:devicePixelRatio}})()`);
+  const bar = await evaluate(`(()=>{const nav=document.querySelector('[class*="horizontal-nav-bar"]');const btns=document.querySelector(".title-bar-buttons");if(!nav||!btns)return null;const n=nav.getBoundingClientRect(),b=btns.getBoundingClientRect();const under=[...nav.querySelectorAll('a,input,[class*="button"]')].filter(k=>k.offsetParent&&k.getBoundingClientRect().right>b.left+1).length;let spot=null;for(let x=Math.round(n.left+n.width*0.45);x<b.left-20&&!spot;x+=10){const el=document.elementFromPoint(x,Math.round(n.top+n.height/2));if(el&&el.closest('[class*="horizontal-nav-bar"]')&&!el.closest('a,button,input,[class*="button"],[class*="search-bar"],[class*="menu"],[class*="logo"]'))spot=[x,Math.round(n.top+n.height/2)]}return {navTop:Math.round(n.top),under,spot,dpr:devicePixelRatio}})()`);
   if (bar && bar.navTop === 0 && bar.under === 0) pass("one bar: window buttons in Stremio's top bar, none of its buttons under them");
   else fail(`window bar: ${JSON.stringify(bar)}`);
   const mouse = (steps) => execFileSync("powershell", ["-NoProfile", "-Command", `
