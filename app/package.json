@@ -23,7 +23,7 @@
 		"releaseType": "release"
 	},
 	"author": "dx.bi",
-	"license": "MIT",
+	"license": "GPL-3.0-or-later",
 	"devDependencies": {
 		"@types/unzipper": "^0.10.11",
 		"electron": "^41.1.0",
@@ -108,6 +108,7 @@
 			"static/**/*",
 			"version",
 			"LICENSE.md",
+			"COPYING",
 			"images/icon.png",
 			"images/icon.ico",
 			"package.json"

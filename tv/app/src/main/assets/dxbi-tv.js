@@ -1,3 +1,4 @@
+// dx.bi TV — Copyright (C) 2026 dx.bi. GNU General Public License, version 3 or later (see LICENSE).
 // dx.bi TV: runs in web.stremio.com before the page's own scripts. It stands in for Stremio Enhanced
 // (the plugin API dx.bi expects), loads the built-in dx.bi plugin, fits the page to a TV, and hands
 // every stream to the app's native player, keeping Stremio's watch progress in step.

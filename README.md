@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/notdxbi/dxbi-stremio/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/notdxbi/dxbi-stremio?label=release&color=e50914&style=flat-square"></a>
   <img alt="Windows · macOS · Linux · Android TV · Fire TV" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV%20·%20Fire%20TV-222?style=flat-square">
-  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-222?style=flat-square"></a>
+  <a href="NOTICE.md"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-222?style=flat-square"></a>
   <a href="https://discord.gg/nnVBjqZ84F"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
 </p>
 
@@ -530,6 +530,12 @@ Stremio changes its interface now and then. Post it in **#bug-reports** on the [
 
 <br>
 
+## Licence
+
+dx.bi is free and open source under the [GNU GPL, version 3 or later](LICENSE): you can use, study, change and share it, and anything you share that's based on it must keep the credit and publish its full source under the same licence. Versions up to 2.15.9 were MIT. The "dx.bi" name and logo aren't part of the licence: please give forks their own name. Details, and the parts by others that keep their own licences, are in [NOTICE.md](NOTICE.md).
+
+<br>
+
 ## Credits
 
 - [Stremio](https://www.stremio.com/) ([stremio-web](https://github.com/Stremio/stremio-web)) — the app underneath everything.
@@ -541,4 +547,4 @@ Stremio changes its interface now and then. Post it in **#bug-reports** on the [
 - Country flags: [Twemoji](https://github.com/jdecked/twemoji) graphics (CC-BY 4.0) via the [Twemoji Country Flags](https://github.com/talkjs/country-flag-emoji-polyfill) font by TalkJS (MIT).
 - Built with the help of [Claude Code](https://www.anthropic.com/claude-code).
 
-<sub>Inspired by the Netflix interface; no Netflix logos, fonts, images or sounds are used. The intro and all sounds are original (see <a href="tools">tools</a>). Not affiliated with Netflix, Inc., Stremio, Stremio Enhanced or any plugin author. <a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT License</a>.</sub>
+<sub>Inspired by the Netflix interface; no Netflix logos, fonts, images or sounds are used. The intro and all sounds are original (see <a href="tools">tools</a>). Not affiliated with Netflix, Inc., Stremio, Stremio Enhanced or any plugin author. <a href="CHANGELOG.md">Changelog</a> · <a href="NOTICE.md">Licence: GPL-3.0-or-later</a>.</sub>
