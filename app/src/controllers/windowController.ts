@@ -1,4 +1,4 @@
-import { ipcMain, type Rectangle } from 'electron';
+import { ipcMain, screen, type Rectangle } from 'electron';
 import { IPC_CHANNELS } from "../constants";
 import { mainWindow } from '../main';
 import { isFullScreen, isMaximized, maximize, unmaximize } from '../core/Maximize';
@@ -80,13 +80,14 @@ export function setupWindowControls() {
         mainWindow.setBounds({ ...drag.bounds, x: Math.round(drag.bounds.x + x - drag.x), y: Math.round(drag.bounds.y + y - drag.y) });
     });
 
-    // Resizing from the edges and corners
-    let resize: { x: number; y: number; bounds: Rectangle } | null = null;
-    ipcMain.on(IPC_CHANNELS.WINDOW_RESIZE, (_, phase: string, edge: string, x: number, y: number) => {
-        if (!mainWindow || isMaximized(mainWindow) || isFullScreen(mainWindow)) return;
-        if (phase === "start") { resize = { x, y, bounds: mainWindow.getBounds() }; return; }
-        if (phase === "end" || !resize) { resize = null; return; }
-        const b = resize.bounds;
+    // Resizing from the edges and corners. The window follows the cursor itself (polled here), so a
+    // fast pull that leaves the window before the page hears of it still resizes all the way
+    let resize: { x: number; y: number; bounds: Rectangle; edge: string; timer: NodeJS.Timeout } | null = null;
+    const stopResize = () => { if (resize) clearInterval(resize.timer); resize = null; };
+    const follow = () => {
+        if (!resize || !mainWindow || mainWindow.isDestroyed()) return stopResize();
+        const { x, y } = screen.getCursorScreenPoint();
+        const b = resize.bounds, edge = resize.edge;
         const [minW, minH] = mainWindow.getMinimumSize().map((v) => v || 0);
         const dx = x - resize.x;
         const dy = y - resize.y;
@@ -95,6 +96,18 @@ export function setupWindowControls() {
         if (edge.includes("s")) height = Math.max(minH, MIN_HEIGHT, b.height + dy);
         if (edge.includes("w")) { width = Math.max(minW, MIN_WIDTH, b.width - dx); left = b.x + b.width - width; }
         if (edge.includes("n")) { height = Math.max(minH, MIN_HEIGHT, b.height - dy); top = b.y + b.height - height; }
-        mainWindow.setBounds({ x: Math.round(left), y: Math.round(top), width: Math.round(width), height: Math.round(height) });
+        const next = { x: Math.round(left), y: Math.round(top), width: Math.round(width), height: Math.round(height) };
+        const now = mainWindow.getBounds();
+        if (now.x !== next.x || now.y !== next.y || now.width !== next.width || now.height !== next.height) mainWindow.setBounds(next);
+    };
+    ipcMain.on(IPC_CHANNELS.WINDOW_RESIZE, (_, phase: string, edge: string) => {
+        if (!mainWindow || isMaximized(mainWindow) || isFullScreen(mainWindow)) return stopResize();
+        if (phase === "start") {
+            stopResize();
+            const { x, y } = screen.getCursorScreenPoint();
+            resize = { x, y, bounds: mainWindow.getBounds(), edge, timer: setInterval(follow, 16) };
+            return;
+        }
+        if (phase === "end") { follow(); stopResize(); }
     });
 }

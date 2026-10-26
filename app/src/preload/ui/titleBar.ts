@@ -82,16 +82,19 @@ export function addTitleBar(): void {
             e.preventDefault();
             e.stopPropagation();
             handle.setPointerCapture(e.pointerId);
-            ipcRenderer.send(IPC_CHANNELS.WINDOW_RESIZE, "start", handle.dataset.edge, e.screenX, e.screenY);
-            const move = (ev: PointerEvent) => ipcRenderer.send(IPC_CHANNELS.WINDOW_RESIZE, "move", handle.dataset.edge, ev.screenX, ev.screenY);
+            // the main process follows the cursor until the button is let go
+            ipcRenderer.send(IPC_CHANNELS.WINDOW_RESIZE, "start", handle.dataset.edge);
+            // (any release, or the window losing focus, ends it: it must never keep following the cursor)
             const end = () => {
-                handle.removeEventListener("pointermove", move);
                 handle.removeEventListener("pointerup", end);
                 handle.removeEventListener("lostpointercapture", end);
-                ipcRenderer.send(IPC_CHANNELS.WINDOW_RESIZE, "end", handle.dataset.edge, 0, 0);
+                document.removeEventListener("pointerup", end, true);
+                window.removeEventListener("blur", end);
+                ipcRenderer.send(IPC_CHANNELS.WINDOW_RESIZE, "end", handle.dataset.edge);
             };
-            handle.addEventListener("pointermove", move);
             handle.addEventListener("pointerup", end);
+            document.addEventListener("pointerup", end, true);
+            window.addEventListener("blur", end);
             handle.addEventListener("lostpointercapture", end);
         });
     });
