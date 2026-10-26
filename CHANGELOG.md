@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.9
+- **dx.bi TV: the selection moves instantly.** Titles no longer grow, zoom and fade as you move, which left the previous title looking selected for a moment on slower sticks (Onn, Shield, Bravia). The selected title gets a ring in your Selection highlight colour.
+- **dx.bi TV: holding a direction moves at a steady pace** and stops when you let go (the extra presses used to queue up and keep it going).
+- **dx.bi TV: hover cards are off by default**, so browsing with the remote is about twice as light. Switch them back on in dx.bi settings → Hover cards & trailers.
+
 ## 2.15.8
 - **The player's title no longer runs under the buttons.** It sits in the space between the left and right controls, shortens with "…" as that space shrinks (the episode name first), and steps aside when there's no room.
 - **No more grey box behind the player's right-hand buttons** on Windows (and TVs): all the controls are see-through, like the rest of the bar.

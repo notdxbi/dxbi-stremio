@@ -4426,6 +4426,23 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
     --dx-row-hot: 1;
 }
 
+/* TV titles: the selection moves at once, with a ring in the highlight colour. Lifts and zooms
+   that faded in and out left the last title looking selected for a moment on slower sticks. */
+.dx-tv #app [class*="meta-item-container"],
+.dx-tv #app [class*="meta-item-container"] [class*="poster-container"],
+.dx-tv #app [class*="meta-item-container"] [class*="poster-container"]::after,
+.dx-tv #app [class*="meta-item-container"] [class*="poster-image-layer"] {
+    transition: none !important;
+}
+
+.dx-tv #app [class*="meta-item-container"] [class*="poster-image-layer"] {
+    transform: none !important;
+}
+
+.dx-tv #app [class*="meta-item-container"]:focus-within [class*="poster-container"]::after {
+    box-shadow: inset 0 0 0 3px var(--dx-focus, #fff);
+}
+
 /* TV: a stick's graphics chip redraws whatever moves or is blurred, every frame, and the remote
    waits behind it. The billboard's slow zoom, the rows' faded edges (each row drawn twice) and the
    blurred Continue Watching backdrops are left out. */
