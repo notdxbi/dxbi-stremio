@@ -73,6 +73,26 @@ for ($i = 1; $i -le 24; $i++) { for ($j = 1; $j -le 16; $j++) {
   return changed;
 }
 
+// How many of the test clip's six bar colours show inside `box` of a saved screenshot
+function barColours(png, box) {
+  const ps = `
+Add-Type -AssemblyName System.Drawing
+$img = [System.Drawing.Bitmap]::FromFile('${png.replace(/'/g, "''")}')
+$seen = @{}
+for ($i = 1; $i -le 40; $i++) { for ($j = 1; $j -le 24; $j++) {
+  $x = [int](${box.x} + ${box.width} * $i / 41); $y = [int](${box.y} + ${box.height} * $j / 25)
+  if ($x -ge $img.Width -or $y -ge $img.Height) { continue }
+  $p = $img.GetPixel($x, $y); $r = $p.R -gt 180; $g = $p.G -gt 180; $bl = $p.B -gt 180
+  $r0 = $p.R -lt 70; $g0 = $p.G -lt 70; $b0 = $p.B -lt 70
+  if ($r -and $g0 -and $b0) { $seen['red'] = 1 } elseif ($g -and $r0 -and $b0) { $seen['green'] = 1 }
+  elseif ($r -and $g -and $b0) { $seen['yellow'] = 1 } elseif ($bl -and $r0 -and $g0) { $seen['blue'] = 1 }
+  elseif ($r -and $bl -and $g0) { $seen['magenta'] = 1 } elseif ($g -and $bl -and $r0) { $seen['cyan'] = 1 }
+} }
+$img.Dispose()
+$seen.Count`;
+  return Number(execFileSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" }).trim()) || 0;
+}
+
 async function main() {
   const target = await waitFor("the window", async () => {
     const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
@@ -321,12 +341,16 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   } else console.log("  (Esc exits full screen is off in this profile: Escape check skipped)");
   if (afterEsc[0]) await evaluate(`window.chrome.webview.postMessage(JSON.stringify({ id: 0, type: 6, args: ["win-set-visibility", { fullscreen: false }] })); true`);
   await sleep(1500);
-  // The picture is back in the window, not the desktop showing through (reported on 2.16: blue)
-  const afterFull = screen("4b-after-fullscreen", area);
-  // (the clip is mostly solid colour bars, and the runner's console window can cover part of the
-  // area: a visible picture moves 8 to 40 points here, a missing one none)
-  if (afterFull >= 5) pass("the video still shows after leaving full screen");
-  else fail(`the video is gone after leaving full screen (${afterFull} points changed)`);
+  // The picture is back in the window, not the desktop showing through (reported on 2.16: blue).
+  // Movement alone can't tell: the clip's moving parts can be out of the window. Its colour bars
+  // (red, green, yellow, blue, magenta, cyan) must be on screen, and mpv's clock must be running.
+  screen("4b-after-fullscreen", area);
+  const t0 = Number(await evaluate(`window.__dxbiMpv.get("time-pos")`)) || 0;
+  await sleep(1200);
+  const t1 = Number(await evaluate(`window.__dxbiMpv.get("time-pos")`)) || 0;
+  const hues = barColours(join(outDir, "4b-after-fullscreen.png"), area);
+  if (hues >= 4 && t1 > t0 + 0.5) pass(`the video still shows after leaving full screen (${hues} of the clip's bar colours on screen, playing)`);
+  else fail(`after leaving full screen: ${hues} of the clip's 6 bar colours on screen, mpv time ${t0.toFixed(1)} → ${t1.toFixed(1)}`);
   switcher("after fullscreen");
 
   // Maximize and restore from the title bar (a transparent window can't use Windows' own, issue #6):
