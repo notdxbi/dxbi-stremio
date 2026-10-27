@@ -20,10 +20,13 @@
     openExternal: (url) => bridge.openExternal(TOKEN, url),
     findServers: () => bridge.findServers(TOKEN),
     torrentUrl: (json) => (bridge.torrentUrl ? bridge.torrentUrl(TOKEN, json) : ""),
+    deviceInfo: () => { try { return JSON.parse(bridge.deviceInfo ? bridge.deviceInfo(TOKEN) : "{}"); } catch (_) { return {}; } },
   };
 
   const PLUGIN = "dxbi.plugin.js";
   const tv = (window.__dxbiTv = {});
+  // problem reports (the plugin's `report`) add these
+  tv.deviceInfo = () => native.deviceInfo();
 
   // ---------------------------------------------------------------------------
   // Fit the page to the TV: lay it out 1280 CSS pixels wide (a 10-foot size on any screen). A phone
@@ -272,6 +275,28 @@
     }
   }
 
+  // Report a problem: a description typed with the remote, then the plugin's report goes to the developer
+  async function reportProblem() {
+    const dx = window.__dxbi;
+    if (!dx || !dx.report) { toast("dx.bi hasn't finished loading yet. Try again in a moment."); return; }
+    const r = await dialog({
+      title: "Report a problem",
+      message: "What went wrong, and what were you doing? dx.bi adds its version, this TV's model, your settings, addon names and recent errors. No passwords, keys or stream links are sent.",
+      buttons: ["Send report", "Cancel"],
+      input: "",
+    });
+    if (!r || r.button !== 0) return;
+    toast("Sending…", 8000);
+    try {
+      const code = await dx.report.send(r.value || "");
+      document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
+      await dialog({ title: "Report sent", message: `Thanks! Your report code is ${code}.\nMention it in dx.bi's Discord (#help) so it can be matched to you.`, buttons: ["OK"] });
+    } catch (err) {
+      document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
+      await dialog({ title: "Couldn't send the report", message: (err && err.message) || "Try again in a moment.", buttons: ["OK"] });
+    }
+  }
+
   // dx.bi's settings: an entry at the top of Stremio's Settings, opening a list made for the remote
   // Options for dx.bi's in-page player, which the TV doesn't use (it has its own player)
   const DESKTOP_ONLY = new Set(["playerExtras", "enhance", "seekPreviews", "subtitleStyle", "subtitleFont",
@@ -341,11 +366,15 @@
     entry.className = "dxtv-row dxtv-settings-entry";
     entry.innerHTML = `<span>dx.bi settings<small>Look, Home rows, previews, trailers, reviews, sounds and more</small></span><b>Open</b>`;
     entry.addEventListener("click", settingsSheet);
+    const problem = document.createElement("button");
+    problem.className = "dxtv-row dxtv-settings-entry";
+    problem.innerHTML = `<span>Report a problem<small>Sends dx.bi's developer the details that help fix it (no passwords, keys or stream links)</small></span><b>Report</b>`;
+    problem.addEventListener("click", reportProblem);
     const server = document.createElement("button");
     server.className = "dxtv-row dxtv-settings-entry";
     server.innerHTML = `<span>Streaming server for torrents<small>Torrents play on this TV by themselves. Optional: use dx.bi or Stremio running on a computer on your network instead (easier on slower sticks)</small></span><b>Find</b>`;
     server.addEventListener("click", findServer);
-    content.prepend(entry, server);
+    content.prepend(entry, server, problem);
   }
 
   // ---------------------------------------------------------------------------
@@ -457,9 +486,10 @@
     const ready = state.stream && state.stream.type === "Ready" && state.stream.content;
     // (for a torrent, Stremio gives a streaming server address even when none is running)
     let url = (ready && ready.url && (serverUp || !stream.infoHash) ? ready.url : null) || stream.url || null;
-    // A torrent and no streaming server: the TV fetches it itself
+    // A torrent and no streaming server: the TV fetches it itself (unless that's switched off in dx.bi
+    // settings, for people who only use debrid)
     let torrent = false;
-    if (!url && stream.infoHash) {
+    if (!url && stream.infoHash && readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents !== false) {
       // (an addon's "sources" reach the player as "announce")
       const trackers = [...(stream.announce || []), ...(stream.sources || [])].filter((x) => /^tracker:/.test(x)).map((x) => x.replace(/^tracker:/, ""));
       const name = (stream.behaviorHints && stream.behaviorHints.filename) || "";

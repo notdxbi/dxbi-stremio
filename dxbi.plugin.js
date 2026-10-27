@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.19.0
+ * @version 2.19.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,8 +19,30 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.19.0"; // kept in step with @version by tools/bundle-theme.mjs
-  const log = (...args) => console.log("[dx.bi]", ...args);
+  const PLUGIN_VERSION = "2.19.1"; // kept in step with @version by tools/bundle-theme.mjs
+  // Recent messages and errors, kept for problem reports (see `report`)
+  const recent = { logs: [], errors: [] };
+  const remember = (list, text) => {
+    list.push(`${new Date().toISOString().slice(11, 19)} ${String(text).slice(0, 400)}`);
+    if (list.length > 60) list.shift();
+  };
+  const log = (...args) => {
+    console.log("[dx.bi]", ...args);
+    remember(recent.logs, args.map((a) => (a instanceof Error ? a.message : typeof a === "object" ? (() => { try { return JSON.stringify(a); } catch (_) { return String(a); } })() : String(a))).join(" "));
+  };
+  window.addEventListener("error", (e) => remember(recent.errors, `${e.message || "error"} @ ${(e.filename || "").split("/").pop()}:${e.lineno || 0}`));
+  window.addEventListener("unhandledrejection", (e) => remember(recent.errors, `unhandled: ${(e.reason && (e.reason.message || e.reason)) || "?"}`));
+  for (const level of ["error", "warn"]) {
+    const original = console[level];
+    if (original && !original.__dxbi) {
+      const wrapped = function (...args) {
+        try { remember(recent.errors, `${level}: ${args.map((a) => (a instanceof Error ? a.message : typeof a === "string" ? a : (() => { try { return JSON.stringify(a); } catch (_) { return String(a); } })())).join(" ")}`); } catch (_) { /* never in the way */ }
+        return original.apply(this, args);
+      };
+      wrapped.__dxbi = true;
+      console[level] = wrapped;
+    }
+  }
   // dx.bi also comes as its own desktop app (built on Stremio Enhanced): messages name the app
   // you're in, and the folder its streaming server lives in
   const IN_APP = /\bdxbi\//.test(navigator.userAgent);
@@ -114,6 +136,7 @@
     uiSounds: true,
     soundVolume: "subtle",
     focusColour: "white",
+    tvTorrents: true,
     animeTitles: true,
     trailerDelay: "0",
     watchParty: true,
@@ -140,6 +163,7 @@
         { label: "Mono", value: "white" },
       ],
     },
+    { key: "tvTorrents", type: "toggle", label: "Play torrents on this TV", description: "dx.bi TV downloads torrents itself, connecting to other people sharing them. Switch off to only play debrid streams (Real-Debrid, TorBox…), or torrents through a streaming server on a computer.", defaultValue: DEFAULTS.tvTorrents, tvOnly: true },
     {
       key: "focusColour",
       type: "select",
@@ -363,7 +387,7 @@
     ["Home", ["videoRowsOnly", "billboard", "billboardSource", "billboardInterval", "newEpisodes", "airingRow", "whoIsWatching"]],
     ["Hover cards & trailers", ["previews", "trailers", "trailerDelay"]],
     ["Browsing & library", ["watchedTitles", "librarySort", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey"]],
-    ["Player", ["playerExtras", "remainingTime", "seekPreviews", "enhance", "pictureSound", "streamStats", "rememberPlayback", "playerKeys", "pip", "externalPlayer", "convertVideo"]],
+    ["Player", ["tvTorrents", "playerExtras", "remainingTime", "seekPreviews", "enhance", "pictureSound", "streamStats", "rememberPlayback", "playerKeys", "pip", "externalPlayer", "convertVideo"]],
     ["Subtitles", ["subtitleStyle", "subtitleFont", "subtitlesStart", "hdrSubtitles"]],
     ["Episodes & skipping", ["skipButtons", "autoSkip", "upNext", "preloadNext", "fillerGuide", "skipFiller"]],
     ["Watch party", ["watchParty", "partyFollow", "partyActivity", "partySounds"]],
@@ -442,6 +466,7 @@
   // ---------------------------------------------------------------------------
 
   const ICONS = {
+    bug: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="8" width="10" height="12" rx="5"/><path d="M12 8v12M9 5l1.5 2M15 5l-1.5 2M3 13h4M17 13h4M4 8l3 2M20 8l-3 2M4 19l3-2M20 19l-3-2"/></svg>',
     eyeOff: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c5.5 0 9 5.5 9 7 0 .7-.8 2.2-2.2 3.7M6.6 6.6C4.4 8 3 10.4 3 12c0 1.5 3.5 7 9 7 1.9 0 3.6-.6 5-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
     reviews: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg>',
     play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.53.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5z"/></svg>',
@@ -6556,7 +6581,7 @@
   const mo = new MutationObserver((records) => {
     for (const r of records) {
       // Ignore changes we made ourselves
-      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item")) continue;
+      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item, .dxe-report")) continue;
       scheduleSync();
       // Library's watched filters hide titles in the same frame Stremio draws them (a whole sync
       // later, the wrong titles were on screen for a moment)
@@ -6728,6 +6753,15 @@
   .dxe-who-del { color: #ff6b6b; font: 700 .8rem Inter, system-ui, sans-serif !important; }
   .dxe-who-btn { height: 2.8rem; padding: 0 1.6rem; border: 1px solid rgba(255,255,255,.4); background: transparent; color: rgba(255,255,255,.75); font: 600 .95rem Inter, system-ui, sans-serif !important; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
   .dxe-who-btn:hover, .dxe-who-btn:focus-visible { color: #fff; border-color: #fff; }
+  .dxe-report { position: fixed; inset: 0; z-index: 100005; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); font-family: Inter, system-ui, sans-serif; }
+  .dxe-report-card { width: min(36rem, 92vw); padding: 1.6rem 1.7rem; border-radius: .8rem; background: #18181d; color: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.6); }
+  .dxe-report-card h2 { margin: 0 0 .6rem; font: 700 1.35rem Inter, system-ui, sans-serif !important; }
+  .dxe-report-card p { margin: 0 0 1rem; color: rgba(255,255,255,.7); font: 400 .92rem/1.5 Inter, system-ui, sans-serif !important; }
+  .dxe-report-card textarea { width: 100%; box-sizing: border-box; padding: .8rem; border: 1px solid rgba(255,255,255,.18); border-radius: .5rem; background: #0e0e11; color: #fff; font: 400 .95rem/1.4 Inter, system-ui, sans-serif; resize: vertical; }
+  .dxe-report-card textarea:focus { outline: none; border-color: rgba(255,255,255,.5); }
+  .dxe-report-btns { display: flex; align-items: center; gap: .6rem; justify-content: flex-end; margin-top: 1rem; }
+  .dxe-report-status { flex: 1; color: rgba(255,255,255,.65); font-size: .85rem; }
+  .dxe-report-code { font-family: ui-monospace, monospace; letter-spacing: .08em; color: #fff; }
   .dx-ends { display: inline-flex; align-items: center; height: 1.9rem; padding: 0 .7rem; border-radius: .35rem; background: rgba(255,255,255,.1); color: #fff; font: 600 .85rem Inter, system-ui, sans-serif; white-space: nowrap; }
   .dx-preview-facts .dx-ends-at { color: rgba(255,255,255,.75); }
   .dx-cal-poster { height: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .25rem; }
@@ -8776,6 +8810,180 @@
   };
 
   // ---------------------------------------------------------------------------
+  // Report a problem: what dx.bi knows about this setup (version, device, settings, addons, library
+  // counts, what each part is doing, recent errors) sent to dx.bi's developer in one press, with a
+  // short code to mention in Discord. Never sent on its own. Links are cut to the site's name (debrid
+  // and addon links can carry keys), e-mail addresses removed, and keys only say whether they're set.
+  // ---------------------------------------------------------------------------
+
+  // Reports go to dx.bi's relay (tools/report-relay, a Cloudflare Worker), which checks them and posts
+  // them to a private Discord channel. The channel's webhook is the relay's secret, not in this code.
+  const REPORT_ENDPOINT = "";
+
+  function redact(text) {
+    return String(text == null ? "" : text)
+      .replace(/\b(?:https?|wss?|stremio|magnet):\/\/[^\s"'<>)]*/gi, (u) => {
+        try { return new URL(u.replace(/^stremio:/i, "https:")).host + "/…"; } catch (_) { return "[link]"; }
+      })
+      .replace(/magnet:\?[^\s"'<>)]*/gi, "[magnet]")
+      .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]")
+      .replace(/\b[0-9a-f]{32,}\b/gi, (h) => (h.length === 40 ? h : "[key]")); // (40: torrent hashes stay)
+  }
+
+  const report = {
+    sentAt: 0,
+
+    where() {
+      if (IN_TV) return "dx.bi TV";
+      if (IN_APP) return "dx.bi app";
+      return "Stremio Enhanced plugin";
+    },
+
+    async collect() {
+      const out = {
+        code: Math.random().toString(36).slice(2, 8).toUpperCase(),
+        time: new Date().toISOString(),
+        dxbi: PLUGIN_VERSION,
+        where: this.where(),
+        userAgent: navigator.userAgent,
+        platform: navigator.userAgentData?.platform || navigator.platform || "",
+        language: navigator.language,
+        screen: `${screen.width}x${screen.height} @${window.devicePixelRatio || 1}, window ${innerWidth}x${innerHeight}`,
+        route: currentRoute(),
+        online: navigator.onLine,
+      };
+      const safe = async (name, fn) => {
+        try { out[name] = await fn(); } catch (err) { out[name] = `unavailable: ${err && err.message}`; }
+      };
+      await safe("settings", () => {
+        const copy = { ...settings };
+        for (const k of ["tmdbKey", "mdblistKey"]) copy[k] = settings[k] && String(settings[k]).trim() ? "set" : "not set";
+        return copy;
+      });
+      await safe("viewers", () => {
+        const v = viewers.list();
+        return { count: v.list.length, current: { kids: viewers.current().kids || 0 }, parentPin: parentPin.isSet(), hiddenTitles: restrict.hidden().length };
+      });
+      const { getState } = core();
+      await safe("account", async () => {
+        const ctx = getState ? await getState("ctx") : null;
+        const p = ctx && ctx.profile;
+        return {
+          signedIn: !!(p && p.auth),
+          streamingServerUrl: p && p.settings && p.settings.streamingServerUrl ? redact(p.settings.streamingServerUrl) : null,
+          playerType: p && p.settings && p.settings.playerType,
+          addons: ((p && p.addons) || []).map((a) => ({
+            name: a.manifest && a.manifest.name,
+            id: a.manifest && a.manifest.id,
+            version: a.manifest && a.manifest.version,
+            host: (() => { try { return new URL(a.transportUrl).host; } catch (_) { return "?"; } })(),
+            configured: (() => { try { return new URL(a.transportUrl).pathname.split("/").length > 2; } catch (_) { return false; } })(),
+            catalogs: ((a.manifest && a.manifest.catalogs) || []).length,
+            resources: ((a.manifest && a.manifest.resources) || []).map((r) => (typeof r === "string" ? r : r.name)),
+          })),
+        };
+      });
+      await safe("streamingServer", async () => {
+        const s = getState ? await getState("streaming_server") : null;
+        return { state: s && s.settings && s.settings.type, version: s && s.settings && s.settings.content && s.settings.content.serverVersion };
+      });
+      await safe("library", () => {
+        const items = stremioLibrary().filter((i) => !i.removed && !i.temp);
+        const byKind = {};
+        for (const i of items) {
+          const prefix = (String(i._id).match(/^(tt|[a-z]+[:.])/i) || ["other"])[0];
+          const key = `${i.type}:${prefix}`;
+          byKind[key] = (byKind[key] || 0) + 1;
+        }
+        return { total: items.length, byTypeAndId: byKind };
+      });
+      await safe("episodes", () => ({
+        showsIndexed: episodes.index.size,
+        withDatedEpisodes: [...episodes.index.values()].filter((e) => e.all && e.all.length).length,
+        failures: [...episodes.failures.entries()].slice(0, 30).map(([id, why]) => `${id}: ${why}`),
+      }));
+      if (currentRoute() === "calendar") {
+        await safe("calendar", async () => {
+          const st = getState ? await getState("calendar") : null;
+          return {
+            month: st && st.selected,
+            stremioEpisodes: st ? (st.items || []).reduce((n, d) => n + (d.items || []).length, 0) : null,
+            addedByDxbi: document.querySelectorAll(".dx-cal-item").length,
+          };
+        });
+      }
+      if (currentRoute() === "player") {
+        await safe("player", async () => {
+          const st = getState ? await getState("player") : null;
+          const stream = st && st.selected && st.selected.stream;
+          const video = document.querySelector('[class*="player-container"] video');
+          return {
+            kind: stream ? (stream.infoHash ? "torrent" : stream.url ? "url" : stream.externalUrl ? "external" : "?") : null,
+            host: stream && stream.url ? redact(stream.url) : null,
+            streamState: st && st.stream && st.stream.type,
+            nativePlayer: window.__dxbiNativePlayer || null,
+            video: video ? { time: Math.round(video.currentTime), duration: Math.round(video.duration || 0), width: video.videoWidth, height: video.videoHeight, error: video.error && video.error.code, readyState: video.readyState } : null,
+          };
+        });
+      }
+      // dx.bi TV adds the device, its WebView and the torrent engine
+      if (window.__dxbiTv && typeof window.__dxbiTv.deviceInfo === "function") await safe("tv", () => window.__dxbiTv.deviceInfo());
+      await safe("memory", () => (performance.memory ? { usedMB: Math.round(performance.memory.usedJSHeapSize / 1048576), limitMB: Math.round(performance.memory.jsHeapSizeLimit / 1048576) } : null));
+      out.recentErrors = recent.errors.map(redact);
+      out.recentLog = recent.logs.map(redact);
+      return out;
+    },
+
+    // Sends the report; resolves with its code, or throws with a message to show
+    async send(description) {
+      if (!REPORT_ENDPOINT) throw new Error("Reporting isn't set up in this version.");
+      if (Date.now() - this.sentAt < 60000) throw new Error("A report was just sent: wait a minute before sending another.");
+      const data = await this.collect();
+      data.description = redact(String(description || "").slice(0, 1500));
+      let body = JSON.stringify(data);
+      // (the relay takes up to 256 KB: the log goes first if it's ever that long)
+      if (body.length > 240000) { data.recentLog = data.recentLog.slice(-10); body = JSON.stringify(data); }
+      const r = await fetch(REPORT_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body, signal: AbortSignal.timeout(20000) });
+      const answer = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(answer.error || `Couldn't send the report (${r.status}).`);
+      this.sentAt = Date.now();
+      return data.code;
+    },
+
+    // The desktop dialog (dx.bi TV draws its own, made for the remote)
+    open() {
+      ensureExtrasStyle();
+      document.querySelectorAll(".dxe-report").forEach((n) => n.remove());
+      const el = document.createElement("div");
+      el.className = "dxe-report";
+      for (const type of ["keydown", "keyup", "keypress"]) el.addEventListener(type, (e) => e.stopPropagation());
+      el.innerHTML = `<div class="dxe-report-card" role="dialog" aria-label="Report a problem">
+        <h2>Report a problem</h2>
+        <p>Say what went wrong and what you were doing. dx.bi adds the details that help fix it: its version, your device, your settings, addon names, how many titles are in your library, and recent errors. No e-mail, passwords, keys or stream links are sent.</p>
+        <textarea rows="5" maxlength="1500" placeholder="e.g. The calendar is empty, even though my library has shows that are airing"></textarea>
+        <div class="dxe-report-btns"><span class="dxe-report-status"></span><button class="dxe-btn" data-cancel>Cancel</button><button class="dxe-btn is-primary" data-send>Send report</button></div>
+      </div>`;
+      const status = el.querySelector(".dxe-report-status");
+      el.addEventListener("click", async (e) => {
+        if (e.target === el || e.target.closest("[data-cancel], [data-close]")) { el.remove(); return; }
+        const send = e.target.closest("[data-send]");
+        if (!send) return;
+        send.disabled = true;
+        status.textContent = "Sending…";
+        try {
+          const code = await this.send(el.querySelector("textarea").value);
+          el.querySelector(".dxe-report-card").innerHTML = `<h2>Report sent</h2><p>Thanks! Your report code is <b class="dxe-report-code">${esc(code)}</b>. Mention it in dx.bi's Discord (#help) so it can be matched to you.</p><div class="dxe-report-btns"><button class="dxe-btn is-primary" data-close>Done</button></div>`;
+        } catch (err) {
+          status.textContent = err.message;
+          send.disabled = false;
+        }
+      });
+      document.body.append(el);
+      el.querySelector("textarea").focus();
+    },
+  };
+
+  // ---------------------------------------------------------------------------
   // Watch stats: real viewing time, counted while a video is actually playing
   // ---------------------------------------------------------------------------
 
@@ -9070,6 +9278,7 @@
       const items = [];
       if (settings.watchStats) items.push(make("Your stats", ICONS.chart, () => statsPanel.open()));
       if (settings.whoIsWatching) items.push(make("Who's watching?", ICONS.people, () => whoIsWatching.open()));
+      items.push(make("Report a problem", ICONS.bug, () => report.open()));
       template.before(...items);
     },
   };
@@ -9276,7 +9485,8 @@
 
     librarySeries(bases) {
       return stremioLibrary()
-        .filter((i) => i.type === "series" && !i.removed && !i.temp && this.metaUrl(i._id, bases))
+        // (TMDB shows count even with no TMDB addon left: fetchMeta finds them on Cinemeta)
+        .filter((i) => i.type === "series" && !i.removed && !i.temp && (this.metaUrl(i._id, bases) || /^tmdb:\d+$/.test(i._id)))
         .sort((a, b) => Date.parse(b.state.lastWatched || 0) - Date.parse(a.state.lastWatched || 0))
         .slice(0, 80);
     },
@@ -9309,11 +9519,7 @@
         // (entries from before the calendar needed every episode are fetched again)
         if (raw && Date.now() - raw.t < EP_TTL && raw.e && raw.e.all) return raw.e;
       } catch (_) { /* refetch */ }
-      const url = this.metaUrl(id, bases);
-      if (!url) return null;
-      const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      if (!r.ok) return null;
-      const meta = ((await r.json()) || {}).meta;
+      const meta = await this.fetchMeta(id, bases);
       if (!meta) return null;
       const now = Date.now();
       const vids = (meta.videos || [])
@@ -9331,6 +9537,58 @@
       };
       try { localStorage.setItem("dxbi.eps." + id, JSON.stringify({ t: now, e: entry })); } catch (_) { /* full: memory copy still works */ }
       return entry;
+    },
+
+    failures: new Map(), // id → why its episodes couldn't be fetched (for problem reports)
+
+    // The show's details from the addon it came from; when that addon is down (the TMDB addon's
+    // server failed for days), from Cinemeta instead, finding the show's IMDb id on Wikidata
+    async fetchMeta(id, bases) {
+      const tries = [];
+      const own = this.metaUrl(id, bases);
+      if (own) tries.push(own);
+      const tmdb = /^tmdb:(\d+)$/.exec(id);
+      const kitsu = /^kitsu:\d+$/.test(id);
+      if (kitsu) tries.push(`https://anime-kitsu.strem.fun/meta/series/${id}.json`);
+      let why = own ? "" : "no addon for this id";
+      for (const url of [...new Set(tries)]) {
+        try {
+          const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) { why = `${new URL(url).host} ${r.status}`; continue; }
+          const meta = ((await r.json()) || {}).meta;
+          if (meta && Array.isArray(meta.videos) && meta.videos.length) { this.failures.delete(id); return meta; }
+          why = `${new URL(url).host} gave no episodes`;
+        } catch (err) {
+          why = `${new URL(url).host} ${err && err.name === "TimeoutError" ? "timed out" : "unreachable"}`;
+        }
+      }
+      if (tmdb) {
+        try {
+          const tt = await this.imdbForTmdb(tmdb[1]);
+          if (tt) {
+            const r = await fetch(`https://v3-cinemeta.strem.io/meta/series/${tt}.json`, { signal: AbortSignal.timeout(10000) });
+            const meta = r.ok ? ((await r.json()) || {}).meta : null;
+            if (meta && Array.isArray(meta.videos)) { this.failures.delete(id); return { ...meta, id }; }
+          } else why += "; no IMDb id on Wikidata";
+        } catch (_) { why += "; Cinemeta fallback failed"; }
+      }
+      this.failures.set(id, why || "unknown");
+      return null;
+    },
+
+    // TMDB series id → IMDb id (Wikidata, cached for a month)
+    async imdbForTmdb(n) {
+      const key = "dxbi.tmdb2imdb." + n;
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || "null");
+        if (saved && Date.now() - saved.t < 30 * 86400000) return saved.tt;
+      } catch (_) { /* ask again */ }
+      const query = `SELECT ?imdb WHERE { ?item wdt:P4983 "${String(n).replace(/\D/g, "")}" ; wdt:P345 ?imdb . } LIMIT 1`;
+      const r = await fetch(`https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(query)}`, { headers: { Accept: "application/sparql-results+json" }, signal: AbortSignal.timeout(12000) });
+      if (!r.ok) throw new Error(`Wikidata ${r.status}`);
+      const tt = ((await r.json()).results.bindings[0] || {}).imdb?.value || null;
+      try { localStorage.setItem(key, JSON.stringify({ tt, t: Date.now() })); } catch (_) { /* full */ }
+      return tt;
     },
 
     // A new episode came out after you last watched the show (within the last month)
@@ -12095,6 +12353,7 @@
     whoIsWatching,
     episodes,
     calendarFill,
+    report,
     // dx.bi TV's player: intro, recap and credits times for an episode ([] when nobody has added them)
     async skipSegments(type, metaId, videoId) {
       if (!settings.skipButtons) return [];

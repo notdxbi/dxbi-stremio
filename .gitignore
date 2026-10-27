@@ -6,3 +6,7 @@ tools/frames/
 tools/prev/
 *.webm
 *.wav
+
+# Cloudflare Worker local secrets
+.dev.vars
+.wrangler/

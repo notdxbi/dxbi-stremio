@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.19.1
+- **Report a problem, from anywhere.** In the app and the plugin it's in your profile menu; on dx.bi TV it's at the top of *Settings*. Say what went wrong and dx.bi sends its developer the details that help fix it: version, device, settings, addon names, how many titles your library has, what each part is doing and recent errors. You get a short code to mention in Discord. No e-mail, passwords, keys or stream links are sent (links are cut down to the site's name).
+- **The Calendar fills in when the TMDB addon is down or removed.** Shows added from the TMDB addon's rows now get their episodes from Cinemeta (found by their IMDb id), so they appear in the Calendar, new episode badges and Airing this week again.
+- **dx.bi TV: Play torrents on this TV** can be switched off in dx.bi settings → Player, for anyone who only plays debrid streams (Real-Debrid, TorBox…) or wants torrents to go through a computer's streaming server.
+
 ## 2.19.0
 - **dx.bi TV plays torrents by itself.** No computer and no streaming server needed: the TV downloads the episode or film in order, the part you're watching first, and plays it as it arrives. While it gets going the player shows how many peers it found and the speed. Jumping ahead works too: that part is fetched first. Only the file you're watching is downloaded, and it's deleted when you stop. A streaming server you've picked in *Settings* (dx.bi or Stremio on a computer) is still used when it's online.
 

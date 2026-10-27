@@ -1,0 +1,14 @@
+name = "dxbi-reports"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# Each address can send 3 reports a minute
+[[ratelimits]]
+name = "REPORTS_LIMIT"
+namespace_id = "1001"
+simple = { limit = 3, period = 60 }
+
+# The Discord webhook is a secret, never in this file:
+#   npx wrangler secret put DISCORD_WEBHOOK
+# (or Cloudflare dashboard → Workers → dxbi-reports → Settings → Variables and Secrets)

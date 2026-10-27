@@ -98,6 +98,29 @@ class Bridge(private val activity: MainActivity) {
         }
     }
 
+    /** The device, for problem reports: model, Android, WebView, memory, the torrent engine's state */
+    @JavascriptInterface
+    fun deviceInfo(token: String): String {
+        if (!allowed(token)) return "{}"
+        return try {
+            val am = activity.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val mem = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+            val webView = try { androidx.webkit.WebViewCompat.getCurrentWebViewPackage(activity)?.let { "${it.packageName} ${it.versionName}" } } catch (_: Exception) { null }
+            JSONObject()
+                .put("app", BuildConfigVersion.name(activity))
+                .put("device", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+                .put("android", "${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})")
+                .put("abis", android.os.Build.SUPPORTED_ABIS.joinToString(","))
+                .put("webView", webView ?: "unknown")
+                .put("memoryMB", JSONObject().put("total", mem.totalMem / 1048576).put("available", mem.availMem / 1048576).put("low", mem.lowMemory))
+                .put("phone", isPhone())
+                .put("torrent", TorrentEngine.status() ?: "idle")
+                .toString()
+        } catch (e: Exception) {
+            JSONObject().put("error", e.message ?: "?").toString()
+        }
+    }
+
     /** A phone or tablet rather than a TV: browsing can turn upright */
     @JavascriptInterface
     fun isPhone(): Boolean {
