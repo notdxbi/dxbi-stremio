@@ -356,7 +356,9 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   await sleep(1200);
   const t1 = Number(await evaluate(`window.__dxbiMpv.get("time-pos")`)) || 0;
   const hues = barColours(join(outDir, "4b-after-fullscreen.png"), area);
-  if (hues >= 4 && t1 > t0 + 0.5) pass(`the video still shows after leaving full screen (${hues} of the clip's bar colours on screen, playing)`);
+  // (the area is the window's middle, which holds two or three of the bars; a desktop showing
+  // through has one colour at most)
+  if (hues >= 2 && t1 > t0 + 0.5) pass(`the video still shows after leaving full screen (${hues} of the clip's bar colours on screen, playing)`);
   else fail(`after leaving full screen: ${hues} of the clip's 6 bar colours on screen, mpv time ${t0.toFixed(1)} → ${t1.toFixed(1)}`);
   switcher("after fullscreen");
 
