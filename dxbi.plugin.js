@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.18.0
+ * @version 2.18.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.18.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.18.1"; // kept in step with @version by tools/bundle-theme.mjs
   const log = (...args) => console.log("[dx.bi]", ...args);
   // dx.bi also comes as its own desktop app (built on Stremio Enhanced): messages name the app
   // you're in, and the folder its streaming server lives in
@@ -7754,10 +7754,13 @@
   // Home rows come from catalog addons on your Stremio account, so a fresh install looks bare next
   // to the screenshots. These are free, need no account or keys, and are what dx.bi's Home uses.
   const HOME_PACK = [
-    { name: "The Movie Database", what: "popular, trending and latest movies & series", url: "https://94c8cb9f702d-tmdb-addon.baby-beamup.club/%7B%22language%22%3A%22en-US%22%7D/manifest.json" },
+    // (The Movie Database addon is left out: its rows repeated Cinemeta's, and its server stopped
+    // answering configured installs in October 2026)
     { name: "Streaming Catalogs", what: "Netflix, Disney+, HBO Max, Prime Video and Apple TV+ rows", url: "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/manifest.json" },
-    { name: "Anime Catalogs", what: "top and popular anime from MyAnimeList and AniDB", url: "https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/%7B%22search%22%3A%22on%22%2C%22myanimelist_top-series%22%3A%22on%22%2C%22myanimelist_top-movies%22%3A%22on%22%2C%22myanimelist_popular%22%3A%22on%22%2C%22anidb_popular%22%3A%22on%22%7D/manifest.json" },
-    { name: "TMDB Collections", what: "film series and collections", url: "https://61ab9c85a149-tmdb-collections.baby-beamup.club/manifest.json" },
+    // Kitsu search, plus MyAnimeList's top series and top films (its Popular and AniDB's repeated them)
+    { name: "Anime Catalogs", what: "top anime series and films from MyAnimeList, and anime search", url: "https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/%7B%22search%22%3A%22on%22%2C%22myanimelist_top-series%22%3A%22on%22%2C%22myanimelist_top-movies%22%3A%22on%22%7D/manifest.json" },
+    // Popular and Top Rated on Home (New Releases repeated them); by country and company in Discover
+    { name: "TMDB Collections", what: "popular and top rated film series and collections", url: "https://61ab9c85a149-tmdb-collections.baby-beamup.club/%7B%22enableAdultContent%22%3Afalse%2C%22enableSearch%22%3Atrue%2C%22enableCollectionFromMovie%22%3Atrue%2C%22language%22%3A%22en%22%2C%22catalogList%22%3A%5B%22popular%22%2C%22topRated%22%2C%22topRatedByCountry%22%2C%22topRatedByCompany%22%5D%2C%22discoverOnly%22%3A%7B%22popular%22%3Afalse%2C%22newReleases%22%3Afalse%2C%22topRated%22%3Afalse%2C%22topRatedByCountry%22%3Atrue%2C%22topRatedByCompany%22%3Atrue%7D%7D/manifest.json" },
   ];
 
   const addonTools = {

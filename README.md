@@ -474,7 +474,7 @@ Check that *dx.bi look built in* is on in dx.bi's settings, that no other theme 
 
 ### My Home has different rows from the screenshots
 
-Home's rows come from the catalog addons on your account, not from DX.BI. On a fresh account DX.BI offers once to add the free catalogs its own Home uses: The Movie Database, Streaming Catalogs, Anime Catalogs and TMDB Collections. No accounts or keys needed. You can add or undo them any time from *Addons → Order & backup*. Stream addons are your own choice and are never added.
+Home's rows come from the catalog addons on your account, not from DX.BI. On a fresh account DX.BI offers once to add the free catalogs its own Home uses: Streaming Catalogs, Anime Catalogs (MyAnimeList top series and films, with anime search) and TMDB Collections (popular and top rated). No accounts or keys needed. You can add or undo them any time from *Addons → Order & backup*. Stream addons are your own choice and are never added.
 
 ### "Video is not supported"
 

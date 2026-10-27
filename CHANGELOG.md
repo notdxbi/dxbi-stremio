@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.18.1
+- **A tidier Home for new accounts.** dx.bi's one-time offer to set up Home now adds Streaming Catalogs, Anime Catalogs (MyAnimeList's top series and top films, with anime search) and TMDB Collections (Popular and Top Rated). The Movie Database addon is no longer added: its rows repeated Cinemeta's, and it currently fails to install. Anime Catalogs' Popular rows and TMDB Collections' New Releases are left out, as they repeated the other rows. Accounts that already have these addons aren't changed.
+
 ## 2.18.0
 - **Kids profiles.** In *Who's watching? → Manage viewers*, any viewer can be a kids profile: up to 7, up to 12 or up to 15. Only titles rated for that age show anywhere (Home, the billboard, Discover, Search, Library), and a title's page that isn't says so instead. Ratings come from film certificates (MPA, BBFC, FSK, ClassInd), Kitsu for anime, and TMDB for series when you've added a TMDB key. A title with no rating only shows when it's a family or children's title. Settings and Addons are hidden on kids profiles.
 - **Parental PIN.** Set one in *Manage viewers*: it's asked for to leave a kids profile, to manage viewers, to open Settings or Addons from a kids profile, and to let a kid watch something not rated for them. Grown-ups can also mark a title *Allow for kids* on its page.
