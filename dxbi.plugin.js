@@ -8818,7 +8818,7 @@
 
   // Reports go to dx.bi's relay (tools/report-relay, a Cloudflare Worker), which checks them and posts
   // them to a private Discord channel. The channel's webhook is the relay's secret, not in this code.
-  const REPORT_ENDPOINT = "";
+  const REPORT_ENDPOINT = "https://dxbi-reports.dxbialt.workers.dev/report";
 
   function redact(text) {
     return String(text == null ? "" : text)
