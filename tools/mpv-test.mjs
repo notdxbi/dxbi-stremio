@@ -73,24 +73,31 @@ for ($i = 1; $i -le 24; $i++) { for ($j = 1; $j -le 16; $j++) {
   return changed;
 }
 
-// How many of the test clip's six bar colours show inside `box` of a saved screenshot
+// How many of the test clip's six bar colours show inside `box` of a saved screenshot (PowerShell
+// reads the sampled pixels; they're sorted into colours here)
 function barColours(png, box) {
   const ps = `
 Add-Type -AssemblyName System.Drawing
 $img = [System.Drawing.Bitmap]::FromFile('${png.replace(/'/g, "''")}')
-$seen = @{}
+$out = New-Object System.Collections.Generic.List[string]
 for ($i = 1; $i -le 40; $i++) { for ($j = 1; $j -le 24; $j++) {
   $x = [int](${box.x} + ${box.width} * $i / 41); $y = [int](${box.y} + ${box.height} * $j / 25)
-  if ($x -ge $img.Width -or $y -ge $img.Height) { continue }
-  $p = $img.GetPixel($x, $y); $r = $p.R -gt 180; $g = $p.G -gt 180; $bl = $p.B -gt 180
-  $r0 = $p.R -lt 70; $g0 = $p.G -lt 70; $b0 = $p.B -lt 70
-  if ($r -and $g0 -and $b0) { $seen['red'] = 1 } elseif ($g -and $r0 -and $b0) { $seen['green'] = 1 }
-  elseif ($r -and $g -and $b0) { $seen['yellow'] = 1 } elseif ($bl -and $r0 -and $g0) { $seen['blue'] = 1 }
-  elseif ($r -and $bl -and $g0) { $seen['magenta'] = 1 } elseif ($g -and $bl -and $r0) { $seen['cyan'] = 1 }
+  if ($x -lt $img.Width -and $y -lt $img.Height) { $p = $img.GetPixel($x, $y); $out.Add("$($p.R),$($p.G),$($p.B)") }
 } }
 $img.Dispose()
-$seen.Count`;
-  return Number(execFileSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" }).trim()) || 0;
+$out -join ";"`;
+  const seen = new Set();
+  for (const px of execFileSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" }).trim().split(";")) {
+    const [r, g, b] = px.split(",").map(Number);
+    const hi = (v) => v > 180, lo = (v) => v < 70;
+    if (hi(r) && lo(g) && lo(b)) seen.add("red");
+    else if (hi(g) && lo(r) && lo(b)) seen.add("green");
+    else if (hi(r) && hi(g) && lo(b)) seen.add("yellow");
+    else if (hi(b) && lo(r) && lo(g)) seen.add("blue");
+    else if (hi(r) && hi(b) && lo(g)) seen.add("magenta");
+    else if (hi(g) && hi(b) && lo(r)) seen.add("cyan");
+  }
+  return seen.size;
 }
 
 async function main() {
