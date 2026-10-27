@@ -216,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         web.loadUrl("$STREMIO_URL#/addons?addon=" + Uri.encode(manifest))
     }
 
-    private fun js(code: String) {
+    fun js(code: String) {
         if (::web.isInitialized) web.post { web.evaluateJavascript(code, null) }
     }
 

@@ -4460,7 +4460,35 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
 .dx-tv #app :is(a, button, input, [tabindex]):not([class*="meta-item-link"]):focus-visible {
     outline: 3px solid var(--dx-focus, #fff) !important;
     outline-offset: 3px;
+    /* the ring follows each control's own shape (pills stay pills) and shows at once: the controls'
+       own transitions faded it in, and a forced corner radius squared off the pills */
+    transition: none !important;
+    /* above its neighbours, so none of them paints over the ring (z-index needs no position here:
+       the controls are flex items) */
+    z-index: 2;
+}
+
+/* controls drawn square get softened corners, so their ring isn't boxy */
+.dx-tv #app :is([class*="nav-tab-button"], [class*="horizontal-nav-bar"] [class*="button-container"], [class*="horizontal-nav-bar"] [class*="submit-button-container"], [class*="label-container"]):focus-visible {
     border-radius: var(--dx-radius-s);
+}
+
+/* the sort chips sit in a scroll box, which cut their ring off: room for it inside the box */
+.dx-tv #app [class*="selectable-inputs-container"] [class*="horizontal-scroll"] {
+    padding: 7px !important;
+    margin: -7px !important;
+}
+
+/* the billboard clips its text and buttons to its box: the ring may reach a little past it */
+.dx-tv .dx-hero-content,
+.dx-tv .dx-hero-actions {
+    overflow: clip !important;
+    overflow-clip-margin: 8px;
+}
+
+.dx-tv #app .dxl-tools {
+    padding-top: 7px !important;
+    margin-top: -7px !important;
 }
 
 .dx-tv #app [class*="meta-row"] [class*="see-all-container"] {
@@ -4572,4 +4600,22 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
 
 .dx-tv .dx-preview.is-open .dx-preview-media::before {
     animation: none;
+}
+
+/* Kids profiles and hidden titles (plugin): titles that mustn't show, and rows left with none, are
+   out; titles still being checked keep their place but stay unseen. A kids profile has no Addons or
+   Settings tabs (the parental PIN opens them). */
+#app [data-dx-off] {
+    display: none !important;
+}
+
+#app [data-dx-pending] {
+    visibility: hidden !important;
+}
+
+body[data-dx-kids] #app [class*="horizontal-nav-bar"] a[href="#/addons"],
+body[data-dx-kids] #app [class*="horizontal-nav-bar"] a[href="#/settings"],
+body[data-dx-kids] #app [class*="vertical-nav-bar"] a[href="#/addons"],
+body[data-dx-kids] #app [class*="vertical-nav-bar"] a[href="#/settings"] {
+    display: none !important;
 }

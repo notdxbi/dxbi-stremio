@@ -73,6 +73,23 @@ class Bridge(private val activity: MainActivity) {
         activity.runOnUiThread { Toast.makeText(activity, text, Toast.LENGTH_LONG).show() }
     }
 
+    /** Looks for streaming servers on the network; the page hears back through __dxbiTv.serversFound */
+    @JavascriptInterface
+    fun findServers(token: String) {
+        if (!allowed(token)) return
+        ServerFinder.find { urls ->
+            activity.js("window.__dxbiTv && window.__dxbiTv.serversFound && window.__dxbiTv.serversFound(${org.json.JSONArray(urls)})")
+        }
+    }
+
+    /** A phone or tablet rather than a TV: browsing can turn upright */
+    @JavascriptInterface
+    fun isPhone(): Boolean {
+        val ui = activity.getSystemService(Context.UI_MODE_SERVICE) as android.app.UiModeManager
+        return ui.currentModeType != android.content.res.Configuration.UI_MODE_TYPE_TELEVISION &&
+            !activity.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    }
+
     @JavascriptInterface
     fun version(): String = BuildConfigVersion.name(activity)
 

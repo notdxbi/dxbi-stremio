@@ -123,7 +123,7 @@ Good to know:
 
 - Your watch progress is shared with every other Stremio app, so you can start something on the TV and finish it on your computer.
 
-- Debrid streams play straight away. Torrents need Stremio's streaming server, which a TV doesn't have: keep Stremio (or the dx.bi app) running on a computer on the same network, and enter that computer's address under *Settings → Streaming* on the TV.
+- Debrid streams play straight away. Torrents need Stremio's streaming server, which a TV doesn't have: keep the dx.bi app (or Stremio) running on a computer on the same network, then on the TV open *Settings → Streaming server for torrents → Find*. dx.bi looks for the computer and switches to it. If Windows asks whether to let dx.bi use private networks, allow it, or the TV can't reach it.
 
 - Not supported: LG (webOS), Samsung (Tizen), Roku and Apple TV can't install Android apps. A cheap Google TV or Fire TV stick plugged into one of them works. The 2025 *Fire TV Stick 4K Select* runs Amazon's Vega OS instead of Fire OS and can't install dx.bi either.
 
@@ -251,6 +251,8 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 - **Android's own player** — smooth playback on TV hardware, ±10 s with left and right, and subtitles drawn the way you set them in Stremio (size, colour, outline, position).
 - **Light on cheaper sticks** — no heavy effects, a small built-in plugin, and hover cards off by default (switch them on in dx.bi settings).
 - **Search boxes don't trap the remote** — the arrows move past them; press OK to type.
+- **Skip intro, recap and credits** — a *Skip* button in the TV player (OK presses it), or skipping by itself if you choose in dx.bi settings.
+- **Torrents through your computer** — *Settings → Streaming server for torrents → Find* connects the TV to the dx.bi app or Stremio running on a computer on your network.
 - **dx.bi settings in sections**, at the top of Stremio's *Settings*.
 
 <table>
@@ -288,7 +290,11 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 - **Discord status** — show what you're watching on Discord, with time left (the app, under *Discord Rich Presence*).
 
-- **Who's watching?** — separate viewers, each with their own stats and volume.
+- **Who's watching?** — separate viewers, each with their own stats, volume and hidden titles.
+
+- **Kids profiles** — in *Who's watching? → Manage viewers*, make any viewer a kids profile, up to age 7, 12 or 15. It only shows titles rated for that age (films' certificates, anime ratings, and series ratings with a free TMDB key), the billboard switches to family titles, and Settings and Addons are out of reach. Set a parental PIN so kids can't switch to another profile. A grown-up can let a title through with *Allow for kids* on its page.
+
+- **Hide titles** — hide anything you never want to see again from its hover card or its page. Bring it back from *Manage viewers → Hidden titles*.
 
 - **Your stats** — hours watched, streaks, top titles and genres, in your profile menu.
 
@@ -518,7 +524,7 @@ With the plugin, that comes from a preview build of Stremio Enhanced (the dx.bi 
 
 ### Does it work on my phone or TV?
 
-On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). The same APK also installs on Android phones and tablets (it runs in landscape). iPhones, iPads, LG (webOS) and Samsung (Tizen) TVs aren't supported.
+On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). The same APK also installs on Android phones and tablets, upright or sideways. iPhones, iPads, LG (webOS) and Samsung (Tizen) TVs aren't supported.
 
 ### A friend can't connect to a party
 

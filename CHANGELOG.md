@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.18.0
+- **Kids profiles.** In *Who's watching? → Manage viewers*, any viewer can be a kids profile: up to 7, up to 12 or up to 15. Only titles rated for that age show anywhere (Home, the billboard, Discover, Search, Library), and a title's page that isn't says so instead. Ratings come from film certificates (MPA, BBFC, FSK, ClassInd), Kitsu for anime, and TMDB for series when you've added a TMDB key. A title with no rating only shows when it's a family or children's title. Settings and Addons are hidden on kids profiles.
+- **Parental PIN.** Set one in *Manage viewers*: it's asked for to leave a kids profile, to manage viewers, to open Settings or Addons from a kids profile, and to let a kid watch something not rated for them. Grown-ups can also mark a title *Allow for kids* on its page.
+- **Hide titles.** Never want to see something again? Hide it from its hover card or its page and it's gone from every row, Search and Discover for that viewer. *Manage viewers → Hidden titles* brings it back.
+- **dx.bi TV: Skip intro, recap and credits.** The TV player shows a *Skip* button during them (OK presses it), with the same times as the desktop player. *Skip automatically* in dx.bi settings works on TV too.
+- **Phones: browse upright.** The Android app turns with your phone and lays dx.bi out as a column when it's upright. Videos still play sideways.
+- **Windows: the picture comes back after leaving full screen.** On some PCs the video disappeared once you left full screen (the desktop showed through, often blue).
+- **dx.bi TV finds a streaming server for torrents.** A TV has no streaming server of its own, so torrents showed "Error" in Settings and wouldn't play. *Settings → Streaming server for torrents → Find* looks for the dx.bi app or Stremio running on a computer on your network and switches to it in one press. Picking a torrent without a server offers the same search. Debrid streams still play without one.
+- **Library and Discover filters work with the remote and the keyboard.** Each row of filters is its own row: left and right stay in it instead of dropping into the titles, up and down move between the rows, and down from the filters goes back to the column you left. Menus (All / Movie / Series, Discover's catalog and genre) open with OK, the arrows go through their choices, and the selection returns to the menu after you pick. A held Up stops at the first row of titles.
+- **The end of a row in Library and Discover stays put** on TV, instead of jumping to a title in another row.
+- **dx.bi TV: a cleaner selection outline.** The outline now follows each button's own shape (round buttons get a round outline), shows at once instead of fading in, and is no longer cut off around the sort buttons and the billboard's Play and More Info.
+- **Windows: the mini player can be moved.** Drag it anywhere. Hovering over it shows play/pause and *Back to dx.bi*, and double-clicking it also goes back.
+- **Anime titles no longer cover ratings printed on posters.** Posters from rating services (RPDB, Top Posters and the like) print IMDb and Rotten Tomatoes scores along the bottom, where the anime title strip used to sit.
+
 ## 2.17.0
 - **dx.bi TV is much smoother.** Tested on a Fire TV Stick 4K: moving down Home's rows went from about 15 to 40 frames a second, sideways from about 45 to 56, and the long freezes (up to a second and a half) are gone. The first trip down Home no longer stalls while rows load, and pressing towards an edge with nothing there no longer hangs for half a second.
 - **dx.bi TV: hover cards are back on by default.** A card opens when a title stays selected for a moment, and on TVs it fades in rather than unfolding. Switch it off in dx.bi settings → Hover cards & trailers.

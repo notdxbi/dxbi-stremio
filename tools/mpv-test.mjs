@@ -321,6 +321,10 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   } else console.log("  (Esc exits full screen is off in this profile: Escape check skipped)");
   if (afterEsc[0]) await evaluate(`window.chrome.webview.postMessage(JSON.stringify({ id: 0, type: 6, args: ["win-set-visibility", { fullscreen: false }] })); true`);
   await sleep(1500);
+  // The picture is back in the window, not the desktop showing through (reported on 2.16: blue)
+  const afterFull = screen("4b-after-fullscreen", area);
+  if (afterFull >= 10) pass("the video still shows after leaving full screen");
+  else fail(`the video is gone after leaving full screen (${afterFull} points changed)`);
   switcher("after fullscreen");
 
   // Maximize and restore from the title bar (a transparent window can't use Windows' own, issue #6):

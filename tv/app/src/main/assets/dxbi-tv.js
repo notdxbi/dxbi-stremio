@@ -18,16 +18,21 @@
     activePlayback: () => bridge.activePlayback(TOKEN),
     takePendingClose: () => bridge.takePendingClose(TOKEN),
     openExternal: (url) => bridge.openExternal(TOKEN, url),
+    findServers: () => bridge.findServers(TOKEN),
   };
 
   const PLUGIN = "dxbi.plugin.js";
   const tv = (window.__dxbiTv = {});
 
   // ---------------------------------------------------------------------------
-  // Fit the page to the TV: lay it out 1280 CSS pixels wide (a 10-foot size on any screen)
+  // Fit the page to the TV: lay it out 1280 CSS pixels wide (a 10-foot size on any screen). A phone
+  // held upright gets a 600-pixel-wide page instead, which Stremio and dx.bi lay out as a column.
   // ---------------------------------------------------------------------------
-  const VIEWPORT = "width=1280, user-scalable=no";
+  const PHONE = (() => { try { return !!bridge.isPhone(); } catch (_) { return false; } })();
+  const upright = () => PHONE && window.screen && screen.height > screen.width;
+  let VIEWPORT = "width=1280, user-scalable=no";
   function fitViewport() {
+    VIEWPORT = upright() ? "width=600, user-scalable=no" : "width=1280, user-scalable=no";
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
       if (!document.head) return;
@@ -48,6 +53,8 @@
   if (document.head) new MutationObserver(fitViewport).observe(document.head, { childList: true });
   else viewportWatch.observe(document.documentElement, { childList: true, subtree: true });
   fitViewport();
+  // a phone turned between upright and sideways
+  if (PHONE) window.addEventListener("resize", () => fitViewport());
 
   // ---------------------------------------------------------------------------
   // What Stremio Enhanced provides and dx.bi relies on
@@ -210,9 +217,63 @@
     setTimeout(() => el.remove(), ms);
   }
 
+  // ---------------------------------------------------------------------------
+  // Streaming server: a TV has none of its own, and torrents need one. dx.bi or Stremio running on
+  // a computer on the same network has one (it listens on the network), so the app looks for it.
+  // ---------------------------------------------------------------------------
+  let serversWaiting = null;
+  tv.serversFound = (urls) => {
+    if (serversWaiting) serversWaiting(Array.isArray(urls) ? urls : []);
+    serversWaiting = null;
+  };
+  const scanForServers = () => new Promise((resolve) => {
+    serversWaiting = resolve;
+    setTimeout(() => { if (serversWaiting === resolve) tv.serversFound([]); }, 25000);
+    native.findServers();
+  });
+
+  async function useServer(url) {
+    const { getState, dispatch } = core();
+    if (!getState || !dispatch) return false;
+    const ctx = await getState("ctx");
+    const known = ((ctx && ctx.streamingServerUrls) || []).some((s) => (s && s.url ? s.url : s) === url);
+    if (!known) dispatch({ action: "Ctx", args: { action: "AddServerUrl", args: url } });
+    dispatch({ action: "Ctx", args: { action: "UpdateSettings", args: { ...ctx.profile.settings, streamingServerUrl: url } } });
+    return true;
+  }
+
+  const serverName = (url) => /\/\/127\.0\.0\.1:/.test(url) ? "This TV (Stremio's app)" : url.replace(/^http:\/\/|\/$/g, "");
+
+  // Resolves true once a server has been picked
+  async function findServer() {
+    for (;;) {
+      toast("Looking for dx.bi or Stremio on your network…", 6000);
+      const urls = await scanForServers();
+      document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
+      if (!urls.length) {
+        const again = await dialog({
+          title: "No streaming server found",
+          message: "Open dx.bi or Stremio on a computer connected to the same network as this TV, leave it running, then try again.\n\nDebrid streams play without a streaming server.",
+          buttons: ["Try again", "Close"],
+        });
+        if (again === 0) continue;
+        return false;
+      }
+      const pick = await dialog({
+        title: urls.length === 1 ? "Streaming server found" : "Streaming servers found",
+        message: "Torrents will play through the one you pick. Keep it running while you watch.",
+        buttons: [...urls.map(serverName), "Cancel"],
+      });
+      if (pick < 0 || pick >= urls.length) return false;
+      const ok = await useServer(urls[pick]);
+      toast(ok ? `Using the streaming server at ${serverName(urls[pick])}` : "Couldn't change the streaming server. Try again from Settings.", 5000);
+      return ok;
+    }
+  }
+
   // dx.bi's settings: an entry at the top of Stremio's Settings, opening a list made for the remote
   // Options for dx.bi's in-page player, which the TV doesn't use (it has its own player)
-  const DESKTOP_ONLY = new Set(["playerExtras", "enhance", "seekPreviews", "skipButtons", "autoSkip", "subtitleStyle", "subtitleFont",
+  const DESKTOP_ONLY = new Set(["playerExtras", "enhance", "seekPreviews", "subtitleStyle", "subtitleFont",
     "convertVideo", "subtitlesStart", "hdrSubtitles", "pictureSound", "streamStats", "preloadNext", "upNext", "skipFiller",
     "rememberPlayback", "playerKeys", "pip", "externalPlayer", "remainingTime", "watchParty", "partyFollow", "partyActivity", "partySounds"]);
 
@@ -279,7 +340,11 @@
     entry.className = "dxtv-row dxtv-settings-entry";
     entry.innerHTML = `<span>dx.bi settings<small>Look, Home rows, previews, trailers, reviews, sounds and more</small></span><b>Open</b>`;
     entry.addEventListener("click", settingsSheet);
-    content.prepend(entry);
+    const server = document.createElement("button");
+    server.className = "dxtv-row dxtv-settings-entry";
+    server.innerHTML = `<span>Streaming server for torrents<small>This TV has no streaming server of its own. Find dx.bi or Stremio running on a computer on your network (debrid streams don't need one)</small></span><b>Find</b>`;
+    server.addEventListener("click", findServer);
+    content.prepend(entry, server);
   }
 
   // ---------------------------------------------------------------------------
@@ -379,9 +444,14 @@
     const ready = state.stream && state.stream.type === "Ready" && state.stream.content;
     let url = (ready && ready.url) || stream.url || null;
     if (!url && stream.infoHash) {
-      toast("Torrents need Stremio's streaming server. Set its address under Settings → Streaming, or pick a debrid stream.", 7000);
       handoff = null;
       history.back();
+      const choice = await dialog({
+        title: "This stream needs a streaming server",
+        message: "Torrents play through Stremio's streaming server, and this TV doesn't have one. dx.bi can use the one in dx.bi or Stremio on a computer on your network.\n\nDebrid streams play without one.",
+        buttons: ["Find one on my network", "Cancel"],
+      });
+      if (choice === 0) findServer();
       return;
     }
     if (!url && stream.externalUrl) {
@@ -403,10 +473,20 @@
     const episode = video && video.season != null ? `S${video.season} E${video.episode}${video.title || video.name ? ` · ${video.title || video.name}` : ""}` : "";
 
     const profile = await profileSettings();
+    // Skip intro / recap / credits: the times dx.bi has for this episode (looked up while the player
+    // gets ready, never holding it up for long)
+    const metaPath = state.selected.metaRequest && state.selected.metaRequest.path;
+    const dx = window.__dxbi;
+    const skips = dx && dx.skipSegments && videoId
+      ? await Promise.race([dx.skipSegments(meta.type || (metaPath && metaPath.type), meta.id || (metaPath && metaPath.id), videoId).catch(() => []), new Promise((r) => setTimeout(() => r([]), 4000))])
+      : [];
+    if (location.hash !== hash) { handoff = null; return; }
     handoff = { hash, videoId, started: Date.now() };
     native.play(JSON.stringify({
       hash,
       videoId,
+      skips,
+      autoSkip: (dx && dx.settings && dx.settings.autoSkip) || "off",
       audioLanguage: profile.audioLanguage || "",
       // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player
       subtitleStyle: {

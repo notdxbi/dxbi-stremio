@@ -43,6 +43,36 @@ function keepInSwitcher(win: BrowserWindow): void {
 }
 const DEBUG = process.env.DXBI_MPV_DEBUG === "1";
 
+// Picture-in-picture's handle: a see-through window over the little video (mpv's picture takes the
+// mouse otherwise). Drag it anywhere to move the video; double-click it, or its button, to go back
+// to dx.bi. It tells the app what happened through its page title ("drag-3", "back-4"…), so it needs
+// no preload. The 1% black is what makes Windows hand it the mouse: fully clear pixels let
+// clicks through to whatever is under them.
+const PIP_HANDLE = `<!doctype html><meta charset="utf-8"><style>
+html, body { margin: 0; height: 100%; overflow: hidden; background: rgba(0,0,0,.01); cursor: grab; user-select: none; font: 600 13px "Segoe UI", system-ui, sans-serif; }
+body.drag { cursor: grabbing; }
+.bar { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: flex-end; gap: 6px; padding: 8px; background: linear-gradient(rgba(0,0,0,.6), transparent); opacity: 0; transition: opacity .15s; }
+body:hover .bar { opacity: 1; }
+button { border: 0; border-radius: 6px; padding: 6px 10px; background: rgba(20,20,20,.85); color: #fff; font: inherit; cursor: pointer; }
+button:hover { background: #fff; color: #000; }
+</style><div class="bar"><button data-say="pause" title="Play / pause">⏯</button><button data-say="back" title="Back to dx.bi">⤢ Back to dx.bi</button></div>
+<script>
+let n = 0;
+const say = (what) => { document.title = what + "-" + (++n); };
+document.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    document.body.setPointerCapture(e.pointerId);
+    document.body.classList.add("drag");
+    say("drag");
+});
+const end = () => { if (document.body.classList.contains("drag")) { document.body.classList.remove("drag"); say("end"); } };
+document.addEventListener("pointerup", end);
+document.addEventListener("pointercancel", end);
+document.addEventListener("lostpointercapture", end);
+document.addEventListener("dblclick", (e) => { if (!e.target.closest("button")) say("back"); });
+document.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) say(b.dataset.say); });
+</script>`;
+
 // Qt WebChannel message types that Stremio's shell transport speaks
 const SIGNAL = 1;
 const INIT = 3;
@@ -56,6 +86,8 @@ export default class MpvShell {
     private static socket: Socket | null = null;
     private static videoWindow: BrowserWindow | null = null;
     private static mainWindow: BrowserWindow | null = null;
+    private static handle: BrowserWindow | null = null;
+    private static drag: { x: number; y: number; bounds: Electron.Rectangle; timer: NodeJS.Timeout } | null = null;
     private static requestId = 0;
     private static observed = new Map<string, number>(); // property name → observe id
     private static queue: string[] = [];
@@ -158,12 +190,31 @@ export default class MpvShell {
             else if (this.playing) this.videoWindow?.showInactive();
         });
         mainWindow.on("enter-full-screen", () => this.sendVisibility());
-        mainWindow.on("leave-full-screen", () => this.sendVisibility());
+        mainWindow.on("leave-full-screen", () => {
+            this.sendVisibility();
+            this.reseat();
+        });
         mainWindow.on("closed", () => this.shutdown());
         app.on("before-quit", () => this.shutdown());
 
         this.followMainWindow();
         this.startMpv();
+    }
+
+    // Back from full screen, the picture went missing on some PCs: the dx.bi window showed the desktop
+    // through where the video should be (a blue wallpaper). Windows treats a window that covers the
+    // whole screen specially, and the video window didn't come back from that. It's put back behind
+    // dx.bi and shown afresh.
+    private static reseat(): void {
+        setTimeout(() => {
+            const main = this.mainWindow, video = this.videoWindow;
+            if (!main || !video || main.isDestroyed() || video.isDestroyed() || this.pip || isFullScreen(main)) return;
+            this.followMainWindow();
+            if (!this.playing || main.isMinimized()) return;
+            video.hide();
+            main.setParentWindow(video);
+            video.showInactive(); // mpv repaints a window that's shown again
+        }, 200);
     }
 
     private static followMainWindow(): void {
@@ -388,8 +439,10 @@ export default class MpvShell {
             video.setAlwaysOnTop(true, "floating");
             video.setBounds({ x: area.x + area.width - width - 24, y: area.y + area.height - height - 24, width, height });
             video.showInactive();
+            this.showHandle();
             main.minimize();
         } else {
+            this.hideHandle();
             video.setAlwaysOnTop(false);
             if (main.isMinimized()) main.restore();
             main.setParentWindow(video);
@@ -397,6 +450,72 @@ export default class MpvShell {
             if (this.playing) video.showInactive();
         }
         this.signal("dxbi-pip", { active: on });
+    }
+
+    // The handle over the little video (see PIP_HANDLE), made the first time it's needed
+    private static showHandle(): void {
+        const video = this.videoWindow;
+        if (!video) return;
+        if (!this.handle || this.handle.isDestroyed()) {
+            const handle = new BrowserWindow({
+                show: false,
+                frame: false,
+                transparent: true,
+                backgroundColor: "#00000000",
+                parent: video, // owned by the video window: always just above it
+                skipTaskbar: true,
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                fullscreenable: false,
+                hasShadow: false,
+                webPreferences: { sandbox: true, contextIsolation: true },
+            });
+            handle.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(PIP_HANDLE));
+            handle.webContents.on("page-title-updated", (e, title) => {
+                e.preventDefault();
+                this.onHandle(/^([a-z]+)-\d+$/.exec(title)?.[1] || "");
+            });
+            this.handle = handle;
+        }
+        this.handle.setAlwaysOnTop(true, "floating");
+        this.handle.setBounds(video.getBounds());
+        this.handle.show();
+    }
+
+    private static hideHandle(): void {
+        this.stopDrag();
+        if (this.handle && !this.handle.isDestroyed()) this.handle.hide();
+    }
+
+    private static onHandle(what: string): void {
+        const video = this.videoWindow;
+        if (!this.pip || !video) return;
+        if (what === "back") this.setPip(false);
+        else if (what === "pause") this.command(["cycle", "pause"]);
+        else if (what === "end") this.stopDrag();
+        else if (what === "drag") {
+            // The video follows the pointer (polled here, so a quick flick that leaves the handle still
+            // moves it all the way), worked out from where the drag started with the size held
+            this.stopDrag();
+            const { x, y } = screen.getCursorScreenPoint();
+            const bounds = video.getBounds();
+            const follow = () => {
+                if (!this.drag || !this.pip || video.isDestroyed()) return this.stopDrag();
+                const p = screen.getCursorScreenPoint();
+                const next = { ...this.drag.bounds, x: Math.round(this.drag.bounds.x + p.x - this.drag.x), y: Math.round(this.drag.bounds.y + p.y - this.drag.y) };
+                const now = video.getBounds();
+                if (now.x === next.x && now.y === next.y) return;
+                video.setBounds(next);
+                this.handle?.setBounds(next);
+            };
+            this.drag = { x, y, bounds, timer: setInterval(follow, 16) };
+        }
+    }
+
+    private static stopDrag(): void {
+        if (this.drag) clearInterval(this.drag.timer);
+        this.drag = null;
     }
 
     // Black bars baked into the picture, as fractions of each side: from a small snapshot of the
@@ -490,6 +609,9 @@ export default class MpvShell {
         this.mpv = null;
         // gone at once: an update installing next must be able to replace mpv.exe
         if (mpv) { try { mpv.kill(); } catch { /* gone */ } }
+        this.stopDrag();
+        if (this.handle && !this.handle.isDestroyed()) this.handle.destroy();
+        this.handle = null;
         if (this.videoWindow && !this.videoWindow.isDestroyed()) this.videoWindow.destroy();
         this.videoWindow = null;
     }

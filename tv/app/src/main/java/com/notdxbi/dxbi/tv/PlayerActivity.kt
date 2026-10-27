@@ -60,6 +60,21 @@ class PlayerActivity : AppCompatActivity() {
     }
     private val hideFlash = Runnable { seekFlash.visibility = View.GONE }
 
+    // Skip intro / recap / credits: the episode's times (seconds; end -1 = to the end), whether dx.bi
+    // skips by itself ("intro": intros and recaps, "all": credits too), and which were skipped already
+    private class Segment(val type: String, val start: Double, val end: Double)
+    private var segments: List<Segment> = emptyList()
+    private var autoSkip = "off"
+    private val autoSkipped = mutableSetOf<Segment>()
+    private var showing: Segment? = null
+    private lateinit var skipButton: TextView
+    private val checkSkip = object : Runnable {
+        override fun run() {
+            updateSkip()
+            handler.postDelayed(this, 500)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -72,8 +87,19 @@ class PlayerActivity : AppCompatActivity() {
         playerView = findViewById(R.id.player_view)
         titleBar = findViewById(R.id.title_bar)
         seekFlash = findViewById(R.id.seek_flash)
+        skipButton = findViewById(R.id.skip_button)
+        skipButton.setOnClickListener { doSkip() }
 
         val stream = JSONObject(intent.getStringExtra(EXTRA_STREAM) ?: "{}")
+        segments = stream.optJSONArray("skips")?.let { list ->
+            (0 until list.length()).mapNotNull { i ->
+                val o = list.optJSONObject(i) ?: return@mapNotNull null
+                val type = o.optString("type")
+                if (type !in setOf("intro", "recap", "credits")) return@mapNotNull null
+                Segment(type, o.optDouble("start", 0.0), if (o.isNull("end")) -1.0 else o.optDouble("end", -1.0))
+            }
+        } ?: emptyList()
+        autoSkip = stream.optString("autoSkip", "off")
         findViewById<TextView>(R.id.title).text = stream.optString("title")
         findViewById<TextView>(R.id.subtitle).apply {
             text = stream.optString("subtitle")
@@ -174,6 +200,7 @@ class PlayerActivity : AppCompatActivity() {
         exo.prepare()
         exo.playWhenReady = true
         handler.postDelayed(reportProgress, PROGRESS_INTERVAL_MS)
+        if (segments.isNotEmpty()) handler.postDelayed(checkSkip, 500)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             // Back leaves the player straight away, like Netflix (the position is kept)
@@ -195,6 +222,11 @@ class PlayerActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seek(+1); return true }
                 KeyEvent.KEYCODE_MEDIA_REWIND -> { seek(-1); return true }
             }
+            // OK presses Skip while it's up (and the controls aren't)
+            if (showing != null && !playerView.isControllerFullyVisible && (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
+                doSkip()
+                return true
+            }
             if (!playerView.isControllerFullyVisible) {
                 when (event.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> { seek(-1); return true }
@@ -209,6 +241,46 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun segmentEnd(s: Segment, durationMs: Long): Long =
+        if (s.end < 0) durationMs else (s.end * 1000).toLong()
+
+    private fun updateSkip() {
+        val exo = player ?: return
+        val duration = exo.duration.takeIf { it != C.TIME_UNSET } ?: return
+        val now = exo.currentPosition
+        // (not the last second of a part: pressing then would skip nothing)
+        val seg = segments.firstOrNull { now >= (it.start * 1000).toLong() && now < segmentEnd(it, duration) - 1000 }
+        val auto = seg != null && (autoSkip == "all" || (autoSkip == "intro" && seg.type != "credits"))
+        if (seg != null && auto && seg !in autoSkipped) {
+            autoSkipped += seg
+            doSkip(seg)
+            return
+        }
+        if (seg == showing) return
+        showing = seg
+        if (seg == null) {
+            skipButton.visibility = View.GONE
+            return
+        }
+        skipButton.text = when (seg.type) {
+            "intro" -> "Skip intro"
+            "recap" -> "Skip recap"
+            else -> "Skip credits"
+        }
+        skipButton.visibility = View.VISIBLE
+        if (!playerView.isControllerFullyVisible) skipButton.requestFocus()
+    }
+
+    private fun doSkip(seg: Segment? = showing) {
+        val exo = player ?: return
+        val s = seg ?: return
+        val duration = exo.duration.takeIf { it != C.TIME_UNSET } ?: return
+        exo.seekTo(segmentEnd(s, duration).coerceAtMost(duration))
+        showing = null
+        skipButton.visibility = View.GONE
+        playerView.requestFocus()
     }
 
     private fun seek(direction: Int) {
