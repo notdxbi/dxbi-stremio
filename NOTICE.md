@@ -34,3 +34,6 @@ comes from or is endorsed by dx.bi, without permission. Give your fork its own n
 - The sharpening shader follows AMD FidelityFX CAS (MIT).
 - Fonts: Bebas Neue and Inter (SIL Open Font License). Country flags: Twemoji (CC-BY 4.0) via
   Twemoji Country Flags by TalkJS (MIT).
+- dx.bi TV plays torrents with [libtorrent](https://libtorrent.org) by Arvid Norberg (BSD licence)
+  through [libtorrent4j](https://github.com/aldenml/libtorrent4j) by Alden Torres (MIT licence), and
+  serves them to its player with [NanoHTTPD](https://github.com/NanoHttpd/nanohttpd) (BSD 3-Clause).

@@ -68,6 +68,22 @@ class PlayerActivity : AppCompatActivity() {
     private val autoSkipped = mutableSetOf<Segment>()
     private var showing: Segment? = null
     private lateinit var skipButton: TextView
+    // A torrent played on the TV itself: how it's going, while the picture waits for it
+    private var torrent = false
+    private val torrentStatus = object : Runnable {
+        override fun run() {
+            val exo = player
+            val waiting = exo == null || exo.playbackState == Player.STATE_BUFFERING || exo.playbackState == Player.STATE_IDLE
+            val text = if (torrent && waiting) TorrentEngine.status() else null
+            if (text != null) {
+                seekFlash.text = text
+                seekFlash.visibility = View.VISIBLE
+            } else if (seekFlash.text.contains("peer") || seekFlash.text.startsWith("Finding")) {
+                seekFlash.visibility = View.GONE
+            }
+            handler.postDelayed(this, 700)
+        }
+    }
     private val checkSkip = object : Runnable {
         override fun run() {
             updateSkip()
@@ -100,6 +116,7 @@ class PlayerActivity : AppCompatActivity() {
             }
         } ?: emptyList()
         autoSkip = stream.optString("autoSkip", "off")
+        torrent = stream.optBoolean("torrent", false)
         findViewById<TextView>(R.id.title).text = stream.optString("title")
         findViewById<TextView>(R.id.subtitle).apply {
             text = stream.optString("subtitle")
@@ -119,7 +136,8 @@ class PlayerActivity : AppCompatActivity() {
         stream.optJSONObject("headers")?.let { h -> h.keys().forEach { k -> headers[k] = h.optString(k) } }
         val http = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            // a torrent's first bytes wait for its details and first pieces to come from peers
+            .readTimeout(if (torrent) 150L else 30L, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
         val dataSource = OkHttpDataSource.Factory(http)
@@ -193,7 +211,7 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                lastError = describe(error)
+                lastError = (if (torrent) TorrentEngine.failed() else null) ?: describe(error)
                 finishWith(error = lastError)
             }
         })
@@ -201,6 +219,7 @@ class PlayerActivity : AppCompatActivity() {
         exo.playWhenReady = true
         handler.postDelayed(reportProgress, PROGRESS_INTERVAL_MS)
         if (segments.isNotEmpty()) handler.postDelayed(checkSkip, 500)
+        if (torrent) handler.post(torrentStatus)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             // Back leaves the player straight away, like Netflix (the position is kept)
@@ -306,6 +325,7 @@ class PlayerActivity : AppCompatActivity() {
         val duration = exo?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L
         val position = if (ended) duration else exo?.currentPosition ?: 0L
         PlaybackBus.closed(position, duration, ended, error)
+        if (torrent) TorrentEngine.close()
         finish()
     }
 

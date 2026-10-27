@@ -19,6 +19,7 @@
     takePendingClose: () => bridge.takePendingClose(TOKEN),
     openExternal: (url) => bridge.openExternal(TOKEN, url),
     findServers: () => bridge.findServers(TOKEN),
+    torrentUrl: (json) => (bridge.torrentUrl ? bridge.torrentUrl(TOKEN, json) : ""),
   };
 
   const PLUGIN = "dxbi.plugin.js";
@@ -342,7 +343,7 @@
     entry.addEventListener("click", settingsSheet);
     const server = document.createElement("button");
     server.className = "dxtv-row dxtv-settings-entry";
-    server.innerHTML = `<span>Streaming server for torrents<small>This TV has no streaming server of its own. Find dx.bi or Stremio running on a computer on your network (debrid streams don't need one)</small></span><b>Find</b>`;
+    server.innerHTML = `<span>Streaming server for torrents<small>Torrents play on this TV by themselves. Optional: use dx.bi or Stremio running on a computer on your network instead (easier on slower sticks)</small></span><b>Find</b>`;
     server.addEventListener("click", findServer);
     content.prepend(entry, server);
   }
@@ -415,11 +416,23 @@
     return out;
   }
 
+  // Whether Stremio's streaming server (on this TV, or a computer picked in Settings) is answering
+  async function streamingServerUp() {
+    try {
+      const s = await core().getState("streaming_server");
+      return !!(s && s.settings && s.settings.type === "Ready");
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function startHandoff() {
     const hash = location.hash;
     if (!/^#\/player\//.test(hash) || (handoff && handoff.hash === hash)) return;
     handoff = { hash, pending: true };
     let state = null;
+    // With no streaming server online, torrents play on the TV itself: nothing to wait for
+    const serverUp = await streamingServerUp();
     // The player screen fills in over a moment: wait until the stream is known, and give the
     // title's details (name, episode, saved position) a few seconds more to arrive
     let known = 0;
@@ -432,7 +445,7 @@
         const metaReady = state.metaItem && state.metaItem.type !== "Loading";
         // A torrent's address comes from the streaming server, which can take a while to answer:
         // wait for it (up to ~10 s) before saying there's no server
-        const waitingForServer = !stream.url && stream.infoHash && !(state.stream && /^(Ready|Err)$/.test(state.stream.type));
+        const waitingForServer = serverUp && !stream.url && stream.infoHash && !(state.stream && /^(Ready|Err)$/.test(state.stream.type));
         if ((metaReady && state.libraryItem !== undefined && !waitingForServer) || known >= (waitingForServer ? 40 : 12)) break;
       }
       await new Promise((r) => setTimeout(r, 250));
@@ -442,7 +455,17 @@
 
     const stream = state.selected.stream || {};
     const ready = state.stream && state.stream.type === "Ready" && state.stream.content;
-    let url = (ready && ready.url) || stream.url || null;
+    // (for a torrent, Stremio gives a streaming server address even when none is running)
+    let url = (ready && ready.url && (serverUp || !stream.infoHash) ? ready.url : null) || stream.url || null;
+    // A torrent and no streaming server: the TV fetches it itself
+    let torrent = false;
+    if (!url && stream.infoHash) {
+      // (an addon's "sources" reach the player as "announce")
+      const trackers = [...(stream.announce || []), ...(stream.sources || [])].filter((x) => /^tracker:/.test(x)).map((x) => x.replace(/^tracker:/, ""));
+      const name = (stream.behaviorHints && stream.behaviorHints.filename) || "";
+      url = native.torrentUrl(JSON.stringify({ infoHash: stream.infoHash, fileIdx: Number.isInteger(stream.fileIdx) ? stream.fileIdx : -1, trackers, name })) || null;
+      torrent = !!url;
+    }
     if (!url && stream.infoHash) {
       handoff = null;
       history.back();
@@ -486,6 +509,7 @@
       hash,
       videoId,
       skips,
+      torrent,
       autoSkip: (dx && dx.settings && dx.settings.autoSkip) || "off",
       audioLanguage: profile.audioLanguage || "",
       // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player

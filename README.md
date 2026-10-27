@@ -123,7 +123,7 @@ Good to know:
 
 - Your watch progress is shared with every other Stremio app, so you can start something on the TV and finish it on your computer.
 
-- Debrid streams play straight away. Torrents need Stremio's streaming server, which a TV doesn't have: keep the dx.bi app (or Stremio) running on a computer on the same network, then on the TV open *Settings → Streaming server for torrents → Find*. dx.bi looks for the computer and switches to it. If Windows asks whether to let dx.bi use private networks, allow it, or the TV can't reach it.
+- Debrid streams and torrents both play straight away: dx.bi TV downloads torrents itself, so no computer or streaming server is needed. On a slow stick you can hand torrents to the dx.bi app (or Stremio) on a computer instead: keep it running on the same network, then on the TV open *Settings → Streaming server for torrents → Find*. If Windows asks whether to let dx.bi use private networks, allow it.
 
 - Not supported: LG (webOS), Samsung (Tizen), Roku and Apple TV can't install Android apps. A cheap Google TV or Fire TV stick plugged into one of them works. The 2025 *Fire TV Stick 4K Select* runs Amazon's Vega OS instead of Fire OS and can't install dx.bi either.
 
@@ -252,7 +252,7 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 - **Light on cheaper sticks** — no heavy effects, a small built-in plugin, and hover cards off by default (switch them on in dx.bi settings).
 - **Search boxes don't trap the remote** — the arrows move past them; press OK to type.
 - **Skip intro, recap and credits** — a *Skip* button in the TV player (OK presses it), or skipping by itself if you choose in dx.bi settings.
-- **Torrents through your computer** — *Settings → Streaming server for torrents → Find* connects the TV to the dx.bi app or Stremio running on a computer on your network.
+- **Torrents play on the TV itself** — no computer or streaming server needed. The player shows peers and speed while it gets going. You can still use a computer's streaming server instead (*Settings → Streaming server for torrents → Find*).
 - **dx.bi settings in sections**, at the top of Stremio's *Settings*.
 
 <table>

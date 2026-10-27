@@ -82,6 +82,22 @@ class Bridge(private val activity: MainActivity) {
         }
     }
 
+    /**
+     * Starts playing a torrent on the TV itself (no streaming server needed) and returns the address
+     * the player reads it from, or "" when it can't. [json]: { infoHash, fileIdx, trackers[], name }
+     */
+    @JavascriptInterface
+    fun torrentUrl(token: String, json: String): String {
+        if (!allowed(token)) return ""
+        return try {
+            val o = JSONObject(json)
+            val trackers = o.optJSONArray("trackers")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } } ?: emptyList()
+            TorrentEngine.open(activity.applicationContext, o.getString("infoHash"), o.optInt("fileIdx", -1), trackers, o.optString("name"))
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
     /** A phone or tablet rather than a TV: browsing can turn upright */
     @JavascriptInterface
     fun isPhone(): Boolean {

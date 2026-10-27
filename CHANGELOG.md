@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.19.0
+- **dx.bi TV plays torrents by itself.** No computer and no streaming server needed: the TV downloads the episode or film in order, the part you're watching first, and plays it as it arrives. While it gets going the player shows how many peers it found and the speed. Jumping ahead works too: that part is fetched first. Only the file you're watching is downloaded, and it's deleted when you stop. A streaming server you've picked in *Settings* (dx.bi or Stremio on a computer) is still used when it's online.
+
 ## 2.18.1
 - **The Calendar shows every show in your library.** Stremio's Calendar only gets episodes from Cinemeta, so shows added from other catalogs (the TMDB addon's rows, anime catalogs) never appeared, and a library full of them left the Calendar empty. dx.bi now adds their episodes to the month.
 - **"Ends at" on films.** A film's page and its hover card show when it would finish if you started now (from where you stopped, if you're part way through).

@@ -42,7 +42,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // the emulator is x86
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
+        }
         release {
+            // TVs and sticks are ARM: only those copies of the torrent engine (about 14 MB each)
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -56,6 +62,11 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    // The torrent engine's native code compressed in the APK: a smaller download for updates
+    packaging {
+        jniLibs { useLegacyPackaging = true }
     }
 
     // The built-in dx.bi plugin is the one at the repository root, copied in at build time
@@ -78,4 +89,12 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Torrents played on the TV itself (no streaming server needed): libtorrent, and a small local
+    // web server that hands the downloading file to the player
+    implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0-39")
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
 }
