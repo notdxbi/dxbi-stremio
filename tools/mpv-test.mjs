@@ -323,7 +323,9 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   await sleep(1500);
   // The picture is back in the window, not the desktop showing through (reported on 2.16: blue)
   const afterFull = screen("4b-after-fullscreen", area);
-  if (afterFull >= 10) pass("the video still shows after leaving full screen");
+  // (the clip is mostly solid colour bars, and the runner's console window can cover part of the
+  // area: a visible picture moves 8 to 40 points here, a missing one none)
+  if (afterFull >= 5) pass("the video still shows after leaving full screen");
   else fail(`the video is gone after leaving full screen (${afterFull} points changed)`);
   switcher("after fullscreen");
 
