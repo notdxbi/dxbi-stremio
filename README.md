@@ -290,6 +290,8 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 - **Discord status** — show what you're watching on Discord, with time left (the app, under *Discord Rich Presence*).
 
+- **Report a problem** — in your profile menu (on TV: top of *Settings*). Describe what went wrong and dx.bi sends the details that help fix it, with a code to mention in Discord. No e-mail, passwords, keys or stream links are sent.
+
 - **Who's watching?** — separate viewers, each with their own stats, volume and hidden titles.
 
 - **Kids profiles** — in *Who's watching? → Manage viewers*, make any viewer a kids profile, up to age 7, 12 or 15. It only shows titles rated for that age (films' certificates, anime ratings, and series ratings with a free TMDB key), the billboard switches to family titles, and Settings and Addons are out of reach. Set a parental PIN so kids can't switch to another profile. A grown-up can let a title through with *Allow for kids* on its page.
