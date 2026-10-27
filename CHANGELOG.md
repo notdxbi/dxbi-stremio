@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2.18.1
+- **The Calendar shows every show in your library.** Stremio's Calendar only gets episodes from Cinemeta, so shows added from other catalogs (the TMDB addon's rows, anime catalogs) never appeared, and a library full of them left the Calendar empty. dx.bi now adds their episodes to the month.
+- **"Ends at" on films.** A film's page and its hover card show when it would finish if you started now (from where you stopped, if you're part way through).
 - **A tidier Home for new accounts.** dx.bi's one-time offer to set up Home now adds Streaming Catalogs, Anime Catalogs (MyAnimeList's top series and top films, with anime search) and TMDB Collections (Popular and Top Rated). The Movie Database addon is no longer added: its rows repeated Cinemeta's, and it currently fails to install. Anime Catalogs' Popular rows and TMDB Collections' New Releases are left out, as they repeated the other rows. Accounts that already have these addons aren't changed.
 
 ## 2.18.0

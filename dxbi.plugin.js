@@ -1620,6 +1620,7 @@
         score ? `<span class="dx-match">${score.value.toFixed(1)} ${esc(score.label)}</span>` : "",
         meta.releaseInfo ? `<span>${esc(String(meta.releaseInfo).replace(/–$/, "–now"))}</span>` : "",
         length ? `<span>${esc(length)}</span>` : "",
+        info.type === "movie" && runtimeMinutes(meta.runtime) ? `<span class="dx-ends-at">${esc(endsAtText(runtimeMinutes(meta.runtime)))}</span>` : "",
         `<span class="dx-hd">HD</span>`,
       ].join("");
       const genres = (meta.genres || []).slice(0, 3);
@@ -6542,7 +6543,7 @@
       ? [updateRoute, brandTitle, () => addonTools.ensure(), communitySync]
       : [updateRoute, brandTitle, () => player.ensure(), () => { convert.ensure().catch(() => { /* player state not ready */ }); }, () => convert.confirmHevc(), () => externalDefault.ensure(), () => placeholder.ensure(), () => playbackHelp.ensure(), () => scrub.ensure(), () => enhance.ensure(), () => watchParty.ensure(), () => skip.ensure(), () => tune.ensure(), () => streamInfo.ensure(), () => addonTools.ensure(), communitySync];
     if (currentRoute() === "detail") steps.push(() => streamTools.ensure());
-    steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { restrict.guard().catch(() => { /* next sync */ }); });
+    steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { endsAt.ensure().catch(() => { /* next sync */ }); }, () => { calendarFill.ensure().catch(() => { /* next sync */ }); }, () => { restrict.guard().catch(() => { /* next sync */ }); });
     if (currentRoute() !== "player") {
       steps.push(() => hero.ensure(), filterRows, updateAllArrows, syncCards, () => librarySort.ensure(), () => libraryWatched.ensure(), applyWatchedTitles);
     }
@@ -6555,7 +6556,7 @@
   const mo = new MutationObserver((records) => {
     for (const r of records) {
       // Ignore changes we made ourselves
-      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast")) continue;
+      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item")) continue;
       scheduleSync();
       // Library's watched filters hide titles in the same frame Stremio draws them (a whole sync
       // later, the wrong titles were on screen for a moment)
@@ -6727,6 +6728,9 @@
   .dxe-who-del { color: #ff6b6b; font: 700 .8rem Inter, system-ui, sans-serif !important; }
   .dxe-who-btn { height: 2.8rem; padding: 0 1.6rem; border: 1px solid rgba(255,255,255,.4); background: transparent; color: rgba(255,255,255,.75); font: 600 .95rem Inter, system-ui, sans-serif !important; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
   .dxe-who-btn:hover, .dxe-who-btn:focus-visible { color: #fff; border-color: #fff; }
+  .dx-ends { display: inline-flex; align-items: center; height: 1.9rem; padding: 0 .7rem; border-radius: .35rem; background: rgba(255,255,255,.1); color: #fff; font: 600 .85rem Inter, system-ui, sans-serif; white-space: nowrap; }
+  .dx-preview-facts .dx-ends-at { color: rgba(255,255,255,.75); }
+  .dx-cal-poster { height: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .25rem; }
   .dx-hide-btn { height: 3rem; margin-bottom: 1rem; display: inline-flex; align-items: center; gap: .55rem; padding: 0 1.25rem 0 1.05rem; border-radius: 999px; background: rgba(42,42,48,.65); border: 1.5px solid rgba(255,255,255,.28); color: #fff; cursor: pointer; user-select: none; transition: background-color .2s, border-color .2s, transform .2s cubic-bezier(.16,1,.3,1); }
   .dx-hide-btn:hover, .dx-hide-btn:focus-visible { border-color: #fff; background: rgba(255,255,255,.12); transform: translateY(-1px); outline: none; }
   .dx-hide-btn.is-on { background: #fff; border-color: #fff; color: #000; }
@@ -9277,8 +9281,8 @@
         .slice(0, 80);
     },
 
-    refresh() {
-      if (!(settings.newEpisodes || settings.airingRow)) return;
+    refresh(force) {
+      if (!force && !(settings.newEpisodes || settings.airingRow)) return;
       if (this.loading || Date.now() - this.at < 10 * 60 * 1000) return;
       this.at = Date.now();
       this.loading = (async () => {
@@ -9302,7 +9306,8 @@
     async get(id, bases) {
       try {
         const raw = JSON.parse(localStorage.getItem("dxbi.eps." + id) || "null");
-        if (raw && Date.now() - raw.t < EP_TTL) return raw.e;
+        // (entries from before the calendar needed every episode are fetched again)
+        if (raw && Date.now() - raw.t < EP_TTL && raw.e && raw.e.all) return raw.e;
       } catch (_) { /* refetch */ }
       const url = this.metaUrl(id, bases);
       if (!url) return null;
@@ -9321,6 +9326,8 @@
         upcoming: vids.filter((v) => v.t > now - 12 * 3600 * 1000 && v.t <= now + 8 * 86400 * 1000).sort((a, b) => a.t - b.t).slice(0, 3),
         background: meta.background || "",
         logo: meta.logo || "",
+        // every dated episode, for the Calendar
+        all: vids.map(({ id: vid, t, s: se, e: ep }) => ({ id: vid, t, s: se, e: ep })),
       };
       try { localStorage.setItem("dxbi.eps." + id, JSON.stringify({ t: now, e: entry })); } catch (_) { /* full: memory copy still works */ }
       return entry;
@@ -9353,6 +9360,109 @@
     if (h >= 1) return `in ${h}h ${Math.floor((ms % 3600000) / 60000)}m`;
     return `in ${Math.max(1, Math.floor(ms / 60000))}m`;
   }
+
+  // Stremio's Calendar only gets episodes from Cinemeta, which knows shows by their IMDb id: shows
+  // in your library under another id (from the TMDB addon's rows, Kitsu's anime…) never appeared, and
+  // a library full of them left the Calendar empty. dx.bi puts their episodes in the month too.
+  const calendarFill = {
+    month: "",
+
+    async ensure() {
+      const grid = currentRoute() === "calendar" ? document.querySelector('#app [class*="calendar"] [class*="grid"]') : null;
+      if (!grid) return;
+      const { getState } = core();
+      if (!getState) return;
+      let state;
+      try { state = await getState("calendar"); } catch (_) { return; }
+      const sel = state && state.selected;
+      if (!sel || !sel.year || !sel.month) return;
+      const month = `${sel.year}-${sel.month}`;
+      if (month !== this.month) {
+        document.querySelectorAll(".dx-cal-item").forEach((n) => n.remove());
+        this.month = month;
+      }
+      // the shows Stremio already has this month (by name: the same show can have several ids)
+      const norm = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+      const shown = new Set((state.items || []).flatMap((d) => (d.items || []).map((i) => norm(i.name))));
+      episodes.refresh(true);
+      const cells = new Map();
+      for (const cell of grid.querySelectorAll('[class*="cell-"]')) {
+        const day = parseInt(cell.querySelector('[class*="day-"]')?.textContent || "", 10);
+        const items = cell.querySelector('[class*="items-"]');
+        if (day && items) cells.set(day, items);
+      }
+      // Stremio's own look for the posters, when there's one on the page to copy
+      const sample = grid.querySelector('a[class*="item-"]:not(.dx-cal-item)');
+      const itemClass = sample ? sample.className : "";
+      const posterClass = sample && sample.querySelector("img") ? sample.querySelector("img").className : "";
+      for (const [id, e] of episodes.index) {
+        if (/^tt\d+$/.test(id) || shown.has(norm(e.name)) || !e.all) continue;
+        for (const ep of e.all) {
+          const d = new Date(ep.t);
+          if (d.getFullYear() !== sel.year || d.getMonth() + 1 !== sel.month) continue;
+          const items = cells.get(d.getDate());
+          const key = `${id}|${ep.id}`;
+          if (!items || items.querySelector(`[data-dx-cal="${CSS.escape(key)}"]`)) continue;
+          const a = document.createElement("a");
+          a.className = `${itemClass} dx-cal-item`.trim();
+          a.dataset.dxCal = key;
+          a.tabIndex = -1;
+          a.href = `#/detail/series/${encodeURIComponent(id)}/${encodeURIComponent(ep.id)}`;
+          a.title = `${e.name || ""} · S${ep.s} E${ep.e}`;
+          a.innerHTML = `<img class="${esc(posterClass || "dx-cal-poster")}" alt="${esc(e.name || "")}" loading="lazy" src="${esc(e.poster || "")}">`;
+          items.append(a);
+        }
+      }
+    },
+  };
+
+  // "Ends at 9:42 PM" on a film's page and hover card: when it would finish if you started now (or
+  // carried on from where you stopped)
+  function runtimeMinutes(runtime) {
+    const t = String(runtime || "");
+    const h = /(\d+)\s*h/i.exec(t), m = /(\d+)\s*m/i.exec(t);
+    if (h || m) return (h ? +h[1] * 60 : 0) + (m ? +m[1] : 0);
+    const n = parseInt(t.replace(/[^\d]/g, ""), 10);
+    return n > 0 && n < 1000 ? n : 0;
+  }
+
+  function endsAtText(minutesLeft) {
+    if (!(minutesLeft > 0)) return "";
+    const end = new Date(Date.now() + minutesLeft * 60000);
+    return `Ends at ${end.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  }
+
+  const endsAt = {
+    async ensure() {
+      const box = currentRoute() === "detail" ? document.querySelector('[class*="metadetails-container"] [class*="meta-preview-container"]') : null;
+      const info = box && box.querySelector('[class*="runtime-release-info-container"]');
+      const t = info && restrict.titleOnScreen();
+      if (!t || t.type !== "movie") {
+        document.querySelectorAll(".dx-ends").forEach((n) => n.remove());
+        return;
+      }
+      let left = 0;
+      try {
+        const s = await core().getState("meta_details");
+        const meta = s && s.metaItem && s.metaItem.content && s.metaItem.content.type === "Ready" ? s.metaItem.content.content : null;
+        if (!meta || meta.id !== t.id) return;
+        left = runtimeMinutes(meta.runtime);
+        // part watched: what's left of it
+        const st = s.libraryItem && s.libraryItem.state;
+        if (st && st.timeOffset > 0 && st.duration > st.timeOffset) left = Math.ceil((st.duration - st.timeOffset) / 60000);
+      } catch (_) { return; }
+      const text = endsAtText(left);
+      let chip = info.querySelector(":scope > .dx-ends");
+      if (!text) { if (chip) chip.remove(); return; }
+      if (!chip) {
+        ensureExtrasStyle();
+        chip = document.createElement("div");
+        chip.className = "dx-ends";
+        info.append(chip);
+      }
+      if (chip.textContent !== text) chip.textContent = text;
+    },
+  };
 
   // "Airing this week" row on Home
   const airing = {
@@ -11983,6 +12093,8 @@
     viewers,
     restrict,
     whoIsWatching,
+    episodes,
+    calendarFill,
     // dx.bi TV's player: intro, recap and credits times for an episode ([] when nobody has added them)
     async skipSegments(type, metaId, videoId) {
       if (!settings.skipButtons) return [];
