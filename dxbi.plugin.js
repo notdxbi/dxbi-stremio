@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.19.2
+ * @version 2.19.3
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.19.2"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.19.3"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -7063,9 +7063,18 @@
   // H.264; Stremio only uses it for Chromecast. dx.bi uses it for those releases, and retries with it
   // whenever a video fails.
   const HEVC_HINT = /\b(?:x\.?265|h\.?265|hevc|10[ -]?bit|dovi|dv|dolby[ .-]?vision|hdr(?:10\+?)?)\b/i;
+  // Dolby Vision releases can fail where plain HEVC plays, so their failures say nothing about HEVC
+  const DV_HINT = /\b(?:dv|dovi|dolby[ .-]?vision)\b/i;
+  // Set once a converted HEVC release played after the original failed. Before 2.19.3 any failed
+  // HEVC-looking release (Dolby Vision, unusual audio) set "dxbi.hevcFailed", which then converted
+  // every later HEVC release for good, even on Macs that play them: that one is dropped.
+  const HEVC_FAILED_KEY = "dxbi.hevcFailed2";
   const convert = {
     hevc: null, // can this PC decode 10-bit HEVC?
+    hevcBrowser: null, // what Chromium says, before what dx.bi learnt from failures
     retried: new Set(),
+    guessed: new Map(), // player route → release text, for routes converted up front because it looked like 10-bit HEVC
+    unconverted: new Set(), // player routes the viewer chose to play without converting
     checkedFor: null,
 
     async canDecodeHevc() {
@@ -7078,7 +7087,11 @@
           ok = !!(info && info.supported);
         }
       } catch (_) { ok = false; }
-      try { if (localStorage.getItem("dxbi.hevcFailed")) ok = false; } catch (_) { /* ignore */ }
+      this.hevcBrowser = ok;
+      try {
+        localStorage.removeItem("dxbi.hevcFailed");
+        if (localStorage.getItem(HEVC_FAILED_KEY)) ok = false;
+      } catch (_) { /* ignore */ }
       return (this.hevc = ok);
     },
 
@@ -7107,12 +7120,14 @@
         // Each visit to the player starts fresh (people often reopen the same release to retry)
         this.checkedFor = null;
         this.retried.clear();
+        this.guessed.clear();
+        this.unconverted.clear();
         return;
       }
       // The dx.bi app's mpv player plays these formats itself: converting would only make them worse
       if (settings.convertVideo === "off" || this.active() || window.__dxbiNativePlayer) return;
       const key = location.hash;
-      if (this.checkedFor === key) return;
+      if (this.checkedFor === key || this.unconverted.has(key)) return;
       this.checkedFor = key;
       if (settings.convertVideo === "always") return this.reopen();
       const text = await this.streamText();
@@ -7123,6 +7138,7 @@
       if (!HEVC_HINT.test(text) || (await this.canDecodeHevc())) return;
       if (location.hash === key) {
         log("converting", text.slice(0, 80), "(this PC can't decode 10-bit HEVC)");
+        this.guessed.set(key, text);
         this.reopen();
       }
     },
@@ -7135,24 +7151,57 @@
       this.retried.add(key);
       const text = await this.streamText();
       if (location.hash !== key) return false;
-      this.hevcPending = HEVC_HINT.test(text);
+      this.hevcPending = HEVC_HINT.test(text) && !DV_HINT.test(text);
       this.reopen();
       return true;
+    },
+
+    // The player route as it was before dx.bi added conversion
+    originalHash() {
+      return location.hash.replace(/([?&])forceTranscoding=1(&|$)/, (m, before, after) => (after ? before : ""));
+    },
+
+    // Converted up front by a guess, and the converted copy failed: was the original ever tried?
+    wasGuess() {
+      return this.active() && this.guessed.has(this.originalHash());
+    },
+
+    // Play the release as it is (replacing the entry, like reopen). If an HEVC release then plays,
+    // this PC decodes HEVC after all, and later ones aren't converted.
+    playOriginal() {
+      const key = this.originalHash();
+      this.unconverted.add(key);
+      this.retried.add(key); // fails again → explain instead of converting again
+      // Stremio has already cleared the failed stream from its player state: use what was guessed from
+      this.originalPending = HEVC_HINT.test(this.guessed.get(key) || "");
+      history.replaceState(history.state, "", key);
+      dispatchEvent(new PopStateEvent("popstate", { state: history.state }));
     },
 
     // Remember that HEVC fails here only once the converted copy actually plays. A broken release
     // fails converted too, and must not make every later HEVC release convert (slow on weak CPUs).
     confirmHevc() {
-      if (!this.hevcPending) return;
-      if (currentRoute() !== "player" || !this.active()) {
-        this.hevcPending = false;
+      if (!this.hevcPending && !this.originalPending) return;
+      if (currentRoute() !== "player") {
+        this.hevcPending = this.originalPending = false;
         return;
       }
+      if (this.hevcPending && !this.active()) this.hevcPending = false;
+      if (this.originalPending && this.active()) this.originalPending = false;
       const v = document.querySelector('[class*="player-container"] video');
-      if (!v || v.currentTime < 3) return;
-      this.hevcPending = false;
-      try { localStorage.setItem("dxbi.hevcFailed", "1"); } catch (_) { /* ignore */ }
-      this.hevc = false;
+      if (!v || v.currentTime < 3) {
+        // A playing video changes nothing on the page that would bring this round again
+        clearTimeout(this.confirmTimer);
+        this.confirmTimer = setTimeout(() => this.confirmHevc(), 1000);
+        return;
+      }
+      try {
+        if (this.hevcPending) localStorage.setItem(HEVC_FAILED_KEY, "1");
+        if (this.originalPending) localStorage.removeItem(HEVC_FAILED_KEY);
+      } catch (_) { /* ignore */ }
+      if (this.hevcPending) this.hevc = false;
+      if (this.originalPending) this.hevc = true;
+      this.hevcPending = this.originalPending = false;
     },
   };
 
@@ -7406,6 +7455,7 @@
         if (act === "back") history.back();
         else if (act === "mpv" || act === "vlc") player.openExternal(act);
         else if (act === "nohw") this.disableHardwareConversion();
+        else if (act === "original") convert.playOriginal();
         else if (act === "report") this.copyReport(e.target.closest("[data-act]"));
       });
       label.after(el);
@@ -7455,6 +7505,8 @@
       report.playlists = entries.filter((e) => /\.m3u8/.test(e.name)).length;
       report.segments = segments.map((e) => e.responseStatus).slice(-6);
       await this.probe(entries, report);
+      // The server couldn't even read the file: nothing to do with its converter or the PC
+      if (report.probeFailed) return { kind: "source" };
       if (report.profile) return { kind: "hardware", profile: report.profile };
       const ok = (status) => status >= 200 && status < 300;
       if (segments.some((e) => ok(e.responseStatus))) return { kind: "file" };
@@ -7482,6 +7534,7 @@
         const r = await fetch(`${any.origin}/hlsv2/probe?${new URLSearchParams([["mediaURL", media]])}`, { signal: AbortSignal.timeout(15000) });
         if (!r.ok) {
           report.probe = `HTTP ${r.status}`;
+          report.probeFailed = true;
           return;
         }
         const j = await r.json();
@@ -7498,12 +7551,12 @@
       const ua = navigator.userAgent;
       const os = /Windows NT 10\.0/.test(ua) ? "Windows 10/11" : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "unknown";
       const chrome = (/Chrome\/([\d.]+)/.exec(ua) || [])[1];
-      const hevc = convert.hevc === null ? "not checked" : convert.hevc ? "yes" : "no";
+      const hevc = convert.hevc === null ? "not checked" : convert.hevc ? "yes" : convert.hevcBrowser ? "no (played converted before)" : "no";
       return [
         "dx.bi playback report",
         `dx.bi ${PLUGIN_VERSION} · ${os}${r.platform ? ` (${r.platform})` : ""} · Chromium ${chrome || "?"}`,
         `Streaming server ${r.server || "?"} · transcode profile: ${r.profile || "Disabled"} · hw accel: ${r.hwAccel}`,
-        `Converted: ${convert.active()} · 10-bit HEVC decoding: ${hevc}`,
+        `Converted: ${convert.active()}${convert.wasGuess() ? " (up front, original not tried)" : ""} · 10-bit HEVC decoding: ${hevc}`,
         `File: ${r.format || "?"} · ${(r.streams || []).join(", ") || r.probe || "?"}`,
         `Playlists: ${r.playlists ?? "?"} · segment statuses: ${(r.segments || []).join(" ") || "none"} · refetch: ${r.refetch ?? "-"}`,
         r.serverSaid ? `Server said: ${r.serverSaid.replace(/\s+/g, " ")}` : "",
@@ -7530,6 +7583,7 @@
       const serverUp = !!serverSettings;
       let text;
       let fixHardware = false;
+      let tryOriginal = false;
       if (!serverUp) {
         text = `<b>Stremio's streaming server isn't running.</b> Torrents, and files the built-in player can't open by itself (MKV, HEVC/x265, Dolby Vision), need it. Restart ${APP_NAME} and accept its streaming server setup: on Windows, choosing <i>Stremio Service</i> is easiest. Settings → Streaming shows whether it's online.`;
       } else if (/not supported|does not support|decod/i.test(message)) {
@@ -7542,8 +7596,14 @@
             text = IN_APP
               ? `<b>Windows can't start the streaming server's video tool (ffprobe): a file it needs is missing.</b> Restart ${APP_NAME}: when it starts, it checks the streaming server's ffmpeg and ffprobe and replaces copies that can't run, including the ones Stremio Service's Windows download comes with. If you've installed ffmpeg yourself (it's used first when it's on your PATH), remove or update it. Meanwhile, open this one in mpv or VLC.`
               : `<b>Windows can't start the streaming server's video tool (ffprobe): a file it needs is missing.</b> If you use <i>Stremio Service</i>, its Windows download comes without the files its ffprobe needs: the dx.bi app repairs that by itself, or choose server.js when ${APP_NAME} starts instead. With server.js, close ${APP_NAME} and delete <i>ffmpeg.exe</i> and <i>ffprobe.exe</i> in <i>%APPDATA%\\stremio-enhanced\\streamingserver</i> so fresh copies are downloaded. If you've installed ffmpeg yourself (it's used first when it's on your PATH), remove or update it. Meanwhile, open this one in mpv or VLC.`;
+          } else if (why.kind === "source") {
+            text = `<b>The streaming server couldn't open this link.</b> Converting means the streaming server reads the file itself, and this source didn't let it: some only answer browsers, and links can expire. ${convert.wasGuess() ? "Try it as it is, pick" : "Pick"} another release, or open this one in mpv or VLC.`;
           } else if (why.kind === "converter") {
             text = `<b>Stremio's streaming server couldn't convert this video.</b> Its converter (ffmpeg) failed or is missing. Restart ${APP_NAME}${IN_APP ? ", which checks the converter when it starts and replaces a copy that can't run" : ""}. Meanwhile pick an x264/H.264 or WEB-DL release, or open this one in mpv or VLC.`;
+          } else if (convert.wasGuess()) {
+            // Converted before it was tried: the original may well play (Macs decode HEVC themselves)
+            tryOriginal = true;
+            text = "<b>Converting this release didn't work.</b> dx.bi converted it before trying it, because it looked like 10-bit HEVC and this computer seemed unable to play that. Try it as it is, pick another release (x264/H.264 or WEB-DL are the safest), or open it in mpv or VLC.";
           } else {
             text = "<b>This release can't play here, even converted.</b> The file may be damaged or in an unusual format. Pick another release (x264/H.264 or WEB-DL are the safest), or open this one in mpv or VLC.";
           }
@@ -7553,11 +7613,17 @@
       } else {
         text = "<b>This stream didn't load.</b> The source may be offline or still caching. Try another release.";
       }
+      // Whatever went wrong converted, a release converted on a guess hasn't been tried as it is
+      if (serverUp && !fixHardware && convert.wasGuess()) tryOriginal = true;
       const paths = await Promise.resolve(window.StremioEnhancedAPI?.getExternalPlayerPaths?.()).catch(() => null);
       const ext = paths && (paths.mpv ? "mpv" : paths.vlc ? "vlc" : null);
       if (!el.isConnected) return;
       el.querySelector("p").innerHTML = text;
       if (fixHardware) el.querySelector(".dxe-playhelp-btns").insertAdjacentHTML("afterbegin", '<button class="dxe-btn is-primary" data-act="nohw">Convert without hardware acceleration</button>');
+      if (tryOriginal) {
+        el.querySelector('[data-act="back"]').classList.remove("is-primary");
+        el.querySelector(".dxe-playhelp-btns").insertAdjacentHTML("afterbegin", '<button class="dxe-btn is-primary" data-act="original">Play without converting</button>');
+      }
       if (convert.active()) el.querySelector(".dxe-playhelp-btns").insertAdjacentHTML("beforeend", '<button class="dxe-btn" data-act="report">Copy details</button>');
       if (ext && serverUp) el.querySelector(".dxe-playhelp-btns").insertAdjacentHTML("beforeend", `<button class="dxe-btn" data-act="${ext}">Open in ${ext === "mpv" ? "mpv" : "VLC"}</button>`);
     },
@@ -8883,6 +8949,12 @@
           })),
         };
       });
+      await safe("hevc", async () => {
+        await convert.canDecodeHevc();
+        let failedBefore = null;
+        try { failedBefore = !!localStorage.getItem(HEVC_FAILED_KEY); } catch (_) { /* ignore */ }
+        return { browserSays: convert.hevcBrowser, playedConvertedBefore: failedBefore, decodes: convert.hevc };
+      });
       await safe("streamingServer", async () => {
         const s = getState ? await getState("streaming_server") : null;
         return { state: s && s.settings && s.settings.type, version: s && s.settings && s.settings.content && s.settings.content.serverVersion };
@@ -8922,6 +8994,7 @@
             host: stream && stream.url ? redact(stream.url) : null,
             streamState: st && st.stream && st.stream.type,
             nativePlayer: window.__dxbiNativePlayer || null,
+            converted: convert.active() ? (convert.wasGuess() ? "up front" : "after a failure") : false,
             video: video ? { time: Math.round(video.currentTime), duration: Math.round(video.duration || 0), width: video.videoWidth, height: video.videoHeight, error: video.error && video.error.code, readyState: video.readyState } : null,
           };
         });

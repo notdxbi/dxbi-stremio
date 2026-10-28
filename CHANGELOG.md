@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.19.3
+- **HEVC releases play as they are again, on Macs too.** When a converted copy of a failed release played, dx.bi remembered that this computer can't decode 10-bit HEVC and converted every HEVC release from then on, even when the first failure was Dolby Vision or the audio. On Macs, which play HEVC themselves, that made 4K and remux releases fail with *Error occurred when decoding* or *Video is not supported*. That memory is cleared, and Dolby Vision failures no longer set it.
+- **"Play without converting".** When dx.bi converted a release before trying it and the converted copy fails, the error now offers to play it as it is. If it plays, dx.bi stops converting those releases.
+- **Clearer message when the streaming server can't open a link.** Some sources (often on workers.dev) only answer browsers, so converting them can't work: dx.bi now says so instead of calling the file damaged.
+
 ## 2.19.2
 - **dx.bi TV: torrents only play on the TV when you say so.** *Play torrents on this TV* is now off by default: torrents go through debrid (Real-Debrid, TorBox…) or a computer's streaming server. Picking a torrent with neither now asks: use a computer on your network, play it on this TV just this once, or cancel.
 - **dx.bi TV: trailers open in the YouTube app.** They started, paused after a few seconds and dropped back out. Back returns to dx.bi.
