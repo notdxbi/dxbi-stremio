@@ -271,10 +271,7 @@ export default class MpvShell {
 
     private static followMainWindow(): void {
         if (!this.mainWindow || !this.videoWindow || this.mainWindow.isDestroyed() || this.pip) return;
-        if (HYPRLAND) {
-            if (!isFullScreen(this.mainWindow)) this.hyprFollow();
-            return;
-        }
+        if (HYPRLAND) return this.hyprFollow(); // in full screen it only checks dx.bi wasn't dragged off
         this.videoWindow.setBounds(this.mainWindow.getContentBounds());
     }
 
@@ -308,7 +305,16 @@ export default class MpvShell {
         const mine = ((await hyprJson<HyprClient[]>("clients")) || []).filter((c) => c.pid === process.pid);
         const main = mine.find((c) => c.title !== VIDEO_TITLE), video = mine.find((c) => c.title === VIDEO_TITLE);
         if (!main || !video) return false;
-        if (this.pip || (this.mainWindow && isFullScreen(this.mainWindow))) return true;
+        if (this.pip) return true;
+        if (this.mainWindow && isFullScreen(this.mainWindow)) {
+            // dx.bi dragged off the full screen video (Super + drag): leave full screen where it's dropped
+            const at = this.hyprFullAt;
+            if (at && (main.at[0] !== at[0] || main.at[1] !== at[1])) {
+                this.hyprDropped = main.at;
+                setFullScreen(this.mainWindow, false);
+            }
+            return true;
+        }
         const target = `window = "address:${video.address}"`;
         const steps: string[] = [];
         // on another monitor's workspace it would be drawn at that monitor's scale
@@ -332,6 +338,8 @@ export default class MpvShell {
     // windows are drawn above full screen ones), covering the same monitor. Resize before move: a
     // resize keeps the window's centre.
     private static hyprSaved: { at: [number, number]; size: [number, number] } | null = null;
+    private static hyprFullAt: [number, number] | null = null; // where dx.bi was put to cover the monitor
+    private static hyprDropped: [number, number] | null = null; // where it was dragged to
     private static async hyprFullScreen(on: boolean): Promise<void> {
         const videoWindow = this.videoWindow;
         if (on && videoWindow && !videoWindow.isVisible()) videoWindow.showInactive();
@@ -347,16 +355,22 @@ export default class MpvShell {
             await hyprDispatch(`hl.dsp.window.pin({ action = "enable", ${M} })`);
             await hyprDispatch(`hl.dsp.window.resize({ x = ${Math.round(monitor.width / monitor.scale)}, y = ${Math.round(monitor.height / monitor.scale)}, ${M} })`);
             await hyprDispatch(`hl.dsp.window.move({ x = ${monitor.x}, y = ${monitor.y}, ${M} })`);
+            this.hyprFullAt = [monitor.x, monitor.y];
             // Hyprland hands focus to the window that went full screen: the keys (space, F…) belong to dx.bi
             await hyprDispatch(`hl.dsp.focus({ ${M} })`);
         } else {
+            this.hyprFullAt = null;
+            const dropped = this.hyprDropped;
+            this.hyprDropped = null;
             if (V) await hyprDispatch(`hl.dsp.window.fullscreen({ mode = "fullscreen", action = "unset", ${V} })`);
             await hyprDispatch(`hl.dsp.window.pin({ action = "disable", ${M} })`);
             const saved = this.hyprSaved;
             this.hyprSaved = null;
             if (saved) {
                 await hyprDispatch(`hl.dsp.window.resize({ x = ${saved.size[0]}, y = ${saved.size[1]}, ${M} })`);
-                await hyprDispatch(`hl.dsp.window.move({ x = ${saved.at[0]}, y = ${saved.at[1]}, ${M} })`);
+                // dragged out: its old size, where it was dropped (unpinning hands it to the focused monitor)
+                const to = dropped || saved.at;
+                await hyprDispatch(`hl.dsp.window.move({ x = ${to[0]}, y = ${to[1]}, ${M} })`);
             }
             await hyprDispatch(`hl.dsp.focus({ ${M} })`);
             if (!this.playing) videoWindow?.hide();
