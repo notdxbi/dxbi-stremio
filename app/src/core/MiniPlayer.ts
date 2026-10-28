@@ -117,6 +117,21 @@ export default {
             if (main) tellMain(main);
         });
 
+        // Dragged and resized by the page itself: an app-region drag area would hide the mouse from
+        // the page on Windows and macOS, and the hover controls with it
+        ipcMain.on(IPC_CHANNELS.MINI_MOVE, (e, x: unknown, y: unknown) => {
+            if (!fromMini(e) || typeof x !== "number" || typeof y !== "number" || !isFinite(x) || !isFinite(y)) return;
+            mini!.setPosition(Math.round(x), Math.round(y));
+        });
+        // From the corner grip: the top-left corner stays put, the picture stays 16:9
+        ipcMain.on(IPC_CHANNELS.MINI_SIZE, (e, width: unknown) => {
+            if (!fromMini(e) || typeof width !== "number" || !isFinite(width)) return;
+            const [x, y] = mini!.getPosition();
+            const area = screen.getDisplayNearestPoint({ x, y }).workArea;
+            const w = Math.round(Math.min(Math.max(width, 320), area.width * 0.9, (area.height * 0.9 * 16) / 9));
+            mini!.setBounds({ x, y, width: w, height: Math.round((w * 9) / 16) });
+        });
+
         // Asked by every page as it starts: is it the mini player, and from which second
         ipcMain.on(IPC_CHANNELS.MINI_INFO, (e) => {
             e.returnValue = fromMini(e) ? { at: startAt } : null;

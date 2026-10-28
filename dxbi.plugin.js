@@ -6622,10 +6622,12 @@
 
   const EXTRAS_CSS = `
   html.dx-mini [class*="control-bar-container"], html.dx-mini [class*="nav-bar-layer"], html.dx-mini .dx-player-flash, html.dx-mini .dxe-skip, html.dx-mini .dx-player-toast { display: none !important; }
-  .dx-mini-ui { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s; background: linear-gradient(rgba(0,0,0,.55), transparent 35%, transparent 70%, rgba(0,0,0,.55)); -webkit-app-region: drag; }
-  html.dx-mini body:hover .dx-mini-ui { opacity: 1; }
+  .dx-mini-ui { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s; background: linear-gradient(rgba(0,0,0,.55), transparent 35%, transparent 70%, rgba(0,0,0,.55)); cursor: grab; user-select: none; touch-action: none; }
+  html.dx-mini body:hover .dx-mini-ui, .dx-mini-ui.is-held { opacity: 1; }
+  .dx-mini-ui.is-held { cursor: grabbing; }
+  .dx-mini-grip { position: absolute; right: 0; bottom: 0; width: 1.4rem; height: 1.4rem; cursor: nwse-resize; touch-action: none; background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,.75) 50%, rgba(255,255,255,.75) 58%, transparent 58%, transparent 70%, rgba(255,255,255,.75) 70%, rgba(255,255,255,.75) 78%, transparent 78%); }
   .dx-mini-top { position: absolute; top: .5rem; right: .5rem; display: flex; gap: .3rem; }
-  .dx-mini-btn { -webkit-app-region: no-drag; display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; height: 2.2rem; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; cursor: pointer; }
+  .dx-mini-btn { display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; height: 2.2rem; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; cursor: pointer; }
   .dx-mini-btn:hover { background: rgba(255,255,255,.22); }
   .dx-mini-btn svg { width: 1.1rem; height: 1.1rem; }
   .dx-mini-btn.is-play { width: 3.4rem; height: 3.4rem; }
@@ -7942,14 +7944,15 @@
       else video.addEventListener("playing", seek, { once: true });
     },
 
-    // The mini window: just the picture. On hover: drag anywhere, play/pause, a progress line,
-    // back to the main window, close
+    // The mini window: just the picture, like Discord's pop-out stream. Drag it anywhere, pull the
+    // corner to resize, double-click to go back to full size; on hover: play/pause, a progress line,
+    // back to full size, close
     ensure(root) {
       if (!this.info || root.querySelector(":scope > .dx-mini-ui")) return;
       const ui = document.createElement("div");
       ui.className = "dx-mini-ui";
       ui.innerHTML = `<div class="dx-mini-top"><button class="dx-mini-btn is-expand" title="Back to dx.bi">${ICONS.expand}</button><button class="dx-mini-btn is-close" title="Close">${ICONS.close}</button></div>` +
-        `<button class="dx-mini-btn is-play" title="Play / pause">${ICONS.pause}</button><div class="dx-mini-line"><i></i></div>`;
+        `<button class="dx-mini-btn is-play" title="Play / pause">${ICONS.pause}</button><div class="dx-mini-line"><i></i></div><div class="dx-mini-grip" title="Drag to resize"></div>`;
       const video = () => root.querySelector("video");
       const play = ui.querySelector(".is-play");
       const line = ui.querySelector(".dx-mini-line i");
@@ -7964,13 +7967,42 @@
         if (v) v.paused ? v.play().catch(() => { /* not ready yet */ }) : v.pause();
         paint();
       });
-      ui.querySelector(".is-close").addEventListener("click", () => this.api.close());
-      ui.querySelector(".is-expand").addEventListener("click", () => {
+      const expand = () => {
         const v = video();
         const at = v ? v.currentTime : 0;
         if (v) v.pause();
         this.api.expand(location.hash, at);
+      };
+      ui.querySelector(".is-close").addEventListener("click", () => this.api.close());
+      ui.querySelector(".is-expand").addEventListener("click", expand);
+      ui.addEventListener("dblclick", (e) => { if (!e.target.closest(".dx-mini-btn, .dx-mini-grip")) expand(); });
+      // Dragged by the page (an app-region drag area would hide the mouse from it on Windows and
+      // macOS, and the hover controls with it). One move per frame, in screen coordinates.
+      const drag = (el, onMove) => el.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || (el === ui && e.target.closest(".dx-mini-btn, .dx-mini-grip"))) return;
+        e.preventDefault();
+        e.stopPropagation();
+        el.setPointerCapture(e.pointerId);
+        ui.classList.add("is-held");
+        const start = { x: e.screenX, y: e.screenY, left: window.screenX, top: window.screenY, width: window.outerWidth };
+        let frame = 0;
+        let last = e;
+        const move = (ev) => {
+          last = ev;
+          if (!frame) frame = requestAnimationFrame(() => { frame = 0; onMove(last.screenX - start.x, last.screenY - start.y, start); });
+        };
+        const up = () => {
+          el.removeEventListener("pointermove", move);
+          el.removeEventListener("pointerup", up);
+          el.removeEventListener("pointercancel", up);
+          ui.classList.remove("is-held");
+        };
+        el.addEventListener("pointermove", move);
+        el.addEventListener("pointerup", up);
+        el.addEventListener("pointercancel", up);
       });
+      drag(ui, (dx, dy, start) => this.api.moveTo(start.left + dx, start.top + dy));
+      drag(ui.querySelector(".dx-mini-grip"), (dx, dy, start) => this.api.resizeTo(start.width + Math.max(dx, (dy * 16) / 9)));
       const timer = setInterval(() => (ui.isConnected ? paint() : clearInterval(timer)), 500);
       root.append(ui);
       paint();

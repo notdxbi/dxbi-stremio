@@ -108,6 +108,8 @@ export const IPC_CHANNELS = {
     MINI_INFO: 'dxbi-mini-info',
     MINI_STATE: 'dxbi-mini-state',
     MINI_RESUME: 'dxbi-mini-resume',
+    MINI_MOVE: 'dxbi-mini-move',
+    MINI_SIZE: 'dxbi-mini-size',
 } as const;
 
 // File extensions for mods

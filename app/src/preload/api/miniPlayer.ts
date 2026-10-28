@@ -32,6 +32,9 @@ export const miniPlayerAPI = {
         /** From the mini player: back to the main window */
         expand: (hash: string, at: number): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.MINI_EXPAND, hash, at),
         close: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.MINI_CLOSE),
+        /** The mini window: move its top-left corner to (x, y) on screen; resize to a width (16:9) */
+        moveTo: (x: number, y: number) => ipcRenderer.send(IPC_CHANNELS.MINI_MOVE, x, y),
+        resizeTo: (width: number) => ipcRenderer.send(IPC_CHANNELS.MINI_SIZE, width),
         onState: (fn: (open: boolean) => void) => { onState = fn; },
         onResume: (fn: (hash: string, at: number) => void) => {
             onResume = fn;
