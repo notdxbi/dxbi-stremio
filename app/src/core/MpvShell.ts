@@ -5,7 +5,7 @@ import { connect, type Socket } from "net";
 import { join } from "path";
 import { IPC_CHANNELS } from "../constants";
 import { getLogger } from "../utils/logger";
-import { isFullScreen, setFullScreen } from "./Maximize";
+import { isFullScreen, setFullScreen, useCustomFullScreen } from "./Maximize";
 import MpvSubtitleStyle from "./MpvSubtitleStyle";
 
 // dx.bi plays video the way the official Stremio desktop app does: in mpv, behind the page.
@@ -43,6 +43,45 @@ function keepInSwitcher(win: BrowserWindow): void {
     }
 }
 const DEBUG = process.env.DXBI_MPV_DEBUG === "1";
+
+// Hyprland (a tiling Wayland compositor) needs the video window placed through its own IPC: see hyprFollow
+const HYPRLAND = process.platform === "linux" && !!process.env.HYPRLAND_INSTANCE_SIGNATURE;
+const VIDEO_TITLE = "dxbi-video";
+interface HyprClient { address: string; pid: number; title: string; monitor: number; workspace: { id: number }; at: [number, number]; size: [number, number] }
+interface HyprMonitor { id: number; x: number; y: number; width: number; height: number; scale: number }
+// Requests go straight to Hyprland's socket: a hyprctl process per request was too slow to keep the
+// video window under dx.bi while it's dragged around
+const HYPR_SOCKET = HYPRLAND ? join(process.env.XDG_RUNTIME_DIR || "", "hypr", process.env.HYPRLAND_INSTANCE_SIGNATURE || "", ".socket.sock") : "";
+function hyprRequest(request: string): Promise<string> {
+    return new Promise((resolve) => {
+        const socket = connect(HYPR_SOCKET);
+        let out = "";
+        socket.on("data", (d) => { out += d; });
+        socket.on("end", () => resolve(out));
+        socket.on("error", (err) => {
+            logger.warn(`Hyprland request failed: ${err.message}`);
+            resolve("");
+        });
+        socket.write(request);
+    });
+}
+// Several dispatches in one request, applied in order
+async function hyprDispatch(...lua: string[]): Promise<void> {
+    if (lua.length) await hyprRequest(`[[BATCH]]${lua.map((l) => `dispatch ${l}`).join(";")}`);
+}
+async function hyprJson<T>(what: string): Promise<T | null> {
+    try { return JSON.parse(await hyprRequest(`j/${what}`)); } catch { return null; }
+}
+// dx.bi's two windows as Hyprland has them. A window that's only just been shown isn't listed yet,
+// so the video window is looked for a few times.
+async function hyprWindows(tries: number): Promise<{ main?: HyprClient; video?: HyprClient }> {
+    for (let i = 1; ; i++) {
+        const mine = ((await hyprJson<HyprClient[]>("clients")) || []).filter((c) => c.pid === process.pid);
+        const found = { main: mine.find((c) => c.title !== VIDEO_TITLE), video: mine.find((c) => c.title === VIDEO_TITLE) };
+        if ((found.main && found.video) || i >= tries) return found;
+        await new Promise((r) => setTimeout(r, 100));
+    }
+}
 
 // Picture-in-picture's handle: a see-through window over the little video (mpv's picture takes the
 // mouse otherwise). Drag it anywhere to move the video; double-click it, or its button, to go back
@@ -180,11 +219,15 @@ export default class MpvShell {
             backgroundColor: "#00000000",
             webPreferences: { backgroundThrottling: false },
         });
+        // A fixed title lets tiling window managers (Hyprland, Sway…) be told to float it behind dx.bi
+        this.videoWindow.setTitle(VIDEO_TITLE);
+        this.videoWindow.on("page-title-updated", (e) => e.preventDefault());
         this.videoWindow.loadURL("about:blank");
         this.videoWindow.setIgnoreMouseEvents(true);
 
         // The dx.bi window always stays above the video window, and still gets its own taskbar button
         mainWindow.setParentWindow(this.videoWindow);
+        if (HYPRLAND) useCustomFullScreen(mainWindow, (on) => { void this.hyprFullScreen(on); });
         keepInSwitcher(mainWindow);
         mainWindow.setSkipTaskbar(false);
 
@@ -214,6 +257,7 @@ export default class MpvShell {
     // whole screen specially, and the video window didn't come back from that. It's put back behind
     // dx.bi and shown afresh.
     private static reseat(): void {
+        if (HYPRLAND) return; // hyprFullScreen puts both windows back itself
         setTimeout(() => {
             const main = this.mainWindow, video = this.videoWindow;
             if (!main || !video || main.isDestroyed() || video.isDestroyed() || this.pip || isFullScreen(main)) return;
@@ -227,7 +271,97 @@ export default class MpvShell {
 
     private static followMainWindow(): void {
         if (!this.mainWindow || !this.videoWindow || this.mainWindow.isDestroyed() || this.pip) return;
+        if (HYPRLAND) {
+            if (!isFullScreen(this.mainWindow)) this.hyprFollow();
+            return;
+        }
         this.videoWindow.setBounds(this.mainWindow.getContentBounds());
+    }
+
+    // Hyprland places XWayland windows itself, and on a scaled monitor its coordinates aren't the X11
+    // ones Electron sees, so setBounds lands the video window somewhere else. There Hyprland is asked
+    // to put it exactly where it has the dx.bi window.
+    // One placement at a time; moves while it runs are caught by the next one. While a video plays the
+    // dx.bi window is also watched, as an XWayland window being dragged doesn't always say it moved.
+    private static hyprBusy = false;
+    private static hyprAgain = false;
+    private static hyprWatch: NodeJS.Timeout | null = null;
+    private static hyprFollow(): void {
+        if (this.hyprBusy) {
+            this.hyprAgain = true;
+            return;
+        }
+        this.hyprBusy = true;
+        void (async () => {
+            for (let tries = this.playing ? 10 : 1; ; ) {
+                this.hyprAgain = false;
+                const placed = await this.hyprPlace();
+                if (this.hyprAgain) continue;
+                if (placed || --tries <= 0) break;
+                await new Promise((r) => setTimeout(r, 100)); // the video window isn't listed yet
+            }
+            this.hyprBusy = false;
+        })();
+    }
+
+    private static async hyprPlace(): Promise<boolean> {
+        const mine = ((await hyprJson<HyprClient[]>("clients")) || []).filter((c) => c.pid === process.pid);
+        const main = mine.find((c) => c.title !== VIDEO_TITLE), video = mine.find((c) => c.title === VIDEO_TITLE);
+        if (!main || !video) return false;
+        if (this.pip || (this.mainWindow && isFullScreen(this.mainWindow))) return true;
+        const target = `window = "address:${video.address}"`;
+        const steps: string[] = [];
+        // on another monitor's workspace it would be drawn at that monitor's scale
+        if (video.workspace.id !== main.workspace.id) steps.push(`hl.dsp.window.move({ workspace = "${main.workspace.id}", follow = false, ${target} })`);
+        if (video.size[0] !== main.size[0] || video.size[1] !== main.size[1]) steps.push(`hl.dsp.window.resize({ x = ${main.size[0]}, y = ${main.size[1]}, ${target} })`);
+        if (video.at[0] !== main.at[0] || video.at[1] !== main.at[1]) steps.push(`hl.dsp.window.move({ x = ${main.at[0]}, y = ${main.at[1]}, ${target} })`);
+        await hyprDispatch(...steps);
+        return true;
+    }
+
+    private static hyprWatchPlayback(on: boolean): void {
+        if (on && !this.hyprWatch) this.hyprWatch = setInterval(() => this.hyprFollow(), 16);
+        else if (!on && this.hyprWatch) {
+            clearInterval(this.hyprWatch);
+            this.hyprWatch = null;
+        }
+    }
+
+    // Full screen on Hyprland: it draws nothing behind a full screen window, so the video window is the
+    // one that goes full screen, and the see-through dx.bi window is pinned over it (pinned floating
+    // windows are drawn above full screen ones), covering the same monitor. Resize before move: a
+    // resize keeps the window's centre.
+    private static hyprSaved: { at: [number, number]; size: [number, number] } | null = null;
+    private static async hyprFullScreen(on: boolean): Promise<void> {
+        const videoWindow = this.videoWindow;
+        if (on && videoWindow && !videoWindow.isVisible()) videoWindow.showInactive();
+        const { main, video } = await hyprWindows(on ? 10 : 1);
+        if (!main) return;
+        const M = `window = "address:${main.address}"`;
+        const V = video ? `window = "address:${video.address}"` : null;
+        if (on) {
+            const monitor = (await hyprJson<HyprMonitor[]>("monitors"))?.find((m) => m.id === main.monitor);
+            if (!monitor) return;
+            if (!this.hyprSaved) this.hyprSaved = { at: main.at, size: main.size };
+            if (V) await hyprDispatch(`hl.dsp.window.fullscreen({ mode = "fullscreen", action = "set", ${V} })`);
+            await hyprDispatch(`hl.dsp.window.pin({ action = "enable", ${M} })`);
+            await hyprDispatch(`hl.dsp.window.resize({ x = ${Math.round(monitor.width / monitor.scale)}, y = ${Math.round(monitor.height / monitor.scale)}, ${M} })`);
+            await hyprDispatch(`hl.dsp.window.move({ x = ${monitor.x}, y = ${monitor.y}, ${M} })`);
+            // Hyprland hands focus to the window that went full screen: the keys (space, F…) belong to dx.bi
+            await hyprDispatch(`hl.dsp.focus({ ${M} })`);
+        } else {
+            if (V) await hyprDispatch(`hl.dsp.window.fullscreen({ mode = "fullscreen", action = "unset", ${V} })`);
+            await hyprDispatch(`hl.dsp.window.pin({ action = "disable", ${M} })`);
+            const saved = this.hyprSaved;
+            this.hyprSaved = null;
+            if (saved) {
+                await hyprDispatch(`hl.dsp.window.resize({ x = ${saved.size[0]}, y = ${saved.size[1]}, ${M} })`);
+                await hyprDispatch(`hl.dsp.window.move({ x = ${saved.at[0]}, y = ${saved.at[1]}, ${M} })`);
+            }
+            await hyprDispatch(`hl.dsp.focus({ ${M} })`);
+            if (!this.playing) videoWindow?.hide();
+            this.hyprFollow();
+        }
     }
 
     private static startMpv(): void {
@@ -254,6 +388,8 @@ export default class MpvShell {
             "--audio-fallback-to-null=yes", // no sound device (headset unplugged, broken driver): keep playing
             "--volume-max=200", // Stremio's volume slider and shortcuts allow up to 200% (mpv defaults to 130%)
             "--vo=gpu-next",
+            // --wid is an X11 window: on a Wayland desktop mpv would otherwise open its own window
+            ...(process.platform === "linux" ? ["--gpu-context=x11egl"] : []),
             "--sub-auto=no",
             "--audio-file-auto=no",
             "--ytdl=no",
@@ -353,11 +489,14 @@ export default class MpvShell {
 
     private static setPlaying(playing: boolean): void {
         this.playing = playing;
+        if (HYPRLAND) this.hyprWatchPlayback(playing);
         if (!playing && this.pip) this.setPip(false);
         if (!this.videoWindow || !this.mainWindow) return;
         if (playing && !this.mainWindow.isMinimized()) {
             this.followMainWindow();
             this.videoWindow.showInactive();
+            // started while already full screen: the new video window has to take it over
+            if (HYPRLAND && isFullScreen(this.mainWindow)) void this.hyprFullScreen(true);
         } else if (!playing) {
             this.videoWindow.hide();
         }
@@ -620,6 +759,7 @@ export default class MpvShell {
     }
 
     private static shutdown(): void {
+        this.hyprWatchPlayback(false);
         try { this.socket?.write(JSON.stringify({ command: ["quit"] }) + "\n"); } catch { /* gone */ }
         const mpv = this.mpv;
         this.mpv = null;
