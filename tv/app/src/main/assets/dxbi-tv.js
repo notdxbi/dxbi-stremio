@@ -27,6 +27,8 @@
   const tv = (window.__dxbiTv = {});
   // problem reports (the plugin's `report`) add these
   tv.deviceInfo = () => native.deviceInfo();
+  // the app plays the intro film itself (Intro.kt): the plugin's splash stays out of the way
+  tv.nativeIntro = true;
 
   // ---------------------------------------------------------------------------
   // Fit the page to the TV: lay it out 1280 CSS pixels wide (a 10-foot size on any screen). A phone

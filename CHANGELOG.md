@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.20.0
+- **dx.bi TV plays the real intro.** TVs only showed a still "DX.BI" while dx.bi started, even with *Intro animation* and *Intro sound* on: the film was too heavy for the page on 2 GB sticks. The TV app now plays it itself, decoded in hardware, with its sound, your accent colour and Sound volume. OK or Back skips it. Needs the 2.20.0 TV app.
+- **No more dead Cast button in the dx.bi app.** Stremio's Cast button needs Chrome's Google Cast, so in the desktop app (and on TV) it did nothing when clicked. It's hidden there now.
+
 ## 2.19.3
 - **HEVC releases play as they are again, on Macs too.** When a converted copy of a failed release played, dx.bi remembered that this computer can't decode 10-bit HEVC and converted every HEVC release from then on, even when the first failure was Dolby Vision or the audio. On Macs, which play HEVC themselves, that made 4K and remux releases fail with *Error occurred when decoding* or *Video is not supported*. That memory is cleared, and Dolby Vision failures no longer set it.
 - **"Play without converting".** When dx.bi converted a release before trying it and the converted copy fails, the error now offers to play it as it is. If it plays, dx.bi stops converting those releases.

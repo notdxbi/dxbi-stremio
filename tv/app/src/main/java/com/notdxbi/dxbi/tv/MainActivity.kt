@@ -17,6 +17,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.Toast
 import org.json.JSONObject
 import androidx.activity.OnBackPressedCallback
@@ -38,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     private var injectedAtStart = false
     private var lastBack = 0L
     private var playbackListener: PlaybackBus.Listener? = null
+    private var intro: Intro? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,7 +52,11 @@ class MainActivity : AppCompatActivity() {
         // Debug builds can be inspected from a computer (chrome://inspect)
         if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) WebView.setWebContentsDebuggingEnabled(true)
         web = WebView(this)
-        setContentView(web)
+        val root = FrameLayout(this)
+        root.addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        setContentView(root)
+        // Only when dx.bi is opened, not when the screen is rebuilt (after a page crash, a turned phone)
+        if (savedInstanceState == null) intro = Intro(this, root).also { it.start() }
         web.setBackgroundColor(getColor(R.color.background))
         web.isFocusable = true
         web.isFocusableInTouchMode = true
@@ -147,6 +153,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Any key skips the intro (and isn't passed on to the page underneath)
+        intro?.takeIf { it.showing }?.let {
+            if (event.action == KeyEvent.ACTION_UP) it.skip()
+            return true
+        }
         // Play/pause keys on the Home screen do nothing useful in the page: keep them from scrolling it
         if (event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) return true
         return super.dispatchKeyEvent(event)
@@ -227,6 +238,12 @@ class MainActivity : AppCompatActivity() {
         web.loadUrl("$STREMIO_URL#/addons?addon=" + Uri.encode(manifest))
     }
 
+    /** Whether the page has a screen to show yet (what the intro waits for before fading out) */
+    fun pageReady(answer: (Boolean) -> Unit) {
+        if (!::web.isInitialized) return answer(true)
+        web.evaluateJavascript("!!document.querySelector('$PAGE_READY')") { answer(it == "true") }
+    }
+
     fun js(code: String) {
         if (::web.isInitialized) web.post { web.evaluateJavascript(code, null) }
     }
@@ -281,5 +298,7 @@ class MainActivity : AppCompatActivity() {
         const val STREMIO_ORIGIN = "https://web.stremio.com"
         const val STREMIO_URL = "https://web.stremio.com/"
         const val MIN_WEBVIEW = 100
+        // SPLASH_READY in dxbi.plugin.js (Home's rows, a details page, Settings…)
+        private const val PAGE_READY = """[class*="meta-item-container"], [class*="metadetails-container"], [class*="player-container"], [class*="settings-content"], [class*="addons-content"]"""
     }
 }

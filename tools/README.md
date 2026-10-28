@@ -32,6 +32,11 @@ ffmpeg -framerate 60 -i frames/f%04d.png -i score.wav \
   -c:a libopus -b:a 96k -ac 2 -shortest intro.webm
 
 base64 -w0 intro.webm   # paste into introVideoData() at the bottom of dxbi.plugin.js
+
+# dx.bi TV plays an H.264 copy natively (every TV decodes it in hardware)
+ffmpeg -i intro.webm -vf format=yuv420p -c:v libx264 -profile:v high -level 4.2 -preset veryslow \
+  -crf 20 -x264-params keyint=300 -c:a aac -b:a 128k -movflags +faststart \
+  ../tv/app/src/main/res/raw/intro.mp4
 ```
 
 Change `TEXT` and `ACCENT` at the top of `render_intro.py` to use your own wordmark and colour.

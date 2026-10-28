@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.19.3
+ * @version 2.20.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.19.3"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.20.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -3151,7 +3151,10 @@
         const key = svg && Object.keys(svg).find((k) => k.startsWith("__reactFiber"));
         let f = key ? svg[key] : null;
         for (let n = 0; f && n < 4 && typeof f.memoizedProps?.name !== "string"; n++) f = f.return;
-        const label = f && STREMIO_BUTTON_LABELS[f.memoizedProps.name];
+        const name = f && f.memoizedProps.name;
+        // Stremio's Cast button needs Chrome's Google Cast; in the dx.bi app and on TV it does nothing
+        if (name === "cast" && (IN_APP || IN_TV)) b.dataset.dxReplaced = "1";
+        const label = name && STREMIO_BUTTON_LABELS[name];
         b.dataset.dxLabel = label || "-";
         if (label) b.title = label;
       }
@@ -3325,6 +3328,8 @@
     try { shown = sessionStorage.getItem("dxbi.splash") === "1"; sessionStorage.setItem("dxbi.splash", "1"); } catch (_) { /* ignore */ }
     if (shown || !settings.splash) return;
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // dx.bi TV 2.20+ plays the film itself, in hardware, over the page while it loads
+    if (IN_TV && window.__dxbiTv && window.__dxbiTv.nativeIntro) return;
 
     const el = document.createElement("div");
     el.className = "dx-splash";
@@ -3369,8 +3374,8 @@
       el.innerHTML = '<div class="dx-splash-mark">DX.BI</div>';
       setTimeout(finish, 1700);
     };
-    // TVs get the light version: decoding the film is the heaviest moment of a start, and on 2 GB
-    // sticks without AV1 hardware it was enough to stop the page (dx.bi TV ships without the film)
+    // Older dx.bi TV apps get the light version: decoding the film in the page is the heaviest moment
+    // of a start, and on 2 GB sticks without AV1 hardware it was enough to stop it
     if (IN_TV) {
       fallback();
       return;
