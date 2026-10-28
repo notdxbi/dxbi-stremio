@@ -22,6 +22,7 @@ import { gpuController } from "./controllers/gpuController";
 import { externalPlayerController } from "./controllers/externalPlayerController";
 import { offerEnhancedImport, seedBuiltInPlugin } from "./core/BuiltIn";
 import MpvShell from "./core/MpvShell";
+import MiniPlayer from "./core/MiniPlayer";
 import { ipcMain } from "electron";
 import { restoreWindowState } from "./core/WindowState";
 import { isFullScreen, maximize, setFullScreen, useManualMaximize } from "./core/Maximize";
@@ -101,6 +102,7 @@ async function createWindow() {
     });
     
     mainWindow.setMenu(null);
+    MiniPlayer.attach(mainWindow);
     useManualMaximize(mainWindow, transparencyEnabled);
     const openMaximized = restoreWindowState(mainWindow);
     // Shown once dx.bi has dressed the page: plugins load when the page has fully loaded, and until
@@ -217,6 +219,7 @@ app.on("ready", async () => {
     setupPluginSettingsAPI();
     setupPluginAlertAPI();
     createWindow();
+    MiniPlayer.setup(() => mainWindow);
     if(transparencyEnabled) setupWindowControls();
     if(mpvEnabled && mainWindow) MpvShell.setup(mainWindow);
     setupUpdater();

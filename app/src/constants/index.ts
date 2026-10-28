@@ -102,6 +102,12 @@ export const IPC_CHANNELS = {
     AUTO_UPDATE_AVAILABLE: 'dxbi-auto-update-available',
     AUTO_UPDATE_CHECK: 'dxbi-auto-update-check',
     MPV_SET_ENABLED: 'dxbi-mpv-set-enabled',
+    MINI_OPEN: 'dxbi-mini-open',
+    MINI_EXPAND: 'dxbi-mini-expand',
+    MINI_CLOSE: 'dxbi-mini-close',
+    MINI_INFO: 'dxbi-mini-info',
+    MINI_STATE: 'dxbi-mini-state',
+    MINI_RESUME: 'dxbi-mini-resume',
 } as const;
 
 // File extensions for mods

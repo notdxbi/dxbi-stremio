@@ -2,6 +2,7 @@
 
 ## 2.20.0
 - **dx.bi TV plays the real intro.** TVs only showed a still "DX.BI" while dx.bi started, even with *Intro animation* and *Intro sound* on: the film was too heavy for the page on 2 GB sticks. The TV app now plays it itself, decoded in hardware, with its sound, your accent colour and Sound volume. OK or Back skips it. Needs the 2.20.0 TV app.
+- **Picture-in-picture keeps playing while you browse** (dx.bi app). It used to close as soon as you left the player. Now it moves to a small window that stays on top, picking up from the same second, and you can browse, search and open other titles meanwhile. Hover it to play/pause, drag it anywhere, resize it, go back to full size (it carries on where it was) or close it. Playing something else closes it. During a watch party, picture-in-picture works as before.
 - **No more dead Cast button in the dx.bi app.** Stremio's Cast button needs Chrome's Google Cast, so in the desktop app (and on TV) it did nothing when clicked. It's hidden there now.
 
 ## 2.19.3

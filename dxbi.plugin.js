@@ -354,7 +354,7 @@
     { key: "playerKeys", type: "toggle", label: "Extra keyboard shortcuts", description: "0–9 jump to 0–90% of the video, and ? shows every shortcut.", defaultValue: DEFAULTS.playerKeys },
     { key: "watchStats", type: "toggle", label: "Watch stats", description: "Counts how long you watch (on this PC only). See them under your profile menu → Your stats.", defaultValue: DEFAULTS.watchStats },
     { key: "whoIsWatching", type: "toggle", label: "Who's watching?", description: "With more than one viewer, choose who's watching at start. Each viewer has their own stats, volume and party name.", defaultValue: DEFAULTS.whoIsWatching },
-    { key: "pip", type: "toggle", label: "Picture-in-picture button", description: "Keep watching in a small floating window while you use other apps.", defaultValue: DEFAULTS.pip },
+    { key: "pip", type: "toggle", label: "Picture-in-picture button", description: "Keep watching in a small floating window while you use other apps. In the dx.bi app it also keeps playing while you browse dx.bi.", defaultValue: DEFAULTS.pip },
     { key: "addonTools", type: "toggle", label: "Addon order & backup", description: "Adds a button to the Addons page to reorder your addons (the order streams and catalogs appear in) and to back them up or restore them.", defaultValue: DEFAULTS.addonTools },
     { key: "externalPlayer", type: "toggle", label: "Open in mpv / VLC button", description: "Adds a button to the player that hands the stream to mpv or VLC (only shown when one is installed). Handy when a file stutters or won't play here: they handle more formats and are lighter on slower PCs.", defaultValue: DEFAULTS.externalPlayer },
     { key: "remainingTime", type: "toggle", label: "Show time remaining", description: "The player clock counts down, like Netflix (click it to switch back).", defaultValue: DEFAULTS.remainingTime },
@@ -768,6 +768,7 @@
       setScrolled(false);
       preview.close(true);
       if (route === "player") keyNav.exit();
+      miniPlayer.onRoute(route);
       if (route === "board") homeRows.preload();
     }
   }
@@ -3138,7 +3139,9 @@
           this.watchdog = setInterval(this.checkStall, 1000);
         }
         subtitlesStart.watch(video);
+        miniPlayer.watch(video);
       }
+      miniPlayer.ensure(root);
     },
 
     // Stremio only names Play, Next, Mute and Fit/Crop on hover. Give its other player buttons a
@@ -3326,7 +3329,7 @@
   function splash() {
     let shown = false;
     try { shown = sessionStorage.getItem("dxbi.splash") === "1"; sessionStorage.setItem("dxbi.splash", "1"); } catch (_) { /* ignore */ }
-    if (shown || !settings.splash) return;
+    if (shown || !settings.splash || miniPlayer.info) return;
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     // dx.bi TV 2.20+ plays the film itself, in hardware, over the page while it loads
     if (IN_TV && window.__dxbiTv && window.__dxbiTv.nativeIntro) return;
@@ -6618,6 +6621,17 @@
   // ---------------------------------------------------------------------------
 
   const EXTRAS_CSS = `
+  html.dx-mini [class*="control-bar-container"], html.dx-mini [class*="nav-bar-layer"], html.dx-mini .dx-player-flash, html.dx-mini .dxe-skip, html.dx-mini .dx-player-toast { display: none !important; }
+  .dx-mini-ui { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s; background: linear-gradient(rgba(0,0,0,.55), transparent 35%, transparent 70%, rgba(0,0,0,.55)); -webkit-app-region: drag; }
+  html.dx-mini body:hover .dx-mini-ui { opacity: 1; }
+  .dx-mini-top { position: absolute; top: .5rem; right: .5rem; display: flex; gap: .3rem; }
+  .dx-mini-btn { -webkit-app-region: no-drag; display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; height: 2.2rem; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; cursor: pointer; }
+  .dx-mini-btn:hover { background: rgba(255,255,255,.22); }
+  .dx-mini-btn svg { width: 1.1rem; height: 1.1rem; }
+  .dx-mini-btn.is-play { width: 3.4rem; height: 3.4rem; }
+  .dx-mini-btn.is-play svg { width: 1.6rem; height: 1.6rem; }
+  .dx-mini-line { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.2); }
+  .dx-mini-line i { display: block; height: 100%; width: 0; background: var(--dx-accent, #e50914); }
   .dx-keyshield { position: fixed; inset: 0; z-index: 2147483000; cursor: none; background: transparent; }
   .dxe-skip { position: absolute; z-index: 7; right: 3.2rem; bottom: 9.5rem; display: inline-flex; align-items: center; gap: .6rem; height: 3.1rem; padding: 0 1.3rem 0 1.5rem; border: 1px solid rgba(255,255,255,.55); border-radius: .4rem; background: rgba(24,24,24,.72); backdrop-filter: blur(10px); color: #fff; font: 700 1.05rem Inter, system-ui, sans-serif !important; cursor: pointer; opacity: 0; transform: translateY(6px); pointer-events: none; transition: opacity .25s ease, transform .25s ease, background-color .15s, border-color .15s; }
   .dxe-skip.is-on { opacity: 1; transform: none; pointer-events: auto; }
@@ -7850,6 +7864,7 @@
   async function togglePip() {
     if (window.__dxbiMpv) { window.__dxbiMpv.pip(); return; } // the dx.bi app's mpv player
     const video = document.querySelector('[class*="player-container"] video');
+    if (miniPlayer.usable() && video && (await miniPlayer.start(video))) return;
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
       else if (video) await video.requestPictureInPicture();
@@ -7857,6 +7872,110 @@
       playerToast("Picture-in-picture isn't available for this video");
     }
   }
+
+  // ---- The dx.bi app's picture-in-picture window (the app's core/MiniPlayer.ts). Stremio drops its
+  // player screen, and the video with it, as soon as you go anywhere else, so the browser's own PiP
+  // closed as soon as you left the player. The app carries the stream on in a small always-on-top
+  // window running its own Stremio player from the same second, and this window is free to browse.
+
+  const miniPlayer = {
+    api: (IN_APP && window.StremioEnhancedAPI && window.StremioEnhancedAPI.miniPlayer) || null,
+    info: null, // { at } in the mini window itself
+    open: false,
+    resumeAt: 0, // the second to pick up from once the player's video plays
+
+    init() {
+      if (!this.api) return;
+      try { this.info = this.api.info(); } catch (_) { this.info = null; }
+      if (this.info) {
+        document.documentElement.classList.add("dx-mini");
+        this.resumeAt = this.info.at || 0;
+        return;
+      }
+      this.api.onState((open) => { this.open = open; });
+      // Expand in the mini window: the stream comes back here
+      this.api.onResume((hash, at) => {
+        this.resumeAt = at;
+        if (location.hash !== hash) location.hash = hash;
+      });
+    },
+
+    // Not during a watch party (it steers this window's player), nor with mpv (it has its own PiP)
+    usable() {
+      return !!this.api && !this.info && !window.__dxbiMpv && !(watchParty.party && watchParty.party.active);
+    },
+
+    async start(video) {
+      const hash = location.hash;
+      const at = video.currentTime || 0;
+      const wasPlaying = !video.paused;
+      video.pause();
+      const ok = await this.api.open(hash, at).catch(() => false);
+      if (!ok) {
+        if (wasPlaying) video.play().catch(() => { /* stays paused */ });
+        return false;
+      }
+      // Leaving the player makes this window's Stremio save the position and let the stream go
+      if (history.length > 1) history.back();
+      else location.hash = "#/";
+      return true;
+    },
+
+    // Main window: playing something here closes the mini player (one stream at a time)
+    onRoute(route) {
+      if (route === "player" && this.open && !this.info && this.api) this.api.close().catch(() => { /* already shut */ });
+      // the mini window closes once its player does (the film ended, Stremio's own Back)
+      if (this.info && route !== "player") this.api.close().catch(() => { /* already shut */ });
+    },
+
+    // Stremio resumes from the saved position, which can be a few seconds behind: once the video
+    // plays, on to the exact second (after Stremio's own resume, which would undo an earlier seek)
+    watch(video) {
+      if (!video || !this.resumeAt) return;
+      const at = this.resumeAt;
+      this.resumeAt = 0;
+      const seek = () => {
+        const end = isFinite(video.duration) ? video.duration - 2 : Infinity;
+        if (Math.abs(video.currentTime - at) > 3 && at < end) video.currentTime = at;
+      };
+      if (!video.paused && video.readyState >= 3) seek();
+      else video.addEventListener("playing", seek, { once: true });
+    },
+
+    // The mini window: just the picture. On hover: drag anywhere, play/pause, a progress line,
+    // back to the main window, close
+    ensure(root) {
+      if (!this.info || root.querySelector(":scope > .dx-mini-ui")) return;
+      const ui = document.createElement("div");
+      ui.className = "dx-mini-ui";
+      ui.innerHTML = `<div class="dx-mini-top"><button class="dx-mini-btn is-expand" title="Back to dx.bi">${ICONS.expand}</button><button class="dx-mini-btn is-close" title="Close">${ICONS.close}</button></div>` +
+        `<button class="dx-mini-btn is-play" title="Play / pause">${ICONS.pause}</button><div class="dx-mini-line"><i></i></div>`;
+      const video = () => root.querySelector("video");
+      const play = ui.querySelector(".is-play");
+      const line = ui.querySelector(".dx-mini-line i");
+      const paint = () => {
+        const v = video();
+        if (!v) return;
+        play.innerHTML = v.paused ? ICONS.play : ICONS.pause;
+        line.style.width = isFinite(v.duration) && v.duration > 0 ? `${(v.currentTime / v.duration) * 100}%` : "0";
+      };
+      play.addEventListener("click", () => {
+        const v = video();
+        if (v) v.paused ? v.play().catch(() => { /* not ready yet */ }) : v.pause();
+        paint();
+      });
+      ui.querySelector(".is-close").addEventListener("click", () => this.api.close());
+      ui.querySelector(".is-expand").addEventListener("click", () => {
+        const v = video();
+        const at = v ? v.currentTime : 0;
+        if (v) v.pause();
+        this.api.expand(location.hash, at);
+      });
+      const timer = setInterval(() => (ui.isConnected ? paint() : clearInterval(timer)), 500);
+      root.append(ui);
+      paint();
+    },
+  };
 
   // ---- Addon order & backup (Addons page)
 
@@ -12366,6 +12485,8 @@
     if (IN_TV) document.documentElement.classList.add("dx-tv");
     // …and the dx.bi app's (its window has its own buttons: see "THE DX.BI APP" in the theme)
     if (IN_APP) document.documentElement.classList.add("dx-app");
+    // …and the app's picture-in-picture window (see miniPlayer)
+    miniPlayer.init();
     // loadSettings applies the cached settings synchronously, so the intro sees the right accent/sound
     const loading = loadSettings();
     splash();
@@ -12410,7 +12531,7 @@
     store.load().then(() => {
       stats.load();
       setTimeout(() => subtitlesStart.apply().catch(() => { /* core not ready */ }), 3000);
-      whoIsWatching.maybeShow().catch(() => { /* nothing to show */ });
+      if (!miniPlayer.info) whoIsWatching.maybeShow().catch(() => { /* nothing to show */ });
       store.ready.then(() => restrict.apply()).catch(() => { /* next sync */ });
       scheduleSync();
     });

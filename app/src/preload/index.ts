@@ -18,12 +18,17 @@ import { checkExternalPlayer } from "./ui/externalPlayerInterceptor";
 import { applyThemeAPI } from "./api/applyTheme";
 import { gpuRendererAPI } from "./api/gpuRenderer";
 import { externalPlayerAPI } from "./api/externalPlayer";
+import { miniPlayerAPI, miniPlayerInfo } from "./api/miniPlayer";
 import { pluginLogger } from "./api/pluginLogger";
 import Helpers from "../utils/Helpers";
 import { mpvShellEnabled, installMpvShell } from "./mpvShell";
 
+// The picture-in-picture window (core/MiniPlayer.ts): always the browser player, and none of the
+// main window's once-per-app work (update checks, Discord status)
+const isMini = miniPlayerInfo !== null;
+
 // Playing through mpv: Stremio must find the shell transport before its own scripts run
-const nativePlayer = mpvShellEnabled();
+const nativePlayer = !isMini && mpvShellEnabled();
 if (nativePlayer) installMpvShell();
 
 export const stremioEnhancedAPI = {
@@ -33,6 +38,7 @@ export const stremioEnhancedAPI = {
     ...applyThemeAPI,
     ...gpuRendererAPI,
     ...externalPlayerAPI,
+    ...miniPlayerAPI,
 };
 
 
@@ -107,14 +113,14 @@ window.addEventListener("load", () => {
     });
 
     // Auto update check
-    if (localStorage.getItem(STORAGE_KEYS.CHECK_UPDATES_ON_STARTUP) === "true") {
+    if (!isMini && localStorage.getItem(STORAGE_KEYS.CHECK_UPDATES_ON_STARTUP) === "true") {
         // The whole app updates itself where it can (Windows installer, Linux AppImage); elsewhere the popup
         if (ipcRenderer.sendSync(IPC_CHANNELS.AUTO_UPDATE_AVAILABLE)) ipcRenderer.send(IPC_CHANNELS.AUTO_UPDATE_CHECK, false);
         else Updater.checkForUpdates(false).catch(console.error);
     }
 
     // Discord RPC
-    if (localStorage.getItem(STORAGE_KEYS.DISCORD_RPC) === "true") {
+    if (!isMini && localStorage.getItem(STORAGE_KEYS.DISCORD_RPC) === "true") {
         DiscordPresence.start();
         discordTracker.init();
 
@@ -159,7 +165,7 @@ window.addEventListener("load", () => {
 
     // UI Hooks (Transparency)
     getTransparencyStatus().then((status) => {
-        isTransparencyEnabled = status;
+        isTransparencyEnabled = status && !isMini; // the mini player has its own buttons
         if (isTransparencyEnabled) {
             const observer = new MutationObserver(() => addTitleBar());
             observer.observe(document.body, { childList: true, subtree: true });
