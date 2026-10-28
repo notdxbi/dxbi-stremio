@@ -140,8 +140,10 @@ class PlayerActivity : AppCompatActivity() {
             .readTimeout(if (torrent) 150L else 30L, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
+        // (an addon's own User-Agent replaces ours: Media3 would send both)
+        val ownAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
         val dataSource = OkHttpDataSource.Factory(http)
-            .setUserAgent("dxbi-tv/${BuildConfigVersion.name(this)}")
+            .setUserAgent(if (ownAgent) null else "dxbi-tv/${BuildConfigVersion.name(this)}")
             .setDefaultRequestProperties(headers)
 
         // The TV's own decoders first, falling back to software ones when a format isn't supported

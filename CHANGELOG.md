@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.21.0
+- **Every viewer has their own library.** A new viewer in *Who's watching?* now starts with an empty Library and Continue Watching instead of seeing everyone else's. What a viewer adds or plays goes in their library only; everything that was already in your account stays with the first viewer. Removing a title (or dismissing it from Continue Watching) that someone else also has only takes it out of yours, and removing a viewer clears the titles only they had. Calendar, new episode badges, Airing this week and stats follow the viewer too. Addons stay shared. Two viewers watching the same title still share its progress: that's kept by the Stremio account.
+- **dx.bi TV on phones and tablets: the keyboard opens again.** Tapping the email or password box on the login screen (or Search) did nothing on phones like the Galaxy S25: text boxes waited for the remote's OK button. A tap now types straight away; the remote works as before.
+- **dx.bi TV: addons that set their own browser identity for a link** now have only theirs sent with it, not dx.bi's as well.
+
 ## 2.20.0
 - **dx.bi TV plays the real intro.** TVs only showed a still "DX.BI" while dx.bi started, even with *Intro animation* and *Intro sound* on: the film was too heavy for the page on 2 GB sticks. The TV app now plays it itself, decoded in hardware, with its sound, your accent colour and Sound volume. OK or Back skips it. Needs the 2.20.0 TV app.
 - **Picture-in-picture keeps playing while you browse** (dx.bi app). It used to close as soon as you left the player. Now it moves to a small window that stays on top, picking up from the same second, and you can browse, search and open other titles meanwhile. It works like Discord's pop-out stream: drag it anywhere, pull its corner to make it bigger or smaller, double-click (or ⤢) to go back to full size where it was, and hover it to play/pause or close it. Playing something else closes it. During a watch party, picture-in-picture works as before.

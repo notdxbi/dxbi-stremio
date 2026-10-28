@@ -725,10 +725,14 @@
   // Text boxes (Search, an episode list's search): the TV's keyboard opened the moment the
   // selection reached one and took over the arrows, so the remote seemed stuck. A box is just a
   // stop on the way until OK is pressed on it; then the keyboard opens.
+  // (only for the remote: a tap on a phone or tablet has no OK to press, so it types straight away)
   const typable = (t) => t && t.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset|color|file|range|hidden)$/.test(t.type);
+  let lastTouch = 0;
+  window.addEventListener("pointerdown", () => { lastTouch = Date.now(); }, true);
   window.addEventListener("focusin", (e) => {
     const t = e.target;
     if (!typable(t) || t.readOnly || t.dataset.dxtvTyping || t.closest(".dxtv-modal")) return;
+    if (Date.now() - lastTouch < 1000) return;
     t.readOnly = true;
     t.dataset.dxtvLocked = "1";
   }, true);

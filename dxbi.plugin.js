@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.20.0
+ * @version 2.21.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.20.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.21.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -59,8 +59,11 @@
   // Stremio Web can drop window.core on some routes (Stremio Enhanced works around the same thing),
   // so keep the first working getState/dispatch we see and fall back to Enhanced's own copy.
   const keptCore = { getState: null, dispatch: null };
+  // set by viewerLibrary: gives each viewer their own library inside Stremio's core
+  let coreHook = null;
   function core() {
     const live = window.core || (window.services && window.services.core);
+    if (live && coreHook && !live.__dxViewers) coreHook(live);
     if (live) {
       if (!keptCore.getState && typeof live.getState === "function") keptCore.getState = live.getState.bind(live);
       if (!keptCore.dispatch && typeof live.dispatch === "function") keptCore.dispatch = live.dispatch.bind(live);
@@ -353,7 +356,7 @@
     { key: "rememberPlayback", type: "toggle", label: "Remember volume & speed", description: "Every stream starts at the volume and speed you last used.", defaultValue: DEFAULTS.rememberPlayback },
     { key: "playerKeys", type: "toggle", label: "Extra keyboard shortcuts", description: "0–9 jump to 0–90% of the video, and ? shows every shortcut.", defaultValue: DEFAULTS.playerKeys },
     { key: "watchStats", type: "toggle", label: "Watch stats", description: "Counts how long you watch (on this PC only). See them under your profile menu → Your stats.", defaultValue: DEFAULTS.watchStats },
-    { key: "whoIsWatching", type: "toggle", label: "Who's watching?", description: "With more than one viewer, choose who's watching at start. Each viewer has their own stats, volume and party name.", defaultValue: DEFAULTS.whoIsWatching },
+    { key: "whoIsWatching", type: "toggle", label: "Who's watching?", description: "With more than one viewer, choose who's watching at start. Each viewer has their own library, stats, volume and party name.", defaultValue: DEFAULTS.whoIsWatching },
     { key: "pip", type: "toggle", label: "Picture-in-picture button", description: "Keep watching in a small floating window while you use other apps. In the dx.bi app it also keeps playing while you browse dx.bi.", defaultValue: DEFAULTS.pip },
     { key: "addonTools", type: "toggle", label: "Addon order & backup", description: "Adds a button to the Addons page to reorder your addons (the order streams and catalogs appear in) and to back them up or restore them.", defaultValue: DEFAULTS.addonTools },
     { key: "externalPlayer", type: "toggle", label: "Open in mpv / VLC button", description: "Adds a button to the player that hands the stream to mpv or VLC (only shown when one is installed). Handy when a file stutters or won't play here: they handle more formats and are lighter on slower PCs.", defaultValue: DEFAULTS.externalPlayer },
@@ -8357,9 +8360,8 @@
   };
 
   // ---------------------------------------------------------------------------
-  // Viewers ("Who's watching?"). Each person gets their own watch stats, volume/speed and
-  // watch-party name. Library and Continue Watching come from the Stremio account, so they're
-  // shared (separate libraries need Stremio's own profiles, which Stremio limits to premium).
+  // Viewers ("Who's watching?"). Each person gets their own watch stats, volume/speed,
+  // watch-party name and library (see viewerLibrary). Addons stay shared.
   // ---------------------------------------------------------------------------
 
   const VIEWER_COLOURS = ["#e50914", "#2f80ff", "#1db954", "#f5a524", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
@@ -8394,6 +8396,7 @@
     remove(id) {
       const v = this.list();
       if (v.list.length < 2) return;
+      viewerLibrary.forget(id);
       v.list = v.list.filter((x) => x.id !== id);
       if (v.current === id) v.current = v.list[0].id;
       this.save(v);
@@ -8418,6 +8421,7 @@
       restrict.unlocked = false;
       hero.reset();
       restrict.apply();
+      viewerLibrary.switched();
     },
     setKids(id, age) {
       const v = this.list();
@@ -8431,6 +8435,218 @@
     anyKids() {
       return this.list().list.some((x) => x.kids);
     },
+  };
+
+  // ---------------------------------------------------------------------------
+  // A library for each viewer. The Stremio account has one library, so dx.bi remembers who added
+  // or played each title ("libraryOwners": id → viewer ids) and filters what Stremio's core hands
+  // its UI (Library, Continue Watching, title pages, Calendar, notifications, "in library" marks).
+  // Titles nobody claimed (everything from before, or added on another device) belong to the
+  // first viewer, so a new viewer starts with an empty library. Progress on a title two viewers
+  // share is still the account's.
+  // ---------------------------------------------------------------------------
+
+  const viewerLibrary = {
+    paged: {},
+
+    on() {
+      return viewers.list().list.length > 1;
+    },
+    owners() {
+      return store.get("libraryOwners", null) || {};
+    },
+    base() {
+      return viewers.list().list[0].id;
+    },
+    // who has this title: its claimed owners, or the first viewer for an unclaimed one
+    ownersOf(id) {
+      return this.owners()[id] || [this.base()];
+    },
+    mine(id) {
+      return !this.on() || this.ownersOf(id).includes(viewers.current().id);
+    },
+    shared(id) {
+      const me = viewers.current().id;
+      return this.ownersOf(id).some((x) => x !== me);
+    },
+
+    // The whole account library as Stremio keeps it (recent items, then the rest)
+    raw() {
+      const out = new Map();
+      for (const key of ["library", "library_recent"]) {
+        try {
+          const saved = JSON.parse(localStorage.getItem(key) || "null");
+          for (const item of Object.values((saved && saved.items) || {})) if (item && item._id) out.set(item._id, item);
+        } catch (_) { /* not there */ }
+      }
+      return out;
+    },
+
+    claim(id) {
+      if (!this.on() || this.mine(id)) return;
+      const owners = this.owners();
+      const me = viewers.current().id;
+      let next = owners[id];
+      if (next) next = [...next, me];
+      else {
+        // already in the first viewer's library: it stays there too
+        const item = this.raw().get(id);
+        next = item && (!item.removed || item.temp) ? [this.base(), me] : [me];
+      }
+      store.set("libraryOwners", { ...owners, [id]: next });
+    },
+    // Takes the title out of this viewer's library; true when someone else still has it
+    release(id) {
+      const me = viewers.current().id;
+      const rest = this.ownersOf(id).filter((x) => x !== me);
+      store.set("libraryOwners", { ...this.owners(), [id]: rest });
+      return rest.length > 0;
+    },
+
+    // Dismissed from Continue Watching by this viewer only (the title is shared): until played again
+    dismissed(id) {
+      const at = (store.get(viewers.key("cwDismissed"), null) || {})[id];
+      if (!at) return false;
+      const item = this.raw().get(id);
+      return !item || Date.parse((item.state && item.state.lastWatched) || 0) <= at;
+    },
+    dismiss(id) {
+      const key = viewers.key("cwDismissed");
+      store.set(key, { ...(store.get(key, null) || {}), [id]: Date.now() });
+    },
+
+    // A viewer is removed: titles only they had leave the account library
+    forget(id) {
+      const owners = this.owners();
+      const raw = this.raw();
+      const { dispatch } = core();
+      for (const [itemId, list] of Object.entries(owners)) {
+        if (!list.includes(id)) continue;
+        const rest = list.filter((x) => x !== id);
+        owners[itemId] = rest;
+        const item = raw.get(itemId);
+        if (!rest.length && item && !item.removed && dispatch) {
+          try { dispatch({ action: "Ctx", args: { action: "RemoveFromLibrary", args: itemId } }); } catch (_) { /* stays */ }
+        }
+        if (!rest.length) delete owners[itemId];
+      }
+      // (when the first viewer goes, the next one in line takes over the unclaimed titles)
+      store.set("libraryOwners", owners);
+    },
+
+    // Wrap Stremio's core (the same object its UI reads through) once
+    patch(live) {
+      live.__dxViewers = true;
+      const getState = live.getState.bind(live);
+      const dispatch = live.dispatch.bind(live);
+      this.dispatchRaw = dispatch;
+      live.getState = async (model) => {
+        const state = await getState(model);
+        try { if (this.on() && state && typeof state === "object") this.filter(model, state); } catch (err) { log("viewer library filter failed", err); }
+        return state;
+      };
+      live.dispatch = (action, ...rest) => {
+        try { if (this.on() && this.intercept(action) === false) return Promise.resolve(); } catch (err) { log("viewer library action failed", err); }
+        return dispatch(action, ...rest);
+      };
+      setTimeout(() => this.refresh(), 0);
+    },
+
+    intercept(a) {
+      if (!a || !a.args) return;
+      if (a.action === "Ctx") {
+        const { action: name, args } = a.args;
+        if (name === "AddToLibrary" && args && typeof args.id === "string") this.claim(args.id);
+        else if (name === "RemoveFromLibrary" && typeof args === "string") {
+          if (this.release(args)) { this.refresh(); return false; }
+        } else if ((name === "RewindLibraryItem" || name === "DismissNotificationItem") && typeof args === "string" && this.shared(args)) {
+          this.dismiss(args);
+          this.refresh();
+          return false;
+        }
+      } else if (a.action === "Load" && a.args.model === "Player") {
+        const id = a.args.args && a.args.args.metaRequest && a.args.args.metaRequest.path && a.args.args.metaRequest.path.id;
+        if (typeof id === "string") this.claim(id);
+      }
+    },
+
+    filter(model, s) {
+      const mine = (id) => this.mine(id);
+      if ((model === "library" || model === "continue_watching") && Array.isArray(s.catalog)) {
+        const all = s.catalog.length;
+        s.catalog = s.catalog.filter((i) => mine(i._id) && (model === "library" || !this.dismissed(i._id)));
+        // Stremio pages its library 100 at a time: fetch on while this viewer's page is thin
+        if (all && all % 100 === 0 && s.catalog.length < 40 && this.paged[model] !== all) {
+          this.paged[model] = all;
+          setTimeout(() => { try { this.dispatchRaw({ action: "LibraryWithFilters", args: { action: "LoadNextPage" } }, model); } catch (_) { /* scroll still loads */ } }, 0);
+        }
+      } else if (model === "continue_watching_preview" && Array.isArray(s.items)) {
+        s.items = s.items.filter((i) => {
+          const id = (i.libraryItem && i.libraryItem._id) || i._id || i.id;
+          return mine(id) && !this.dismissed(id);
+        });
+      } else if (model === "meta_details") {
+        if (s.libraryItem && !mine(s.libraryItem._id)) {
+          s.libraryItem = null;
+          this.unmark(s.metaItem, 0, true);
+        }
+      } else if (model === "calendar" && Array.isArray(s.items)) {
+        const raw = this.raw();
+        const libId = (id) => {
+          for (let x = String(id || ""); x; x = x.includes(":") ? x.slice(0, x.lastIndexOf(":")) : "") if (raw.has(x)) return x;
+          return null;
+        };
+        for (const day of s.items) {
+          if (!Array.isArray(day.items)) continue;
+          day.items = day.items.filter((i) => {
+            const id = libId(i.metaId || i.id);
+            return !id || mine(id);
+          });
+        }
+      } else if (model === "ctx" && s.notifications && s.notifications.items) {
+        for (const id of Object.keys(s.notifications.items)) if (!mine(id) || this.dismissed(id)) delete s.notifications.items[id];
+      } else if (model === "board" || model === "discover" || model === "search" || model === "local_search") {
+        this.unmark(s, 0, false);
+      }
+    },
+
+    // Titles in someone else's library don't show as in yours (or as watched by you)
+    unmark(node, depth, all) {
+      if (!node || typeof node !== "object" || depth > 8) return;
+      if (Array.isArray(node)) {
+        for (const x of node) this.unmark(x, depth + 1, all);
+        return;
+      }
+      if (typeof node.inLibrary === "boolean" && typeof node.id === "string" && (all || !this.mine(node.id))) {
+        node.inLibrary = false;
+        if (node.watched === true) node.watched = false;
+      }
+      if (all && typeof node.watched === "boolean") {
+        node.watched = false;
+        if ("progress" in node) node.progress = null;
+      }
+      for (const v of Object.values(node)) if (v && typeof v === "object") this.unmark(v, depth + 1, all);
+    },
+
+    // Have Stremio's UI read its library models again
+    refresh() {
+      if (typeof window.onCoreEvent !== "function") return;
+      try { window.onCoreEvent({ name: "NewState", args: ["ctx", "library", "continue_watching", "continue_watching_preview", "meta_details", "board", "discover", "search", "calendar"] }); } catch (_) { /* next state change */ }
+    },
+
+    switched() {
+      this.paged = {};
+      preview.library.at = 0;
+      libraryWatched.at = 0;
+      episodes.index.clear();
+      episodes.at = 0;
+      episodes.version++;
+      this.refresh();
+      scheduleSync();
+    },
+  };
+  coreHook = (live) => {
+    if (typeof live.getState === "function" && typeof live.dispatch === "function") viewerLibrary.patch(live);
   };
 
   function initials(name) {
@@ -8499,7 +8715,7 @@
             <button class="dxe-who-btn" data-manage>${this.managing ? "Done" : "Manage viewers"}</button>
             ${this.managing ? `<button class="dxe-who-btn" data-pin>${parentPin.isSet() ? "Change parental PIN" : "Set parental PIN"}</button>` : ""}
           </div>
-          <p class="dxe-who-note">Each viewer has their own watch stats, volume, hidden titles and watch-party name. A kids profile only shows titles rated for its age, without Settings or Addons. Set a parental PIN so kids can't switch profiles. Library and Continue Watching are shared by the Stremio account.</p>
+          <p class="dxe-who-note">Each viewer has their own watch stats, volume, hidden titles and watch-party name. A kids profile only shows titles rated for its age, without Settings or Addons. Each viewer also has their own library and Continue Watching (a new viewer starts empty); addons are shared. Set a parental PIN so kids can't switch profiles.</p>
         </div>`;
     },
 
@@ -9369,7 +9585,7 @@
     try {
       const raw = JSON.parse(localStorage.getItem("library_recent") || "null");
       const items = raw && raw.items ? Object.values(raw.items) : [];
-      return items.filter((i) => i && i._id && i.state);
+      return items.filter((i) => i && i._id && i.state && viewerLibrary.mine(i._id));
     } catch (_) {
       return [];
     }
