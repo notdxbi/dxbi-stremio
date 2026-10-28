@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.19.2
+- **dx.bi TV: torrents only play on the TV when you say so.** *Play torrents on this TV* is now off by default: torrents go through debrid (Real-Debrid, TorBox…) or a computer's streaming server. Picking a torrent with neither now asks: use a computer on your network, play it on this TV just this once, or cancel.
+- **dx.bi TV: trailers open in the YouTube app.** They started, paused after a few seconds and dropped back out. Back returns to dx.bi.
+- **dx.bi TV: updates install reliably.** An update is now checked after it downloads (every byte there, and really a dx.bi app) and downloaded again if it was cut short, and pressing *Update* twice no longer breaks it. This was the "There was a problem parsing the package" message.
+- **dx.bi TV: dx.bi in Settings' list.** dx.bi's settings are now also at the end of Settings' own list (after Shortcuts), as well as at the top of General.
+- **Interface sounds are off by default** on new installs. Switch them on in dx.bi settings → Intro & sounds.
+- **The profile menu's dx.bi entries line up** with Stremio's own (their icons sat against the text).
+
 ## 2.19.1
 - **Report a problem, from anywhere.** In the app and the plugin it's in your profile menu; on dx.bi TV it's at the top of *Settings*. Say what went wrong and dx.bi sends its developer the details that help fix it: version, device, settings, addon names, how many titles your library has, what each part is doing and recent errors. You get a short code to mention in Discord. No e-mail, passwords, keys or stream links are sent (links are cut down to the site's name).
 - **The Calendar fills in when the TMDB addon is down or removed.** Shows added from the TMDB addon's rows now get their episodes from Cinemeta (found by their IMDb id), so they appear in the Calendar, new episode badges and Airing this week again.

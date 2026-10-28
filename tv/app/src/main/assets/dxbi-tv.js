@@ -359,6 +359,18 @@
 
   function ensureSettingsEntry() {
     if (!/^#\/settings/.test(location.hash)) return;
+    // also in Settings' own list (General, Interface… Shortcuts), where people look for it
+    const shortcuts = document.querySelector('[class*="settings-container"] [data-section="shortcuts"], [class*="settings-content"] [data-section="shortcuts"]');
+    if (shortcuts && !shortcuts.parentElement.querySelector(".dxtv-side")) {
+      const side = document.createElement("div");
+      side.className = `${shortcuts.className} dxtv-side`;
+      side.tabIndex = 0;
+      side.title = "dx.bi";
+      side.textContent = "dx.bi";
+      side.addEventListener("click", settingsSheet);
+      side.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); settingsSheet(); } });
+      shortcuts.after(side);
+    }
     const content = document.querySelector('[class*="settings-content"] [class*="sections-container"]');
     if (!content || content.querySelector(".dxtv-settings-entry")) return;
     ensureStyle();
@@ -372,7 +384,7 @@
     problem.addEventListener("click", reportProblem);
     const server = document.createElement("button");
     server.className = "dxtv-row dxtv-settings-entry";
-    server.innerHTML = `<span>Streaming server for torrents<small>Torrents play on this TV by themselves. Optional: use dx.bi or Stremio running on a computer on your network instead (easier on slower sticks)</small></span><b>Find</b>`;
+    server.innerHTML = `<span>Streaming server for torrents<small>Torrents play through dx.bi or Stremio running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`;
     server.addEventListener("click", findServer);
     content.prepend(entry, server, problem);
   }
@@ -480,32 +492,51 @@
       await new Promise((r) => setTimeout(r, 250));
     }
     if (location.hash !== hash || !state || !state.selected) { handoff = null; return; }
+    const stream = state.selected.stream || {};
+    // Trailers are YouTube videos, which Stremio plays through a streaming server (none on a TV): the
+    // TV's YouTube app plays them instead, and Back comes straight back here
+    if (stream.ytId) {
+      handoff = null;
+      history.back();
+      native.openExternal(`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`);
+      return;
+    }
     silenceWebPlayer();
 
-    const stream = state.selected.stream || {};
     const ready = state.stream && state.stream.type === "Ready" && state.stream.content;
     // (for a torrent, Stremio gives a streaming server address even when none is running)
     let url = (ready && ready.url && (serverUp || !stream.infoHash) ? ready.url : null) || stream.url || null;
-    // A torrent and no streaming server: the TV fetches it itself (unless that's switched off in dx.bi
-    // settings, for people who only use debrid)
+    // A torrent and no streaming server. dx.bi TV can download it itself, but only when that's switched
+    // on in dx.bi settings (off by default: debrid, or a computer's streaming server, is the usual way);
+    // otherwise the choice is offered for this stream
     let torrent = false;
-    if (!url && stream.infoHash && readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents !== false) {
+    if (!url && stream.infoHash) {
+      let onTv = readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents === true;
+      if (!onTv) {
+        const choice = await dialog({
+          title: "This stream needs a streaming server",
+          message: "It's a torrent, and this TV has no streaming server. Use the one in dx.bi or Stremio on a computer on your network, or let this TV download it itself (it connects to other people sharing the file).\n\nDebrid streams play without either. To always play torrents on this TV: dx.bi settings → Play torrents on this TV.",
+          buttons: ["Find one on my network", "Play it on this TV", "Cancel"],
+        });
+        if (choice === 1 && location.hash === hash) onTv = true;
+        else {
+          handoff = null;
+          if (location.hash === hash) history.back();
+          if (choice === 0) findServer();
+          return;
+        }
+      }
       // (an addon's "sources" reach the player as "announce")
       const trackers = [...(stream.announce || []), ...(stream.sources || [])].filter((x) => /^tracker:/.test(x)).map((x) => x.replace(/^tracker:/, ""));
       const name = (stream.behaviorHints && stream.behaviorHints.filename) || "";
       url = native.torrentUrl(JSON.stringify({ infoHash: stream.infoHash, fileIdx: Number.isInteger(stream.fileIdx) ? stream.fileIdx : -1, trackers, name })) || null;
       torrent = !!url;
-    }
-    if (!url && stream.infoHash) {
-      handoff = null;
-      history.back();
-      const choice = await dialog({
-        title: "This stream needs a streaming server",
-        message: "Torrents play through Stremio's streaming server, and this TV doesn't have one. dx.bi can use the one in dx.bi or Stremio on a computer on your network.\n\nDebrid streams play without one.",
-        buttons: ["Find one on my network", "Cancel"],
-      });
-      if (choice === 0) findServer();
-      return;
+      if (!url) {
+        handoff = null;
+        history.back();
+        toast("Couldn't start the torrent. Try another stream.", 5000);
+        return;
+      }
     }
     if (!url && stream.externalUrl) {
       native.openExternal(stream.externalUrl);

@@ -203,8 +203,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openExternal(url: String) {
+        val uri = Uri.parse(url)
+        // YouTube (trailers): the TV's YouTube app, asked for by name. Google TV hands a plain YouTube
+        // link to a "no browser" stub instead of the app
+        if (uri.host?.endsWith("youtube.com") == true || uri.host == "youtu.be") {
+            for (pkg in listOf("com.google.android.youtube.tv", "com.amazon.firetv.youtube", "com.google.android.youtube")) {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage(pkg))
+                    return
+                } catch (_: Exception) { /* not on this TV: the next one */ }
+            }
+        }
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
         } catch (_: Exception) {
             Toast.makeText(this, "No app on this TV can open that link", Toast.LENGTH_SHORT).show()
         }

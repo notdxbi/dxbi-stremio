@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.19.1
+ * @version 2.19.2
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.19.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.19.2"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -133,10 +133,10 @@
     streamTools: true,
     splash: true,
     introSound: true,
-    uiSounds: true,
+    uiSounds: false,
     soundVolume: "subtle",
     focusColour: "white",
-    tvTorrents: true,
+    tvTorrents: false,
     animeTitles: true,
     trailerDelay: "0",
     watchParty: true,
@@ -163,7 +163,7 @@
         { label: "Mono", value: "white" },
       ],
     },
-    { key: "tvTorrents", type: "toggle", label: "Play torrents on this TV", description: "dx.bi TV downloads torrents itself, connecting to other people sharing them. Switch off to only play debrid streams (Real-Debrid, TorBox…), or torrents through a streaming server on a computer.", defaultValue: DEFAULTS.tvTorrents, tvOnly: true },
+    { key: "tvTorrents", type: "toggle", label: "Play torrents on this TV", description: "Off: torrents go through debrid (Real-Debrid, TorBox…) or a streaming server on a computer, and you're asked each time otherwise. On: dx.bi TV downloads torrents itself, connecting to other people sharing them.", defaultValue: DEFAULTS.tvTorrents, tvOnly: true },
     {
       key: "focusColour",
       type: "select",
@@ -9266,6 +9266,15 @@
         item.className = template.className + " dxe-menu-item";
         item.setAttribute("role", "button");
         item.innerHTML = `${icon}<div class="${(template.querySelector('[class*="nav-menu-option-label"]') || {}).className || ""}">${label}</div>`;
+        // Stremio's own icon class, for the same size and the same gap before the label (without it
+        // dx.bi's entries sat hard against their icons). Ours are outlines: kept unfilled.
+        const theirs = template.querySelector("svg");
+        const ours = item.querySelector("svg");
+        if (theirs && ours) {
+          ours.setAttribute("class", theirs.getAttribute("class") || "");
+          ours.style.fill = "none";
+          ours.style.stroke = "currentColor";
+        }
         item.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();

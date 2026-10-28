@@ -75,14 +75,17 @@ object Updates {
             val prefs = activity.getSharedPreferences("updates", Context.MODE_PRIVATE)
             if (prefs.getString("skipped", null) == latest) return@thread
             val assets = release.optJSONArray("assets") ?: return@thread
-            val url = (0 until assets.length()).map { assets.getJSONObject(it) }
-                .firstOrNull { it.optString("name") == APK_ASSET }?.optString("browser_download_url") ?: return@thread
+            // (only once GitHub has the whole file: an asset still uploading is listed too)
+            val asset = (0 until assets.length()).map { assets.getJSONObject(it) }
+                .firstOrNull { it.optString("name") == APK_ASSET && it.optString("state", "uploaded") == "uploaded" } ?: return@thread
+            val url = asset.optString("browser_download_url")
+            val size = asset.optLong("size", -1)
             activity.runOnUiThread {
                 if (activity.isFinishing) return@runOnUiThread
                 AlertDialog.Builder(activity)
                     .setTitle("dx.bi $latest is out")
                     .setMessage("You have $current. Update now? It downloads in the background, then Android asks you to install it.")
-                    .setPositiveButton("Update") { _, _ -> download(activity, url) }
+                    .setPositiveButton("Update") { _, _ -> download(activity, url, size, latest) }
                     .setNegativeButton("Not now", null)
                     .setNeutralButton("Skip this version") { _, _ -> prefs.edit().putString("skipped", latest).apply() }
                     .show()
@@ -90,7 +93,9 @@ object Updates {
         } catch (_: Exception) { /* offline: try again next launch */ }
     }
 
-    private fun download(activity: MainActivity, url: String) {
+    private val downloading = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun download(activity: MainActivity, url: String, size: Long, version: String) {
         // Android only installs apps from dx.bi once it's allowed to ("Install unknown apps")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.packageManager.canRequestPackageInstalls()) {
             try {
@@ -102,15 +107,24 @@ object Updates {
             }
             return
         }
+        // One download at a time: pressing Update twice had two downloads writing the same file, and
+        // Android then said "There was a problem parsing the package"
+        if (!downloading.compareAndSet(false, true)) {
+            Toast.makeText(activity, "The update is already downloading…", Toast.LENGTH_SHORT).show()
+            return
+        }
         Toast.makeText(activity, "Downloading the update…", Toast.LENGTH_SHORT).show()
         thread(name = "dxbi-apk-download") {
             try {
-                val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
-                val apk = File(dir, APK_ASSET)
-                http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                    if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
-                    apk.outputStream().use { out -> response.body!!.byteStream().copyTo(out) }
+                val dir = File(activity.cacheDir, "updates").apply { deleteRecursively(); mkdirs() }
+                val apk = File(dir, "dxbi-tv-$version.apk")
+                // A download cut short (slow Wi-Fi, the TV sleeping) is tried again before giving up
+                var problem: String? = null
+                for (attempt in 1..3) {
+                    problem = fetchApk(url, apk, size, version, activity)
+                    if (problem == null) break
                 }
+                if (problem != null) throw IllegalStateException(problem)
                 val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.updates", apk)
                 activity.runOnUiThread {
                     activity.startActivity(Intent(Intent.ACTION_VIEW)
@@ -118,9 +132,49 @@ object Updates {
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             } catch (e: Exception) {
-                activity.runOnUiThread { Toast.makeText(activity, "The update couldn't be downloaded (${e.message})", Toast.LENGTH_LONG).show() }
+                activity.runOnUiThread {
+                    if (activity.isFinishing) return@runOnUiThread
+                    AlertDialog.Builder(activity)
+                        .setTitle("The update didn't download")
+                        .setMessage("${e.message}\n\nTry again later, or install it with the Downloader app from:\ngithub.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi-tv.apk")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            } finally {
+                downloading.set(false)
             }
         }
+    }
+
+    /**
+     * Downloads the APK and makes sure Android will be able to install it: every byte there, and a
+     * readable dx.bi package of the version expected. Returns null when it's good, else what's wrong.
+     */
+    private fun fetchApk(url: String, apk: File, size: Long, version: String, activity: MainActivity): String? {
+        val partial = File(apk.parentFile, apk.name + ".part")
+        try {
+            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) return "the server answered ${response.code}"
+                partial.outputStream().use { out -> response.body!!.byteStream().copyTo(out) }
+            }
+        } catch (e: Exception) {
+            partial.delete()
+            return "the download was interrupted (${e.message ?: e.javaClass.simpleName})"
+        }
+        if (size > 0 && partial.length() != size) {
+            val got = partial.length()
+            partial.delete()
+            return "the download was incomplete ($got of $size bytes)"
+        }
+        @Suppress("DEPRECATION")
+        val info = activity.packageManager.getPackageArchiveInfo(partial.path, 0)
+        if (info == null || info.packageName != activity.packageName || info.versionName != version) {
+            partial.delete()
+            return "the downloaded file isn't a dx.bi $version app"
+        }
+        apk.delete()
+        if (!partial.renameTo(apk)) return "the update couldn't be saved"
+        return null
     }
 
     private fun get(url: String): String? =
