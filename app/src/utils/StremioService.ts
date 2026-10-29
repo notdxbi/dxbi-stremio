@@ -190,7 +190,7 @@ class StremioService {
 
         if (platform === "win32") {
             return new Promise(resolve => {
-                execFile("tasklist", ["/FI", 'IMAGENAME eq stremio-service.exe'], (_err, stdout) => {
+                execFile("tasklist", ["/FI", 'IMAGENAME eq stremio-service.exe'], { windowsHide: true }, (_err, stdout) => {
                     resolve(Boolean(stdout && stdout.includes("stremio-service.exe")));
                 });
             });
@@ -400,7 +400,7 @@ class StremioService {
     private static getPidForWindows(): number | null {
         const execSync = require('child_process').execSync;
         try {
-            const output = execSync('tasklist /FI "IMAGENAME eq stremio-service.exe"').toString();
+            const output = execSync('tasklist /FI "IMAGENAME eq stremio-service.exe"', { windowsHide: true }).toString();
             
             const lines = output.split('\n');
             

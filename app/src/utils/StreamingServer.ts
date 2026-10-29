@@ -16,6 +16,26 @@ class StreamingServer {
     private static streamingServerDir = join(Properties.enhancedPath, "streamingserver");
     private static serverScriptPath = join(this.streamingServerDir, "server.js");
     private static logFilePath = join(Properties.enhancedPath, "stremio-server.log");
+    private static hideWindowsPath = join(this.streamingServerDir, "dxbi-hide-windows.js");
+
+    // dx.bi is a GUI app without a console, so on Windows every console program server.js starts
+    // (ffmpeg, ffprobe, wmic, powershell for Local Files) opened a terminal window that flashed and closed.
+    // server.js never passes windowsHide, so this is loaded with --require to default it on.
+    private static readonly HIDE_WINDOWS_JS = `"use strict";
+const cp = require("child_process");
+for (const name of ["spawn", "spawnSync", "execFile", "execFileSync", "exec", "execSync"]) {
+    const original = cp[name];
+    cp[name] = function (file, ...rest) {
+        // spawn/execFile take an args array before the options
+        const at = Array.isArray(rest[0]) || (rest[0] == null && rest.length > 1) ? 1 : 0;
+        const options = rest[at];
+        if (options && typeof options === "object") rest[at] = { ...options, windowsHide: true };
+        else if (options == null) rest[at] = { windowsHide: true };
+        else rest.splice(at, 0, { windowsHide: true }); // a callback where the options would be
+        return original.call(this, file, ...rest);
+    };
+}
+`;
 
     private static getFFmpegUrl(): string {
         const platform =
@@ -60,7 +80,7 @@ class StreamingServer {
         try {
             // cmd.exe has no `which`; `where` lists every match, the first one is what runs
             const lookup = process.platform === "win32" ? `where ${binary}` : `which ${binary}`;
-            const result = execSync(lookup, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+            const result = execSync(lookup, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
             const path = result.split(/\r?\n/)[0].trim();
             if (path && existsSync(path)) {
                 if (this.canRun(path)) {
@@ -412,9 +432,20 @@ class StreamingServer {
 
         const logStream = createWriteStream(this.logFilePath, { flags: "a" });
 
+        const execArgv: string[] = [];
+        if (process.platform === "win32") {
+            try {
+                writeFileSync(this.hideWindowsPath, StreamingServer.HIDE_WINDOWS_JS, "utf8");
+                execArgv.push("--require", this.hideWindowsPath);
+            } catch (error) {
+                this.logger.warn("Couldn't write the hidden-window helper: " + error);
+            }
+        }
+
         setTimeout(() => {
             const child = fork(this.serverScriptPath, [], {
                 stdio: ["ignore", "pipe", "pipe", "ipc"],
+                execArgv,
                 env: {
                     ...process.env,
                     FFMPEG_BIN: ffmpegPath,
