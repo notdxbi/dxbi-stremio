@@ -292,7 +292,7 @@
     try {
       const code = await dx.report.send(r.value || "");
       document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
-      await dialog({ title: "Report sent", message: `Thanks! Your report code is ${code}.\nMention it in dx.bi's Discord (#help) so it can be matched to you.`, buttons: ["OK"] });
+      await dialog({ title: "Report sent", message: `Thanks! Your report code is ${code}.\nPost it in dx.bi's Discord (#bug-reports) so it can be matched to you.`, buttons: ["OK"] });
     } catch (err) {
       document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
       await dialog({ title: "Couldn't send the report", message: (err && err.message) || "Try again in a moment.", buttons: ["OK"] });

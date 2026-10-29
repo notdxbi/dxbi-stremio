@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.21.1
+- **Report a problem now points to #bug-reports.** After you send a report, dx.bi (app, plugin and TV) tells you to post your code in dx.bi's Discord **#bug-reports** instead of #help. The forum's guidelines now ask for that code instead of your system, version and player stats, which the report already carries.
+
 ## 2.21.0
 - **Every viewer has their own library.** A new viewer in *Who's watching?* now starts with an empty Library and Continue Watching instead of seeing everyone else's. What a viewer adds or plays goes in their library only; everything that was already in your account stays with the first viewer. Removing a title (or dismissing it from Continue Watching) that someone else also has only takes it out of yours, and removing a viewer clears the titles only they had. Calendar, new episode badges, Airing this week and stats follow the viewer too. Addons stay shared. Two viewers watching the same title still share its progress: that's kept by the Stremio account.
 - **dx.bi TV on phones and tablets: the keyboard opens again.** Tapping the email or password box on the login screen (or Search) did nothing on phones like the Galaxy S25: text boxes waited for the remote's OK button. A tap now types straight away; the remote works as before.
