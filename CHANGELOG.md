@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.21.2
+- **No more terminal windows flashing on Windows.** The dx.bi app's streaming server starts ffmpeg, ffprobe and other helpers in the background. On Windows each one opened a terminal window that flashed and closed. They now run hidden.
+- **Volume boost up to 200% with mpv.** Stremio's volume slider goes to 200%, but the built-in mpv player stopped at 130%, so the slider snapped back. mpv now goes up to 200%, and dx.bi remembers a boosted volume for each viewer. Thanks to EskimoDev (#36).
+
 ## 2.21.1
 - **Report a problem now points to #bug-reports.** After you send a report, dx.bi (app, plugin and TV) tells you to post your code in dx.bi's Discord **#bug-reports** instead of #help. The forum's guidelines now ask for that code instead of your system, version and player stats, which the report already carries.
 
