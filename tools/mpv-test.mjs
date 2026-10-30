@@ -454,8 +454,10 @@ ${steps.map(([kind, x, y]) => kind === "move" ? `[M]::SetCursorPos(${x}, ${y}) |
     mouse([["move", ex, ey], ["down"], ["move", ex - 30, ey], ["move", ex - 60, ey], ["move", ex - 90, ey], ["up"]]);
     await sleep(800);
     const [, , w2] = await pos();
-    if (Math.abs(ww - w2 - 90) <= 3) pass(`the right edge resizes the window (${ww} → ${w2})`);
-    else fail(`the right edge: width ${ww} → ${w2} (expected −90)`);
+    // (the edges stop at the window's minimum width, MIN_WIDTH in windowController.ts)
+    const expected = Math.max(760, ww - 90);
+    if (Math.abs(w2 - expected) <= 3) pass(`the right edge resizes the window (${ww} → ${w2})`);
+    else fail(`the right edge: width ${ww} → ${w2} (expected ${expected})`);
   }
 }
 
