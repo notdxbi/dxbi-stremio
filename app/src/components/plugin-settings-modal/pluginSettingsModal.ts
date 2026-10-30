@@ -131,7 +131,7 @@ export const pluginOptionsModal = {
                 
                 <div class="content-P2T0i" style="flex-shrink: 0; width: 50%; max-width: 300px;">
                     <label class="search-bar-k7MXd search-bar-container-p4tSt" style="width: 100%; padding: 0; margin: 0; display: block;">
-                        <input data-key="${setting.key}" size="1" autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false" tabindex="0" class="search-input-bAgAh text-input-hnLiz plugin-setting-input" type="text" placeholder="${setting.label}" value="${currentValue}" style="width: 100%; box-sizing: border-box; height: 42px; padding: 0 15px;">
+                        <input data-key="${setting.key}" size="1" autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false" tabindex="0" class="search-input-bAgAh text-input-hnLiz plugin-setting-input" type="text" placeholder="${setting.label}" value="${escapeAttr(String(currentValue))}" style="width: 100%; box-sizing: border-box; height: 42px; padding: 0 15px;">
                     </label>
                 </div>
             </div>`;

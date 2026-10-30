@@ -452,6 +452,8 @@ The settings are grouped, with a list to jump between groups and a search box:
 
 <br clear="right">
 
+For a custom subtitle font on desktop, choose *Subtitles → Subtitle font → Custom installed font* and enter its family name in *Custom subtitle font* (for example, *Tahoma* or *Noto Naskh Arabic*). The font must be installed on your computer. This applies to the built-in mpv player and browser subtitles; picture-based subtitles and ASS subtitles with original styling enabled keep their own appearance.
+
 <br>
 
 ## Everything built in

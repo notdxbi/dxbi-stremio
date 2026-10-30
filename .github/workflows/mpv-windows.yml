@@ -9,6 +9,7 @@ on:
       - "app/**"
       - "tools/mpv-test.mjs"
       - "tools/volume-test.mjs"
+      - "tools/subtitle-font-test.mjs"
       - "tools/window-test.mjs"
       - "dxbi.plugin.js"
       - ".github/workflows/mpv-windows.yml"
@@ -39,6 +40,9 @@ jobs:
           npm run dist
           npx electron-builder --win --x64 --dir --publish never
 
+      - name: Check custom subtitle fonts
+        shell: bash
+        run: node tools/subtitle-font-test.mjs "app/mpv/mpv.exe"
       - name: Check transparent window controls
         shell: bash
         run: node tools/window-test.mjs

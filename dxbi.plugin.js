@@ -112,6 +112,7 @@
     pip: true,
     subtitleStyle: "stremio",
     subtitleFont: "default",
+    subtitleCustomFont: "",
     subtitlesStart: "off",
     hdrSubtitles: "same",
     pictureSound: true,
@@ -258,15 +259,25 @@
       key: "subtitleFont",
       type: "select",
       label: "Subtitle font",
+      description: "For the built-in player, choose a font installed on this computer. Subtitles with original ASS styling enabled, and picture-based subtitles, can keep their own appearance.",
       defaultValue: DEFAULTS.subtitleFont,
       options: [
         { label: "Stremio default", value: "default" },
         { label: "Inter", value: "inter" },
         { label: "Arial", value: "arial" },
+        { label: "Tahoma", value: "tahoma" },
         { label: "Verdana", value: "verdana" },
         { label: "Georgia (serif)", value: "georgia" },
         { label: "Monospace", value: "mono" },
+        { label: "Custom installed font", value: "custom" },
       ],
+    },
+    {
+      key: "subtitleCustomFont",
+      type: "input",
+      label: "Custom subtitle font",
+      description: "Select Custom installed font above, then enter the font family name, such as Tahoma or Noto Naskh Arabic. Leave blank for the default font.",
+      defaultValue: DEFAULTS.subtitleCustomFont,
     },
     {
       key: "convertVideo",
@@ -391,7 +402,7 @@
     ["Hover cards & trailers", ["previews", "trailers", "trailerDelay"]],
     ["Browsing & library", ["watchedTitles", "librarySort", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey"]],
     ["Player", ["tvTorrents", "playerExtras", "remainingTime", "seekPreviews", "enhance", "pictureSound", "streamStats", "rememberPlayback", "playerKeys", "pip", "externalPlayer", "convertVideo"]],
-    ["Subtitles", ["subtitleStyle", "subtitleFont", "subtitlesStart", "hdrSubtitles"]],
+    ["Subtitles", ["subtitleStyle", "subtitleFont", "subtitleCustomFont", "subtitlesStart", "hdrSubtitles"]],
     ["Episodes & skipping", ["skipButtons", "autoSkip", "upNext", "preloadNext", "fillerGuide", "skipFiller"]],
     ["Watch party", ["watchParty", "partyFollow", "partyActivity", "partySounds"]],
     ["Intro & sounds", ["splash", "introSound", "uiSounds", "soundVolume"]],
@@ -7004,16 +7015,31 @@
     soft: "color: rgba(255,255,255,.92); background: transparent; font-weight: 400; text-shadow: 0 1px 3px rgba(0,0,0,.9);",
   };
   const SUB_FONTS = {
-    inter: "Inter, system-ui, sans-serif",
-    arial: "Arial, Helvetica, sans-serif",
-    verdana: "Verdana, Geneva, sans-serif",
-    georgia: "Georgia, 'Times New Roman', serif",
-    mono: "'JetBrains Mono', ui-monospace, monospace",
+    inter: { family: "Inter", css: "Inter, system-ui, sans-serif" },
+    arial: { family: "Arial", css: "Arial, Helvetica, sans-serif" },
+    tahoma: { family: "Tahoma", css: "Tahoma, sans-serif" },
+    verdana: { family: "Verdana", css: "Verdana, Geneva, sans-serif" },
+    georgia: { family: "Georgia", css: "Georgia, 'Times New Roman', serif" },
+    mono: { family: "monospace", css: "'JetBrains Mono', ui-monospace, monospace" },
   };
 
+  function selectedSubtitleFont() {
+    if (settings.subtitleFont === "custom") {
+      const family = String(settings.subtitleCustomFont || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 128);
+      // Quote a single family, rather than treating custom text as a CSS declaration or font list.
+      if (family) return { family, css: `${JSON.stringify(family)}, sans-serif` };
+    }
+    return Object.hasOwn(SUB_FONTS, settings.subtitleFont) ? SUB_FONTS[settings.subtitleFont] : { family: "sans-serif", css: "" };
+  }
+
   function applySubtitleStyle() {
+    const font = selectedSubtitleFont();
+    // mpv draws subtitles outside the page, so CSS alone cannot change their font.
+    // This option persists across streams; changing it also updates a video already playing.
+    window.__dxbiMpv?.set("sub-font", font.family);
     let el = document.getElementById("dx-sub-style");
-    const decl = (SUB_PRESETS[settings.subtitleStyle] || "") + (SUB_FONTS[settings.subtitleFont] ? ` font-family: ${SUB_FONTS[settings.subtitleFont]};` : "");
+    const decl = (SUB_PRESETS[settings.subtitleStyle] || "").replace(/;/g, " !important;")
+      + (font.css ? ` font-family: ${font.css} !important;` : "");
     if (!decl) {
       if (el) el.remove();
       return;
@@ -7023,10 +7049,9 @@
       el.id = "dx-sub-style";
       document.head.append(el);
     }
-    const important = decl.replace(/;/g, " !important;");
-    el.textContent = `#app [class*="player-container"] video::cue { ${important} }\n` +
-      `#app [class*="player-container"] video ~ div:not([class]) > div { ${important} }` +
-      (SUB_FONTS[settings.subtitleFont] ? `\n.dx-sub2 span { font-family: ${SUB_FONTS[settings.subtitleFont]} !important; }` : "");
+    el.textContent = `#app [class*="player-container"] video::cue { ${decl} }\n` +
+      `#app [class*="player-container"] video ~ div:not([class]) > div { ${decl} }` +
+      (font.css ? `\n.dx-sub2 span { font-family: ${font.css} !important; }` : "");
   }
   // Stremio turns subtitles on whenever its "Subtitles language" is set (English by default), and
   // Stremio Enhanced's embedded-subtitle loader falls back to English even when it isn't. "Off"
@@ -12842,6 +12867,7 @@
       tune.close();
       streamInfo.close();
       sub2.stop();
+      window.__dxbiMpv?.set("sub-font", "sans-serif");
       frame.ensure(null);
       document.documentElement.classList.remove("dx-hdr-subs");
       document.body.classList.remove("dx-watched-dim", "dx-watched-hide");
