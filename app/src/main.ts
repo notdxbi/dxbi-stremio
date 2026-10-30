@@ -10,6 +10,7 @@ import { app } from 'electron';
 if (process.platform === 'linux') app.commandLine.appendSwitch('gtk-version', '3');
 
 import { BrowserWindow, shell } from "electron";
+import { watchLoad } from "./core/LoadWatch";
 import StreamingServer from "./utils/StreamingServer";
 import Helpers from "./utils/Helpers";
 import StremioService from "./utils/StremioService";
@@ -120,6 +121,7 @@ async function createWindow() {
     win.webContents.once("did-fail-load", reveal);
     setTimeout(reveal, 6000);
     mainWindow.loadURL(URLS.STREMIO_WEB);
+    watchLoad(win);
         
     if (transparencyEnabled) {
         mainWindow.on('enter-full-screen', () => {

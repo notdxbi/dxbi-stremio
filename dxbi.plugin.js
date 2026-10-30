@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.21.2
+ * @version 2.21.3
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.21.2"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.21.3"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -787,10 +787,13 @@
     }
   }
 
-  // TV: every Home row's catalog is asked for as Home opens. Stremio otherwise fetches each one as
-  // it scrolls into view, and rebuilding Home for it mid-scroll froze a TV stick for up to a second.
+  // TV: every Home row's catalog is fetched before you get to it. Stremio otherwise fetches each one
+  // as it scrolls into view, and rebuilding Home for it mid-scroll froze a TV stick for up to a
+  // second. A few at a time, and never while the remote is moving: all at once, a long addon list
+  // (50 rows or more) held up the whole page as it opened.
   const homeRows = {
     timer: null,
+    BATCH: 8,
 
     preload(tries = 4) {
       if (!IN_TV) return;
@@ -805,8 +808,12 @@
           if (tries > 1) this.preload(tries - 1);
           return;
         }
-        if (board.catalogs.every((c) => c && c.content)) return;
-        dispatch({ action: "CatalogsWithExtra", args: { action: "LoadRange", args: { start: 0, end: count } } }, "board");
+        const next = board.catalogs.findIndex((c) => !c || !c.content);
+        if (next < 0) return;
+        if (performance.now() - keyNav.lastPress > 1200) {
+          dispatch({ action: "CatalogsWithExtra", args: { action: "LoadRange", args: { start: next, end: Math.min(next + this.BATCH, count) } } }, "board");
+        }
+        this.preload();
       }, 1500);
     },
   };
@@ -1938,6 +1945,7 @@
 
   const keyNav = {
     on: false,
+    lastPress: -Infinity,
     shield: null,
     from: null,
 
@@ -1945,6 +1953,7 @@
     onFocus: (e) => keyNav.focus(e),
 
     key(e) {
+      this.lastPress = performance.now();
       if (e.key === "Escape" && this.on && preview.el && preview.el.contains(document.activeElement)) {
         this.fromPreview(document.activeElement, e);
         return;
@@ -6785,7 +6794,6 @@
   .dxe-who-tile:hover .dxe-who-avatar, .dxe-who-tile:focus-visible .dxe-who-avatar { border-color: #fff; transform: scale(1.03); }
   .dxe-who-tile:hover, .dxe-who-tile.is-current, .dxe-who-tile:focus-visible { color: #fff; }
   .dxe-who-name { font: 500 1.05rem/1.2 Inter, system-ui, sans-serif !important; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dxe-who-del { color: #ff6b6b; font: 700 .8rem Inter, system-ui, sans-serif !important; }
   .dxe-who-btn { height: 2.8rem; padding: 0 1.6rem; border: 1px solid rgba(255,255,255,.4); background: transparent; color: rgba(255,255,255,.75); font: 600 .95rem Inter, system-ui, sans-serif !important; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
   .dxe-who-btn:hover, .dxe-who-btn:focus-visible { color: #fff; border-color: #fff; }
   .dxe-report { position: fixed; inset: 0; z-index: 100005; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); font-family: Inter, system-ui, sans-serif; }
@@ -6815,6 +6823,9 @@
   .dxe-who-opts { display: flex; flex-direction: column; gap: .35rem; align-items: center; }
   .dxe-who-opt { padding: .3rem .7rem; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; background: none; color: rgba(255,255,255,.75); font: 600 .78rem Inter, system-ui, sans-serif !important; cursor: pointer; }
   .dxe-who-opt:hover, .dxe-who-opt:focus-visible { border-color: #fff; color: #fff; outline: none; }
+  .dxe-who-opt.dxe-who-del { color: #ff6b6b; }
+  .dx-vol-tip { position: fixed; z-index: 100002; transform: translateX(-50%); padding: .2rem .5rem; border-radius: .35rem; background: rgba(15,15,18,.92); color: #fff; font: 600 .8rem Inter, system-ui, sans-serif !important; pointer-events: none; opacity: 0; transition: opacity .15s; }
+  .dx-vol-tip.is-on { opacity: 1; }
   .dxe-hidden-list { display: flex; flex-direction: column; gap: .5rem; width: min(34rem, 90vw); max-height: 55vh; overflow: auto; }
   .dxe-hidden-row { display: flex; align-items: center; gap: .9rem; padding: .5rem; border-radius: .5rem; background: rgba(255,255,255,.05); color: #fff; text-align: left; }
   .dxe-hidden-row img { width: 2.6rem; height: 3.9rem; object-fit: cover; border-radius: .25rem; background: #222; }
@@ -8709,6 +8720,8 @@
       this.el = el;
       this.render();
       requestAnimationFrame(() => el.classList.add("is-in"));
+      // the menu it was opened from hands focus back a moment after closing: take it again
+      for (const ms of [150, 450]) setTimeout(() => { if (this.el === el && !el.contains(document.activeElement)) this.takeFocus(); }, ms);
     },
 
     render() {
@@ -8717,6 +8730,10 @@
         this.renderHidden();
         return;
       }
+      // the remote keeps its place when the screen is redrawn
+      const was = this.el.contains(document.activeElement) ? document.activeElement : null;
+      const mark = was && [...was.attributes].find((a) => a.name.startsWith("data-"));
+      const place = mark ? `[${mark.name}${mark.value ? `="${CSS.escape(mark.value)}"` : ""}]` : null;
       const v = viewers.list();
       const level = (x) => KID_LEVELS.find((l) => l.age === Number(x.kids));
       const tiles = v.list.map((x) => `
@@ -8724,10 +8741,10 @@
         <button class="dxe-who-tile${x.id === v.current ? " is-current" : ""}" data-viewer="${esc(x.id)}">
           <span class="dxe-who-avatar" style="background:${esc(x.colour)}">${esc(initials(x.name))}${this.managing ? `<i data-edit="${esc(x.id)}" title="Rename">${ICONS.pencil}</i>` : ""}${level(x) ? `<b class="dxe-who-kids">Kids</b>` : ""}</span>
           <span class="dxe-who-name">${esc(x.name)}</span>
-          ${this.managing && v.list.length > 1 ? `<span class="dxe-who-del" data-del="${esc(x.id)}">${this.confirming === x.id ? "Click again to remove" : "Remove"}</span>` : ""}
         </button>
         ${this.managing ? `<button class="dxe-who-opt" data-kids="${esc(x.id)}" title="${esc(level(x) ? level(x).note : "Everything shows")}">Kids: ${esc(level(x) ? level(x).label : "Off")}</button>
-          <button class="dxe-who-opt" data-hiddenlist="${esc(x.id)}">Hidden titles (${(store.get(`hidden:${x.id}`, null) || []).length})</button>` : ""}
+          <button class="dxe-who-opt" data-hiddenlist="${esc(x.id)}">Hidden titles (${(store.get(`hidden:${x.id}`, null) || []).length})</button>
+          ${v.list.length > 1 ? `<button class="dxe-who-opt dxe-who-del" data-del="${esc(x.id)}">${this.confirming === x.id ? "Press again to remove" : "Remove"}</button>` : ""}` : ""}
         </div>`).join("");
       this.el.innerHTML = `
         <div class="dxe-who-inner">
@@ -8742,6 +8759,24 @@
           </div>
           <p class="dxe-who-note">Each viewer has their own watch stats, volume, hidden titles and watch-party name. A kids profile only shows titles rated for its age, without Settings or Addons. Each viewer also has their own library and Continue Watching (a new viewer starts empty); addons are shared. Set a parental PIN so kids can't switch profiles.</p>
         </div>`;
+      this.takeFocus(place);
+    },
+
+    takeFocus(place) {
+      ((place && this.el.querySelector(place)) || this.el.querySelector(".dxe-who-tile.is-current") || this.el.querySelector("button"))?.focus({ preventScroll: true });
+    },
+
+    // The remote's Back button: one step out
+    back() {
+      if (this.hiddenOf) this.hiddenOf = null;
+      else if (this.managing) {
+        this.managing = false;
+        this.confirming = null;
+      } else {
+        this.close();
+        return;
+      }
+      this.render();
     },
 
     renderHidden() {
@@ -8792,11 +8827,12 @@
         this.render();
         return;
       }
-      const edit = e.target.closest("[data-edit]");
+      // (while managing, choosing a viewer renames them: the only way to with a remote)
+      const edit = e.target.closest("[data-edit]") || (this.managing && e.target.closest("[data-viewer]"));
       const del = e.target.closest("[data-del]");
       if (edit || del) {
         e.stopPropagation();
-        const id = (edit || del).dataset.edit || (edit || del).dataset.del;
+        const id = del ? del.dataset.del : edit.dataset.edit || edit.dataset.viewer;
         const viewer = viewers.list().list.find((x) => x.id === id);
         if (!viewer) return;
         if (del) {
@@ -9422,6 +9458,8 @@
 
     // The desktop dialog (dx.bi TV draws its own, made for the remote)
     open() {
+      // TV: its own dialog, made for the remote
+      if (window.__dxbiTv && window.__dxbiTv.reportProblem) return window.__dxbiTv.reportProblem();
       ensureExtrasStyle();
       document.querySelectorAll(".dxe-report").forEach((n) => n.remove());
       const el = document.createElement("div");
@@ -9735,6 +9773,7 @@
         const item = document.createElement("div");
         item.className = template.className + " dxe-menu-item";
         item.setAttribute("role", "button");
+        item.tabIndex = 0; // a remote can only stop on what takes focus
         item.innerHTML = `${icon}<div class="${(template.querySelector('[class*="nav-menu-option-label"]') || {}).className || ""}">${label}</div>`;
         // Stremio's own icon class, for the same size and the same gap before the label (without it
         // dx.bi's entries sat hard against their icons). Ours are outlines: kept unfilled.
@@ -9752,6 +9791,12 @@
           document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
           fn();
         });
+        item.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          e.stopPropagation();
+          item.click();
+        });
         return item;
       };
       const items = [];
@@ -9759,6 +9804,60 @@
       if (settings.whoIsWatching) items.push(make("Who's watching?", ICONS.people, () => whoIsWatching.open()));
       items.push(make("Report a problem", ICONS.bug, () => report.open()));
       template.before(...items);
+    },
+  };
+
+  // ---------------------------------------------------------------------------
+  // The volume as a number, while Stremio's slider is hovered or the volume changes
+  // ---------------------------------------------------------------------------
+  const volumeTip = {
+    el: null,
+    timer: null,
+    SLIDER: '#app [class*="control-bar-container"] [class*="volume-slider"]',
+
+    onChange: (e) => {
+      if (e.target.tagName === "VIDEO" && currentRoute() === "player") volumeTip.show(e.target, 1200);
+    },
+    onOver: (e) => {
+      if (!e.target.closest || !e.target.closest('[class*="volume-slider"]')) return;
+      const video = document.querySelector('#app [class*="player-container"] video');
+      if (video) volumeTip.show(video, e.type === "pointerout" ? 500 : 0);
+    },
+
+    show(video, hideAfter) {
+      const slider = document.querySelector(this.SLIDER);
+      // over the speaker button: the slider itself only opens while hovered
+      const anchor = slider && (slider.previousElementSibling || slider.parentElement);
+      const box = anchor && anchor.getBoundingClientRect();
+      if (!box || !box.width) return;
+      if (!this.el) {
+        ensureExtrasStyle();
+        this.el = document.createElement("div");
+        this.el.className = "dx-vol-tip";
+        document.body.append(this.el);
+      }
+      this.el.textContent = video.muted ? "Muted" : `${Math.round(video.volume * 100)}%`;
+      this.el.style.left = `${box.left + box.width / 2}px`;
+      this.el.style.top = `calc(${box.top}px - 2rem)`;
+      this.el.classList.add("is-on");
+      clearTimeout(this.timer);
+      if (hideAfter) this.timer = setTimeout(() => this.el?.classList.remove("is-on"), hideAfter);
+    },
+
+    start() {
+      if (IN_TV) return;
+      document.addEventListener("volumechange", this.onChange, true);
+      document.addEventListener("pointerover", this.onOver, true);
+      document.addEventListener("pointerout", this.onOver, true);
+    },
+
+    stop() {
+      clearTimeout(this.timer);
+      document.removeEventListener("volumechange", this.onChange, true);
+      document.removeEventListener("pointerover", this.onOver, true);
+      document.removeEventListener("pointerout", this.onOver, true);
+      this.el?.remove();
+      this.el = null;
     },
   };
 
@@ -12811,6 +12910,7 @@
     });
     window.addEventListener("keydown", keys.onKey, true);
     window.addEventListener("keydown", streamInfo.onKey, true);
+    volumeTip.start();
     window.addEventListener("message", trailer.onMessage);
     window.addEventListener("beforeunload", onLeave);
     fixThemeLink();
@@ -12867,6 +12967,7 @@
       tune.close();
       streamInfo.close();
       sub2.stop();
+      volumeTip.stop();
       window.__dxbiMpv?.set("sub-font", "sans-serif");
       frame.ensure(null);
       document.documentElement.classList.remove("dx-hdr-subs");

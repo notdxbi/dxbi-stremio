@@ -43,6 +43,7 @@ jobs:
       - name: Check custom subtitle fonts
         shell: bash
         run: node tools/subtitle-font-test.mjs "app/mpv/mpv.exe"
+
       - name: Check transparent window controls
         shell: bash
         run: node tools/window-test.mjs

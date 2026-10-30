@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.21.3
+- **dx.bi TV: Who's watching? works with the remote.** The remote skipped dx.bi's entries in the profile menu, so viewers couldn't be added on a TV, and with one viewer the picker never shows at start. The entries can be reached now, and *Who's watching?* is also in Settings. On its screen the selection starts on the current viewer, Back steps out, and in Manage viewers you can rename a viewer by choosing them and remove them with the Remove button.
+- **dx.bi TV: Report a problem from the profile menu** opens the same remote-friendly dialog as Settings.
+- **dx.bi TV: less lag on 4K TVs.** They drew the page at 3840 pixels, four times the work of 1080p, often with under 2 GB of memory. The page is now drawn at 1080p and scaled up. Videos still play at full resolution, in their own window.
+- **dx.bi TV: lots of addons no longer hold up Home.** Every row used to be fetched at once when Home opened. Rows now load eight at a time, and wait while you're moving around.
+- **dx.bi TV: no more dead end when no streaming server is found.** The message now offers *Play it on this TV* when a torrent is waiting, and mentions the Windows firewall.
+- **dx.bi app: a warning when Stremio is slow to load.** Stremio's web app is downloaded from web.stremio.com at every start. If that takes more than 45 seconds, dx.bi says so instead of staying on a black screen, and offers to keep waiting or try again. The message closes by itself once Stremio appears.
+- **Volume percentage in the player.** The volume shows as a number above the speaker button while you hover or drag the slider, or change the volume with the keyboard.
+- **Custom subtitle fonts in the mpv player.** Pick from the list, or choose *Custom installed font* and type the name of a font installed on your computer, useful for Arabic and other non-Latin subtitles. Thanks to EskimoDev (#43).
+- **Windowed mpv on Windows.** The picture no longer disappears behind a blank surface in a window, and the minimize, maximize and close buttons no longer flicker during playback. Thanks to EskimoDev (#42).
+
 ## 2.21.2
 - **No more terminal windows flashing on Windows.** The dx.bi app's streaming server starts ffmpeg, ffprobe and other helpers in the background. On Windows each one opened a terminal window that flashed and closed. They now run hidden.
 - **Volume boost up to 200% with mpv.** Stremio's volume slider goes to 200%, but the built-in mpv player stopped at 130%, so the slider snapped back. mpv now goes up to 200%, and dx.bi remembers a boosted volume for each viewer. Thanks to EskimoDev (#36).

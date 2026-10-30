@@ -228,6 +228,7 @@
   // a computer on the same network has one (it listens on the network), so the app looks for it.
   // ---------------------------------------------------------------------------
   let serversWaiting = null;
+  let playHereOnce = null; // the one stream chosen to play on this TV when no server turned up
   tv.serversFound = (urls) => {
     if (serversWaiting) serversWaiting(Array.isArray(urls) ? urls : []);
     serversWaiting = null;
@@ -250,8 +251,9 @@
 
   const serverName = (url) => /\/\/127\.0\.0\.1:/.test(url) ? "This TV (Stremio's app)" : url.replace(/^http:\/\/|\/$/g, "");
 
-  // Resolves true once a server has been picked
-  async function findServer() {
+  // Resolves true once a server has been picked. `playHere`: a stream is waiting, so if there's no
+  // server the choice to let this TV play it is still there
+  async function findServer(playHere) {
     for (;;) {
       toast("Looking for dx.bi or Stremio on your network…", 6000);
       const urls = await scanForServers();
@@ -259,10 +261,11 @@
       if (!urls.length) {
         const again = await dialog({
           title: "No streaming server found",
-          message: "Open dx.bi or Stremio on a computer connected to the same network as this TV, leave it running, then try again.\n\nDebrid streams play without a streaming server.",
-          buttons: ["Try again", "Close"],
+          message: "Open dx.bi or Stremio on a computer connected to the same network as this TV, leave it running, then try again. On Windows, it also has to be allowed through the firewall on private networks.\n\nDebrid streams play without a streaming server.",
+          buttons: playHere ? ["Try again", "Play it on this TV", "Close"] : ["Try again", "Close"],
         });
         if (again === 0) continue;
+        if (playHere && again === 1) playHere();
         return false;
       }
       const pick = await dialog({
@@ -278,7 +281,7 @@
   }
 
   // Report a problem: a description typed with the remote, then the plugin's report goes to the developer
-  async function reportProblem() {
+  const reportProblem = tv.reportProblem = async () => {
     const dx = window.__dxbi;
     if (!dx || !dx.report) { toast("dx.bi hasn't finished loading yet. Try again in a moment."); return; }
     const r = await dialog({
@@ -297,7 +300,7 @@
       document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
       await dialog({ title: "Couldn't send the report", message: (err && err.message) || "Try again in a moment.", buttons: ["OK"] });
     }
-  }
+  };
 
   // dx.bi's settings: an entry at the top of Stremio's Settings, opening a list made for the remote
   // Options for dx.bi's in-page player, which the TV doesn't use (it has its own player)
@@ -387,8 +390,12 @@
     const server = document.createElement("button");
     server.className = "dxtv-row dxtv-settings-entry";
     server.innerHTML = `<span>Streaming server for torrents<small>Torrents play through dx.bi or Stremio running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`;
-    server.addEventListener("click", findServer);
-    content.prepend(entry, server, problem);
+    server.addEventListener("click", () => findServer());
+    const who = document.createElement("button");
+    who.className = "dxtv-row dxtv-settings-entry";
+    who.innerHTML = `<span>Who's watching?<small>Add viewers and switch between them. Each viewer has their own library and Continue Watching</small></span><b>Open</b>`;
+    who.addEventListener("click", () => { if (window.__dxbi && window.__dxbi.whoIsWatching) window.__dxbi.whoIsWatching.open(); });
+    content.prepend(entry, who, server, problem);
   }
 
   // ---------------------------------------------------------------------------
@@ -513,7 +520,8 @@
     // otherwise the choice is offered for this stream
     let torrent = false;
     if (!url && stream.infoHash) {
-      let onTv = readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents === true;
+      let onTv = playHereOnce === hash || readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents === true;
+      playHereOnce = null;
       if (!onTv) {
         const choice = await dialog({
           title: "This stream needs a streaming server",
@@ -524,7 +532,7 @@
         else {
           handoff = null;
           if (location.hash === hash) history.back();
-          if (choice === 0) findServer();
+          if (choice === 0) findServer(() => { playHereOnce = hash; location.hash = hash; });
           return;
         }
       }
@@ -665,6 +673,8 @@
   // ---------------------------------------------------------------------------
   tv.back = () => {
     if (openModal) { closeModal(); return true; }
+    const who = window.__dxbi && window.__dxbi.whoIsWatching;
+    if (who && who.el) { who.back(); return true; }
     const sheet = document.querySelector(".dxe-modal");
     if (sheet) {
       const close = sheet.querySelector("[data-act=close]");

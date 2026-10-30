@@ -41,6 +41,25 @@ class MainActivity : AppCompatActivity() {
     private var playbackListener: PlaybackBus.Listener? = null
     private var intro: Intro? = null
 
+    /**
+     * A 4K TV would draw the page at 3840 px, four times the work and memory of 1080p, on hardware
+     * that often has under 2 GB: the page is drawn at 1080p and scaled up. Videos aren't affected,
+     * they play in their own window.
+     */
+    private fun webSize(): FrameLayout.LayoutParams {
+        val full = resources.displayMetrics
+        val phone = Bridge(this).isPhone()
+        if (phone || full.widthPixels <= MAX_PAGE_WIDTH) {
+            return FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        }
+        val scale = full.widthPixels / MAX_PAGE_WIDTH.toFloat()
+        web.pivotX = 0f
+        web.pivotY = 0f
+        web.scaleX = scale
+        web.scaleY = scale
+        return FrameLayout.LayoutParams(MAX_PAGE_WIDTH, Math.round(full.heightPixels / scale))
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) WebView.setWebContentsDebuggingEnabled(true)
         web = WebView(this)
         val root = FrameLayout(this)
-        root.addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        root.addView(web, webSize())
         setContentView(root)
         // Only when dx.bi is opened, not when the screen is rebuilt (after a page crash, a turned phone)
         if (savedInstanceState == null) intro = Intro(this, root).also { it.start() }
@@ -298,6 +317,7 @@ class MainActivity : AppCompatActivity() {
         const val STREMIO_ORIGIN = "https://web.stremio.com"
         const val STREMIO_URL = "https://web.stremio.com/"
         const val MIN_WEBVIEW = 100
+        private const val MAX_PAGE_WIDTH = 1920
         // SPLASH_READY in dxbi.plugin.js (Home's rows, a details page, Settings…)
         private const val PAGE_READY = """[class*="meta-item-container"], [class*="metadetails-container"], [class*="player-container"], [class*="settings-content"], [class*="addons-content"]"""
     }
