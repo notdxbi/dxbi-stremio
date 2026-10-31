@@ -12,6 +12,8 @@
   <a href="#install"><b>⬇ Download dx.bi for Windows, Mac, Linux or your TV</b></a>
   &nbsp;·&nbsp;
   <a href="https://discord.gg/nnVBjqZ84F"><b>💬 Join the dx.bi Discord</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://buymeacoffee.com/notdxbi"><b>☕ Support dx.bi</b></a>
 </p>
 
 <p align="center">
@@ -19,6 +21,7 @@
   <img alt="Windows · macOS · Linux · Android TV · Fire TV" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV%20·%20Fire%20TV-222?style=flat-square">
   <a href="NOTICE.md"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-222?style=flat-square"></a>
   <a href="https://discord.gg/nnVBjqZ84F"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
+  <a href="https://buymeacoffee.com/notdxbi"><img alt="Buy Me a Coffee" src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=black"></a>
 </p>
 
 <p align="center">

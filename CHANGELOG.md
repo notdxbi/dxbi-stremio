@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **Support dx.bi.** The dx.bi app has a *Support dx.bi* button in Settings → About, and dx.bi TV has a *Support dx.bi* row in Settings with a code to scan with your phone. dx.bi stays free.
+
 ## 2.21.3
 - **dx.bi TV: Who's watching? works with the remote.** The remote skipped dx.bi's entries in the profile menu, so viewers couldn't be added on a TV, and with one viewer the picker never shows at start. The entries can be reached now, and *Who's watching?* is also in Settings. On its screen the selection starts on the current viewer, Back steps out, and in Manage viewers you can rename a viewer by choosing them and remove them with the Remove button.
 - **dx.bi TV: Report a problem from the profile menu** opens the same remote-friendly dialog as Settings.
