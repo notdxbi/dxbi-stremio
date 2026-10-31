@@ -122,7 +122,8 @@ class MainActivity : AppCompatActivity() {
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
-                if (url.host == "web.stremio.com") return false
+                // Embedded trailers stay in the page
+                if (!request.isForMainFrame || url.host == "web.stremio.com") return false
                 if (url.scheme == "stremio") {
                     openStremioLink(url)
                     return true
@@ -139,6 +140,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             // The page takes the details from PlaybackBus (a restarted page picks them up as it loads)
+            override fun onPartyTick(positionMs: Long, durationMs: Long, paused: Boolean, buffering: Boolean, rate: Float) {
+                js("window.__dxbiTv && window.__dxbiTv.onPartyTick($positionMs, $durationMs, $paused, $buffering, $rate)")
+            }
+
+            override fun onPartyLeave() {
+                js("window.__dxbi && window.__dxbi.partyLeave()")
+            }
+
             override fun onClosed() {
                 js("window.__dxbiTv && window.__dxbiTv.playerClosed && window.__dxbiTv.playerClosed()")
             }
@@ -168,7 +177,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         hideSystemBars()
-        if (::web.isInitialized) web.requestFocus()
+        if (::web.isInitialized) {
+            web.requestFocus()
+            Updates.onResume(this)
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

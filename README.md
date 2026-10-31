@@ -220,6 +220,8 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 - **Sharper posters** — bigger posters load when your screen can show them. On a TV, only the title you're on.
 
+- **Colours from the title** — a title's page and player take a colour from its artwork, always in a shade white text reads on. Black and white films keep your accent.
+
 - **Watched titles** — optionally dim or hide what you've already seen in Discover, Search and Home.
 
 ### The player
@@ -463,7 +465,13 @@ The settings are grouped, with a list to jump between groups and a search box:
 
 <br clear="right">
 
+On desktop, *Subtitle style* applies the selected colours, outline, shadow and background to the built-in mpv player and browser subtitles. Choose *Stremio default* to restore Stremio's own appearance settings. Size and position stay under Stremio's subtitle controls.
+
 For a custom subtitle font on desktop, choose *Subtitles → Subtitle font → Custom installed font* and enter its family name in *Custom subtitle font* (for example, *Tahoma* or *Noto Naskh Arabic*). The font must be installed on your computer. This applies to the built-in mpv player and browser subtitles; picture-based subtitles and ASS subtitles with original styling enabled keep their own appearance.
+
+The Home billboard, dx.bi previews and wide Continue Watching cards use your configured catalog and metadata addons. To see French (or another language's) titles and descriptions, configure an addon that supplies that language; changing Stremio's interface language alone does not translate addon content. Unavailable metadata falls back to Cinemeta.
+
+French interface settings also translate the billboard controls. Artwork comes from the addon; when a translated title has no title art, the billboard displays it as text instead of forcing an English logo. In a non-English interface the billboard picks its titles from your addons' catalogs; in English it keeps Cinemeta's Popular titles. The IMDb-rated and children's billboard selections keep their existing rosters.
 
 <br>
 

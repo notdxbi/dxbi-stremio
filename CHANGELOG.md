@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.23.0
+- **Colours from the title.** A title's page and its player take a colour from its artwork: Dune goes orange, Avatar blue. The main button, other accent-coloured buttons and the seek bar follow it, always in a shade white text can be read on. Black and white or very muted artwork keeps your accent colour, and so does the Mono accent. Switch it off with *Match each title's colours* in Look. It works on dx.bi TV too, including the seek bar.
+- **dx.bi TV: trailers play inside dx.bi.** They used to flash the player screen and then open the YouTube app. Now they open straight in dx.bi's own full-screen trailer player. OK pauses, left and right skip 10 seconds, and Back returns to the title. The YouTube app is only used for the few trailers whose owners don't allow them to be played elsewhere.
+- **dx.bi TV has dx.bi's player.** The plain Android controls are gone. The TV player is now laid out like the one on a computer: back and the clock at the top, the times and seek bar in your accent colour, play, 10-second skips and next episode on the left, the title in the middle, and stream stats, picture, speed, subtitles and audio on the right.
+- **Subtitle timing on dx.bi TV.** Move subtitles earlier or later, a quarter of a second at a time, from the subtitles button.
+- **Dialogue boost and Night mode on dx.bi TV.** The same sound modes as on a computer, under Picture & sound. Sound sent straight to an AV receiver as Dolby or DTS can't be changed.
+- **Zoom on dx.bi TV.** 110%, 125%, 133%, and Remove black bars, which makes wide films bigger on screens wider than the film's file (Android 8 and later).
+- **Up next on dx.bi TV.** A card with the next episode's picture counts down over the credits, and the next episode starts with the same release when dx.bi finds it.
+- **Android phones.** The player turns upright, and the phone layout now works on its side too: text was tiny and the profile menu ran off the screen. Phones no longer mention "this TV" or the remote.
+- **Watch party on dx.bi TV.** Start or join a party from the people button at the top, with the remote. Play, pause and jumps stay in sync with everyone, you follow the host to a new episode, and a Party button in the player shows the code and who's watching, and lets you leave.
+- **dx.bi TV finds updates more reliably.** It used to check only on a full start, which can be days apart on a TV. It now also checks when you come back to it, at most every 6 hours, and still finds an update when GitHub's limit on update checks has been reached.
+- **dx.bi TV: Update is the selected button.** The update message used to open on *Skip this version*, so pressing OK skipped it. After you allow dx.bi to install apps, the download now carries on by itself.
+- **dx.bi TV: Up in Settings no longer skips rows.** After the page had scrolled, Up jumped past rows above the screen to the top bar.
+- **dx.bi TV: Find streaming server lists the TV once.** A server on the TV itself used to show up twice.
+- **Subtitle styles in the mpv player.** *Subtitle style* now changes the colours, outline, shadow and background in the built-in mpv player too, not only in the browser player. *Stremio default* puts your Stremio settings back. Thanks to EskimoDev (#46).
+- **Your language on the billboard.** The billboard, hover cards and wide Continue Watching cards now use your own metadata addons, so an addon set to French shows French titles and descriptions. In a non-English interface the billboard also picks its titles from your addons. The billboard buttons are translated into French. In English the billboard still shows what's popular now. Thanks to EskimoDev (#52).
+
 ## 2.22.1
 - **dx.bi's settings are back.** In 2.22.0 the dx.bi app and Stremio Enhanced refused all of dx.bi's settings because of one new option, so the Settings button disappeared. Your saved settings were kept and kept working. On dx.bi TV, *My List on Home* now shows as a normal choice.
 

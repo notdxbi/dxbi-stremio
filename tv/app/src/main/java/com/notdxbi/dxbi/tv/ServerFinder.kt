@@ -33,6 +33,8 @@ object ServerFinder {
             pool.shutdown()
             pool.awaitTermination(20, TimeUnit.SECONDS)
             pool.shutdownNow()
+            // Stremio on this TV also answers on its own network address: list it once
+            if ("127.0.0.1" in found) found.removeAll(ownAddresses())
             // This TV first, then in address order
             val sorted = found.sortedWith(compareBy({ it != "127.0.0.1" }, { it.substringAfterLast('.').toIntOrNull() ?: 0 }))
             done(sorted.map { "http://$it:$PORT/" })
@@ -40,14 +42,15 @@ object ServerFinder {
     }
 
     /** The first three parts of each IPv4 address this TV has on a local network (Wi-Fi, Ethernet) */
-    private fun localPrefixes(): List<String> = try {
+    private fun localPrefixes(): List<String> = ownAddresses().map { it.substringBeforeLast('.') }.distinct()
+
+    private fun ownAddresses(): List<String> = try {
         NetworkInterface.getNetworkInterfaces().toList()
             .filter { it.isUp && !it.isLoopback }
             .flatMap { it.inetAddresses.toList() }
             .filterIsInstance<Inet4Address>()
             .filter { it.isSiteLocalAddress }
-            .map { it.hostAddress!!.substringBeforeLast('.') }
-            .distinct()
+            .map { it.hostAddress!! }
     } catch (_: Exception) {
         emptyList()
     }

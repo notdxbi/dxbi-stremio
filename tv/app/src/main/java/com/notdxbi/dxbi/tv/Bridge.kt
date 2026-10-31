@@ -54,6 +54,13 @@ class Bridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun activePlayback(token: String): String = if (!allowed(token)) "" else PlaybackBus.activePlayback ?: ""
 
+    /** Watch party: what the party wants the native player to do */
+    @JavascriptInterface
+    fun control(token: String, json: String) {
+        if (!allowed(token)) return
+        PlaybackBus.player?.let { player -> player.runOnUiThread { player.control(json) } }
+    }
+
     /** How the native player closed while the page was restarting (so it couldn't be told), or "" */
     @JavascriptInterface
     fun takePendingClose(token: String): String {

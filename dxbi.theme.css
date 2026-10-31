@@ -4755,3 +4755,15 @@ body[data-dx-kids] #app [class*="vertical-nav-bar"] a[href="#/settings"] {
 .dx-phone #app [class*="meta-item-container"]:focus-within [class*="poster-container"]::after {
     box-shadow: none !important;
 }
+
+/* Phones on their side: the profile menu scrolls when it's taller than the screen */
+.dx-phone #app [class*="nav-menu-container"] {
+    max-height: calc(100vh - 4.5rem) !important;
+    overflow-y: auto !important;
+}
+
+/* Addons page on a phone on its side: the search box gives way to the Order & backup button */
+.dx-phone .dxe-addon-btn {
+    flex: none;
+    white-space: nowrap;
+}

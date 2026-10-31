@@ -15,7 +15,13 @@ object PlaybackBus {
     interface Listener {
         fun onProgress(positionMs: Long, durationMs: Long, paused: Boolean)
         fun onClosed()
+        fun onPartyTick(positionMs: Long, durationMs: Long, paused: Boolean, buffering: Boolean, rate: Float)
+        fun onPartyLeave()
     }
+
+    /** The open player, for what the page's watch party asks of it */
+    @Volatile
+    var player: PlayerActivity? = null
 
     @Volatile
     var listener: Listener? = null
@@ -33,12 +39,13 @@ object PlaybackBus {
         pendingClose = null
     }
 
-    fun closed(positionMs: Long, durationMs: Long, ended: Boolean, error: String?) {
+    fun closed(positionMs: Long, durationMs: Long, ended: Boolean, error: String?, next: Boolean = false) {
         val stream = try { JSONObject(activePlayback ?: "{}") } catch (_: Exception) { JSONObject() }
         pendingClose = JSONObject()
             .put("timeMs", positionMs)
             .put("durationMs", durationMs)
             .put("ended", ended)
+            .put("next", next)
             .put("error", error ?: JSONObject.NULL)
             .put("hash", stream.optString("hash"))
             .put("videoId", stream.optString("videoId"))
