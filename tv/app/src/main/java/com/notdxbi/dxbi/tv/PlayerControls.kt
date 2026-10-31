@@ -28,6 +28,9 @@ class PlayerControls(
     private val activity: PlayerActivity,
     private val playerView: PlayerView,
     private val exo: ExoPlayer,
+    private val sound: SoundMode,
+    private val zoom: PictureZoom,
+    private val subtitleDelay: (Long) -> Long,
     accent: Int,
     private val clock: View?,
     hasNext: Boolean,
@@ -54,6 +57,9 @@ class PlayerControls(
             handler.postDelayed(this, 500)
         }
     }
+
+    private val buttons = listOf(R.id.ctl_play, R.id.ctl_rewind, R.id.ctl_forward, R.id.ctl_next, R.id.ctl_stats, R.id.ctl_picture, R.id.ctl_speed, R.id.ctl_subtitles, R.id.ctl_audio)
+        .map { activity.findViewById<View>(it) }
 
     val visible get() = root.visibility == View.VISIBLE
     val panelOpen get() = panel.visibility == View.VISIBLE
@@ -91,6 +97,23 @@ class PlayerControls(
         }
     }
 
+    /** Upright on a phone: the title moves above the buttons, and they share the width */
+    fun fit(widthDp: Int, upright: Boolean) {
+        val shown = buttons.count { it.visibility != View.GONE }
+        val size = dp(minOf(52, (widthDp - 16) / shown - 2))
+        for (button in buttons) {
+            button.layoutParams = (button.layoutParams as ViewGroup.MarginLayoutParams).apply { width = size; height = size; marginEnd = dp(if (upright) 2 else 4) }
+            button.setPadding(size / 4, size / 4, size / 4, size / 4)
+        }
+        val row = activity.findViewById<ViewGroup>(R.id.controls_row)
+        val titles = activity.findViewById<View>(R.id.controls_title)
+        row.setPadding(0, if (upright) dp(46) else 0, 0, 0)
+        titles.layoutParams = (titles.layoutParams as android.widget.FrameLayout.LayoutParams).apply { gravity = if (upright) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER; topMargin = if (upright) dp(-44) else 0 }
+        val side = dp(if (upright) 12 else 56)
+        activity.findViewById<View>(R.id.controls_bottom).setPadding(side, 0, side, dp(26))
+        panel.layoutParams = (panel.layoutParams as android.widget.FrameLayout.LayoutParams).apply { width = minOf(dp(340), dp(widthDp - 24)); marginEnd = if (upright) dp(12) else dp(56); bottomMargin = dp(if (upright) 170 else 104) }
+    }
+
     private fun click(id: Int, action: (View) -> Unit) {
         activity.findViewById<View>(id).apply {
             setOnClickListener { action(it) }
@@ -103,7 +126,7 @@ class PlayerControls(
             root.visibility = View.VISIBLE
             if (clock != null) clock.visibility = View.VISIBLE
             // Subtitles sit above the controls while they're up
-            playerView.subtitleView?.translationY = -dp(110).toFloat()
+            playerView.subtitleView?.translationY = -dp(if (activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) 0 else 110).toFloat()
             handler.post(tick)
             (if (lastFocus.isShown) lastFocus else play).requestFocus()
         }
@@ -146,6 +169,20 @@ class PlayerControls(
         return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
 
+    /** The remote stays inside an open menu: up and down move through it, sideways does nothing */
+    fun panelKey(code: Int): Boolean {
+        if (!panelOpen) return false
+        val rows = (0 until panelRows.childCount).map { panelRows.getChildAt(it) }.filter { it.isFocusable }
+        val at = rows.indexOf(panelRows.findFocus())
+        when (code) {
+            KeyEvent.KEYCODE_DPAD_UP -> rows.getOrNull(at - 1)?.requestFocus()
+            KeyEvent.KEYCODE_DPAD_DOWN -> rows.getOrNull(at + 1)?.requestFocus()
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {}
+            else -> return false
+        }
+        return true
+    }
+
     fun closePanel(): Boolean {
         if (!panelOpen) return false
         panel.visibility = View.GONE
@@ -163,7 +200,15 @@ class PlayerControls(
         panel.visibility = View.VISIBLE
     }
 
-    private fun row(text: String, on: Boolean, action: () -> Unit): TextView = TextView(activity).apply {
+    private fun heading(text: String) = TextView(activity).apply {
+        this.text = text
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        setTextColor(Color.argb(153, 255, 255, 255))
+        setPadding(dp(12), dp(12), dp(12), dp(4))
+        panelRows.addView(this)
+    }
+
+    private fun row(text: String, on: Boolean, keepOpen: Boolean = false, action: () -> Unit): TextView = TextView(activity).apply {
         this.text = if (on) "✓  $text" else text
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         gravity = Gravity.CENTER_VERTICAL
@@ -175,15 +220,16 @@ class PlayerControls(
         setOnFocusChangeListener { view, has ->
             (view as TextView).setTextColor(if (has) Color.BLACK else if (on) Color.WHITE else Color.argb(204, 255, 255, 255))
         }
-        setOnClickListener { action(); closePanel() }
+        setOnClickListener { action(); if (!keepOpen) closePanel() }
         panelRows.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        if (on) post { requestFocus() }
+        tag = if (on) "on" else null
     }
 
     private fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
 
     private fun focusFirst() {
-        if (panelRows.childCount > 0 && panelRows.findFocus() == null) panelRows.getChildAt(0).requestFocus()
+        val rows = (0 until panelRows.childCount).map { panelRows.getChildAt(it) }.filter { it.isFocusable }
+        (rows.firstOrNull { it.tag == "on" } ?: rows.firstOrNull())?.requestFocus()
     }
 
     private fun showSpeed(from: View) {
@@ -195,13 +241,19 @@ class PlayerControls(
     }
 
     private fun showPicture(from: View) {
-        openPanel(from, "Picture")
+        openPanel(from, "Picture & sound")
+        heading("Picture")
         val modes = listOf(
             "Fit" to AspectRatioFrameLayout.RESIZE_MODE_FIT,
             "Crop" to AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
             "Stretch" to AspectRatioFrameLayout.RESIZE_MODE_FILL,
         )
         for ((name, mode) in modes) row(name, playerView.resizeMode == mode) { playerView.resizeMode = mode }
+        heading("Zoom")
+        val zooms = listOfNotNull("off" to "Off", ("auto" to "Remove black bars").takeIf { zoom.canMeasure }, "1.1" to "110%", "1.25" to "125%", "1.33" to "133%")
+        for ((value, name) in zooms) row(name, zoom.mode == value) { zoom.set(value) }
+        heading("Sound")
+        for (mode in SoundMode.MODES) row(mode.label, sound.mode === mode) { sound.mode = mode }
         focusFirst()
     }
 
@@ -209,7 +261,15 @@ class PlayerControls(
         openPanel(from, title)
         val groups = exo.currentTracks.groups.filter { it.type == type }
         val anySelected = groups.any { it.isSelected }
+        if (type == C.TRACK_TYPE_TEXT && anySelected) {
+            heading("Timing")
+            val shown = { ms: Long -> panelTitle.text = if (ms == 0L) "Subtitles" else "Subtitles · %+.2f s".format(ms / 1000f) }
+            shown(subtitleDelay(0))
+            row("Show 0.25 s earlier", false, keepOpen = true) { shown(subtitleDelay(-250)) }
+            row("Show 0.25 s later", false, keepOpen = true) { shown(subtitleDelay(+250)) }
+        }
         if (type == C.TRACK_TYPE_TEXT) {
+            if (anySelected) heading("Track")
             row("Off", !anySelected) {
                 exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                     .clearOverridesOfType(type).setTrackTypeDisabled(type, true).build()

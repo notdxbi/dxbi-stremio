@@ -320,7 +320,7 @@
   // dx.bi's settings: an entry at the top of Stremio's Settings, opening a list made for the remote
   // Options for dx.bi's in-page player, which the TV doesn't use (it has its own player)
   const DESKTOP_ONLY = new Set(["playerExtras", "enhance", "seekPreviews", "subtitleStyle", "subtitleFont", "subtitleCustomFont",
-    "convertVideo", "subtitlesStart", "hdrSubtitles", "pictureSound", "streamStats", "preloadNext", "upNext", "skipFiller",
+    "convertVideo", "subtitlesStart", "hdrSubtitles", "pictureSound", "streamStats", "preloadNext", "skipFiller",
     "rememberPlayback", "playerKeys", "pip", "externalPlayer", "remainingTime", "watchParty", "partyFollow", "partyActivity", "partySounds"]);
 
   function settingsSheet() {
@@ -611,8 +611,9 @@
       torrent,
       autoSkip: (dx && dx.settings && dx.settings.autoSkip) || "off",
       clock: !(dx && dx.settings) || dx.settings.playerClock !== false,
-      accent: getComputedStyle(document.querySelector('[class*="player-container"]') || document.documentElement).getPropertyValue("--dx-accent").trim(),
-      hasNext: !!nextLink(state),
+      accent: await accentFor(meta),
+      next: nextLink(state) ? { title: nextTitle(state.nextVideo), thumbnail: state.nextVideo.thumbnail || "" } : null,
+      upNext: (dx && dx.settings && dx.settings.upNext) || "10",
       audioLanguage: profile.audioLanguage || "",
       // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player
       subtitleStyle: {
@@ -642,10 +643,34 @@
     dispatch({ action: "Player", args: { action: "PausedChanged", args: { paused: !!paused } } });
   };
 
-  // The next episode's own player screen, or its list of streams
+  // The title's own colour for the player's seek bar when dx.bi has one quickly, else the accent
+  async function accentFor(meta) {
+    const dx = window.__dxbi;
+    const colour = dx && dx.titleColourOf
+      ? await Promise.race([dx.titleColourOf(meta.background || meta.poster), new Promise((r) => setTimeout(r, 900))]).catch(() => "")
+      : "";
+    return colour || getComputedStyle(document.documentElement).getPropertyValue("--dx-accent").trim();
+  }
+
+  const nextTitle = (v) => `S${v.season} · E${v.episode}${v.title || v.name ? ` · ${v.title || v.name}` : ""}`;
+
+  // The next episode's list of streams, or its own player screen
   function nextLink(state) {
     const links = state && state.nextVideo && state.nextVideo.deepLinks;
     return links && (links.player || links.metaDetailsStreams);
+  }
+
+  // Straight into the next episode with the same release, as on a computer, when one is found quickly
+  async function nextLinkFor(state) {
+    const dx = window.__dxbi;
+    const sel = state && state.selected;
+    const mp = sel && sel.metaRequest && sel.metaRequest.path;
+    if (dx && dx.findStream && mp && state.nextVideo) {
+      const media = { type: mp.type, metaId: mp.id, videoId: state.nextVideo.id, hints: dx.streamHints(sel.stream) };
+      const found = await Promise.race([dx.findStream(media, () => true), new Promise((r) => setTimeout(r, 8000))]).catch(() => null);
+      if (found && found.link) return found.link.startsWith("#") ? found.link : `#${found.link}`;
+    }
+    return nextLink(state);
   }
 
   async function closeHandoff(timeMs, durationMs, ended, error, next) {
@@ -653,7 +678,7 @@
       if (timeMs > 0) tv.onProgress(timeMs, durationMs, true);
       if (ended) dispatch({ action: "Player", args: { action: "Ended" } });
       handoff = null;
-      const link = next && nextLink(await playerState());
+      const link = next && await nextLinkFor(await playerState());
       if (link) location.replace(link);
       else history.back();
     } else {

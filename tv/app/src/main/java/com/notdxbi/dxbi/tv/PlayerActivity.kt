@@ -1,5 +1,9 @@
 package com.notdxbi.dxbi.tv
 
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
@@ -9,6 +13,7 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
@@ -27,6 +32,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -45,6 +54,44 @@ class PlayerActivity : AppCompatActivity() {
 
     private lateinit var playerView: PlayerView
     private lateinit var controls: PlayerControls
+    private lateinit var zoom: PictureZoom
+    private val sound = SoundMode()
+    @Volatile private var subtitleDelayMs = 0L
+    private val refreshSubtitles = Runnable { player?.let { it.seekTo(it.currentPosition) } }
+    // Up next: what's after this episode, how long the card counts down (0: never), the card's state
+    private var nextTitle = ""
+    private var nextArt = ""
+    private var upNextSeconds = 0
+    private var upNextLeft = 0
+    private var upNextDismissed = false
+    private lateinit var upNextCard: View
+    private val upNextCount = object : Runnable {
+        override fun run() {
+            val exo = player ?: return
+            if (upNextCard.visibility != View.VISIBLE) return
+            if (exo.isPlaying) upNextLeft--
+            findViewById<TextView>(R.id.up_next_count).text = upNextLeft.coerceAtLeast(0).toString()
+            if (upNextLeft <= 0) finishWith(next = true) else handler.postDelayed(this, 1000)
+        }
+    }
+
+    private inner class Renderers : DefaultRenderersFactory(this) {
+        override fun buildTextRenderers(context: android.content.Context, output: TextOutput, outputLooper: Looper, extensionRendererMode: Int, out: ArrayList<Renderer>) {
+            val own = ArrayList<Renderer>()
+            super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, own)
+            own.mapTo(out) { DelayedText(it) { subtitleDelayMs * 1000 } }
+        }
+
+        override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+            DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(false) // (Dialogue boost works on 16-bit sound)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessors(arrayOf(sound))
+                .build()
+    }
+
+    private val phone get() = (getSystemService(UI_MODE_SERVICE) as android.app.UiModeManager).currentModeType != Configuration.UI_MODE_TYPE_TELEVISION &&
+        !packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     private lateinit var clock: TextView
     private var showClock = true
     private lateinit var seekFlash: TextView
@@ -101,12 +148,15 @@ class PlayerActivity : AppCompatActivity() {
     private val checkSkip = object : Runnable {
         override fun run() {
             updateSkip()
+            updateUpNext()
             handler.postDelayed(this, 500)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Phones turn freely; TVs stay landscape
+        if (phone) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -162,7 +212,7 @@ class PlayerActivity : AppCompatActivity() {
             .setDefaultRequestProperties(headers)
 
         // The TV's own decoders first, falling back to software ones when a format isn't supported
-        val renderers = DefaultRenderersFactory(this)
+        val renderers = Renderers()
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
@@ -176,7 +226,19 @@ class PlayerActivity : AppCompatActivity() {
         player = exo
         playerView.player = exo
         val accent = try { Color.parseColor(stream.optString("accent")) } catch (_: Exception) { Color.parseColor("#E50914") }
-        controls = PlayerControls(this, playerView, exo, accent, clock.takeIf { showClock }, stream.optBoolean("hasNext"), ::seek) { next -> finishWith(next = next) }
+        zoom = PictureZoom(playerView)
+        val next = stream.optJSONObject("next")
+        nextTitle = next?.optString("title").orEmpty()
+        nextArt = next?.optString("thumbnail").orEmpty()
+        upNextSeconds = if (next == null) 0 else stream.optString("upNext", "10").toIntOrNull() ?: 0
+        upNextCard = findViewById(R.id.up_next)
+        controls = PlayerControls(this, playerView, exo, sound, zoom, ::shiftSubtitles, accent, clock.takeIf { showClock }, next != null, ::seek) { go -> finishWith(next = go) }
+        fitControls()
+        findViewById<View>(R.id.up_next_play).setOnClickListener { finishWith(next = true) }
+        findViewById<View>(R.id.up_next_cancel).setOnClickListener {
+            upNextDismissed = true
+            hideUpNext()
+        }
 
         // Subtitles start off, like Netflix (and dx.bi's default): pick one from the subtitles button.
         // Files with several audio tracks (dual-audio releases) start in Stremio's audio language
@@ -210,7 +272,7 @@ class PlayerActivity : AppCompatActivity() {
         exo.setMediaItem(item, stream.optLong("startMs", 0L).coerceAtLeast(0L))
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) finishWith(ended = true)
+                if (state == Player.STATE_ENDED) finishWith(ended = true, next = upNextSeconds > 0 && !upNextDismissed)
             }
 
             // A subtitle switched on mid-line only shows from its next line: a seek to where we are
@@ -230,7 +292,7 @@ class PlayerActivity : AppCompatActivity() {
         exo.playWhenReady = true
         handler.postDelayed(reportProgress, PROGRESS_INTERVAL_MS)
         if (showClock) handler.post(updateClock)
-        if (segments.isNotEmpty()) handler.postDelayed(checkSkip, 500)
+        handler.postDelayed(checkSkip, 500)
         if (torrent) handler.post(torrentStatus)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -260,7 +322,10 @@ class PlayerActivity : AppCompatActivity() {
                 doSkip()
                 return true
             }
+            if (controls.panelKey(event.keyCode)) return true
             if (controls.visible) controls.poke()
+            // The up next card's buttons take the remote
+            if (upNextCard.visibility == View.VISIBLE) return super.dispatchKeyEvent(event)
             if (!controls.visible) {
                 when (event.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> { seek(-1); return true }
@@ -285,7 +350,8 @@ class PlayerActivity : AppCompatActivity() {
         val duration = exo.duration.takeIf { it != C.TIME_UNSET } ?: return
         val now = exo.currentPosition
         // (not the last second of a part: pressing then would skip nothing)
-        val seg = segments.firstOrNull { now >= (it.start * 1000).toLong() && now < segmentEnd(it, duration) - 1000 }
+        // (the up next card takes over from Skip credits)
+        val seg = segments.firstOrNull { now >= (it.start * 1000).toLong() && now < segmentEnd(it, duration) - 1000 && !(it.type == "credits" && upNextSeconds > 0) }
         val auto = seg != null && (autoSkip == "all" || (autoSkip == "intro" && seg.type != "credits"))
         if (seg != null && auto && seg !in autoSkipped) {
             autoSkipped += seg
@@ -305,6 +371,62 @@ class PlayerActivity : AppCompatActivity() {
         }
         skipButton.visibility = View.VISIBLE
         if (!controls.visible) skipButton.requestFocus()
+    }
+
+    private fun updateUpNext() {
+        val exo = player ?: return
+        if (upNextSeconds <= 0 || exo.duration == C.TIME_UNSET || exo.duration < 120_000) return
+        val duration = exo.duration
+        val credits = segments.firstOrNull { it.type == "credits" }?.let { (it.start * 1000).toLong() }?.takeIf { it > duration / 2 && it < duration }
+        val at = credits ?: (duration - 30_000)
+        if (exo.currentPosition < at - 2000) {
+            upNextDismissed = false
+            hideUpNext()
+        } else if (exo.currentPosition >= at && !upNextDismissed && upNextCard.visibility != View.VISIBLE) {
+            showUpNext()
+        }
+    }
+
+    private fun showUpNext() {
+        if (controls.visible) controls.hide()
+        upNextLeft = upNextSeconds
+        findViewById<TextView>(R.id.up_next_title).text = nextTitle
+        findViewById<TextView>(R.id.up_next_count).text = upNextLeft.toString()
+        upNextCard.visibility = View.VISIBLE
+        findViewById<View>(R.id.up_next_play).requestFocus()
+        handler.postDelayed(upNextCount, 1000)
+        if (nextArt.startsWith("https://")) kotlin.concurrent.thread(name = "dxbi-up-next-art") {
+            val art = try { java.net.URL(nextArt).openStream().use { BitmapFactory.decodeStream(it) } } catch (_: Exception) { null }
+            if (art != null) runOnUiThread { findViewById<ImageView>(R.id.up_next_art).setImageBitmap(art) }
+        }
+    }
+
+    private fun hideUpNext() {
+        if (upNextCard.visibility != View.VISIBLE) return
+        upNextCard.visibility = View.GONE
+        handler.removeCallbacks(upNextCount)
+        playerView.requestFocus()
+    }
+
+    /** Moves the subtitles by [byMs] and returns where they are now */
+    private fun shiftSubtitles(byMs: Long): Long {
+        if (byMs != 0L) {
+            subtitleDelayMs += byMs
+            // lines already passed only come back from a seek; once, after the last press
+            handler.removeCallbacks(refreshSubtitles)
+            handler.postDelayed(refreshSubtitles, 600)
+        }
+        return subtitleDelayMs
+    }
+
+    private fun fitControls() {
+        val config = resources.configuration
+        controls.fit(config.screenWidthDp, config.orientation == Configuration.ORIENTATION_PORTRAIT)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::controls.isInitialized) fitControls()
     }
 
     private fun doSkip(seg: Segment? = showing) {
@@ -356,6 +478,7 @@ class PlayerActivity : AppCompatActivity() {
         if (!closed) finishWith()
         handler.removeCallbacksAndMessages(null)
         if (::controls.isInitialized) controls.release()
+        if (::zoom.isInitialized) zoom.release()
         player?.release()
         player = null
         super.onDestroy()

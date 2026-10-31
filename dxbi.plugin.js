@@ -108,8 +108,7 @@
     remainingTime: true,
     playerClock: true,
     crispPosters: true,
-    // not measured on a TV stick yet (it can be switched on)
-    posterAccent: !IN_TV,
+    posterAccent: true,
     myList: "all",
     externalPlayer: true,
     skipButtons: true,
@@ -6103,7 +6102,7 @@
           const type = g && g.content && g.content.type;
           if (type === "Loading") pending++;
           if (type === "Ready" && Array.isArray(g.content.content)) {
-            for (const st of g.content.content) if (st && st.deepLinks && st.deepLinks.player) ready.push(st);
+            for (const st of g.content.content) if (st && st.deepLinks && st.deepLinks.player && !st.externalUrl) ready.push(st);
           }
         }
         const withHints = ready.map((st) => ({ st, hint: streamHints(st) }));
@@ -13558,6 +13557,13 @@
     },
     // dx.bi TV's Back button: closes an open hover card, keeping its title selected (true if one was open)
     openTrailer: (info) => theatre.open(info),
+    findStream: (media, stillWanted) => watchParty.findStream(media, stillWanted),
+    streamHints: (stream) => watchParty.streamHints(stream),
+    async titleColourOf(url) {
+      if (!url || !settings.posterAccent || settings.accent === "white") return "";
+      if (!titleColour.colours.has(url)) titleColour.colours.set(url, await titleColour.read(url));
+      return titleColour.colours.get(url);
+    },
     closeTrailer() {
       if (!theatre.el) return false;
       theatre.close();

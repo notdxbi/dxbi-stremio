@@ -21,6 +21,21 @@
         <item name="android:scaleType">fitCenter</item>
     </style>
 
+    <style name="PanelButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/panel_row</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">7dp</item>
+        <item name="android:paddingBottom">7dp</item>
+        <item name="android:textColor">@color/panel_button</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
     <style name="PlayerTime">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>

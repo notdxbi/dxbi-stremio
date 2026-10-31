@@ -40,6 +40,7 @@
             android:src="@drawable/ic_back" />
 
         <LinearLayout
+            android:id="@+id/controls_bottom"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
@@ -76,8 +77,10 @@
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/controls_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clipToPadding="false"
                 android:layout_marginTop="8dp">
 
                 <LinearLayout
@@ -108,6 +111,7 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/controls_title"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center"
@@ -221,6 +225,86 @@
         android:textSize="17sp"
         android:textStyle="bold"
         android:visibility="gone" />
+
+    <!-- Up next: counts down over the credits, like on a computer -->
+    <LinearLayout
+        android:id="@+id/up_next"
+        android:layout_width="420dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|bottom"
+        android:layout_marginEnd="48dp"
+        android:layout_marginBottom="48dp"
+        android:background="@drawable/panel_bg"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <FrameLayout
+            android:layout_width="136dp"
+            android:layout_height="76dp"
+            android:background="#33FFFFFF">
+
+            <ImageView
+                android:id="@+id/up_next_art"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop" />
+
+            <TextView
+                android:id="@+id/up_next_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:shadowColor="#FF000000"
+                android:shadowRadius="6"
+                android:textColor="@android:color/white"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Next episode"
+                android:textColor="#B3FFFFFF"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/up_next_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@android:color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/up_next_play"
+                    style="@style/PanelButton"
+                    android:text="Play now" />
+
+                <TextView
+                    android:id="@+id/up_next_cancel"
+                    style="@style/PanelButton"
+                    android:layout_marginStart="8dp"
+                    android:text="Watch credits" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- Skip intro / recap / credits, while one is playing (times from dx.bi) -->
     <TextView
