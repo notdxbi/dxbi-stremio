@@ -2,6 +2,11 @@
 
 ## Unreleased
 - **Support dx.bi.** The dx.bi app has a *Support dx.bi* button in Settings → About, and dx.bi TV has a *Support dx.bi* row in Settings with a code to scan with your phone. dx.bi stays free.
+- **dx.bi on Android phones fits upright.** The app is laid out at the phone's own width, so text and buttons are the normal size. The billboard shows in full with its logo and buttons centred, the tabs move to a bar at the bottom, and Discover and Library show three titles across.
+- **Customise Home.** Move, hide or rename any Home row, whichever addon it comes from, from the profile menu (on TV, also in Settings). Saved per viewer.
+- **My List on Home.** Your library as a row under Continue Watching, or separate rows for films and shows. Change it in dx.bi settings.
+- **The time in the player.** The time now and when this ends show at the top right with the controls, on desktop and TV.
+- **Sharper posters.** Bigger posters load when your screen can show them. On a TV only the title you're on is upgraded, and only the last few stay that way, so browsing stays quick.
 
 ## 2.21.3
 - **dx.bi TV: Who's watching? works with the remote.** The remote skipped dx.bi's entries in the profile menu, so viewers couldn't be added on a TV, and with one viewer the picker never shows at start. The entries can be reached now, and *Who's watching?* is also in Settings. On its screen the selection starts on the current viewer, Back steps out, and in Manage viewers you can rename a viewer by choosing them and remove them with the Remove button.

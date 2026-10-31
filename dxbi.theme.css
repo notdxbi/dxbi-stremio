@@ -4619,3 +4619,139 @@ body[data-dx-kids] #app [class*="vertical-nav-bar"] a[href="#/addons"],
 body[data-dx-kids] #app [class*="vertical-nav-bar"] a[href="#/settings"] {
     display: none !important;
 }
+
+/* Phones held upright: laid out at the phone's own width, with the tabs in a bar under the thumb */
+.dx-upright #app [class*="main-nav-bars-container"] > nav[class*="vertical-nav-bar"],
+.dx-upright #app nav[class*="vertical-nav-bar"] {
+    position: fixed !important;
+    inset: auto 0 0 0 !important;
+    z-index: 50 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-around !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: 3.75rem !important;
+    padding: 0 !important;
+    transform: none !important;
+    background: rgb(16, 16, 20) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.dx-upright #app nav[class*="vertical-nav-bar"] > * {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    height: 100% !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+}
+
+.dx-upright #app nav[class*="horizontal-nav-bar"] {
+    padding: 0 0.75rem !important;
+}
+
+/* The billboard: a tall picture, with everything centred over the bottom of it */
+.dx-upright .dx-hero {
+    height: min(128vw, 68vh);
+    min-height: 0;
+    margin-bottom: 0.5rem;
+}
+
+.dx-upright .dx-hero-content {
+    position: absolute;
+    inset: auto 0 1.75rem 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 1.25rem !important;
+    align-items: center !important;
+    text-align: center;
+}
+
+.dx-upright .dx-hero-kicker,
+.dx-upright .dx-hero-desc {
+    display: none !important;
+}
+
+.dx-upright .dx-hero-content > .dx-hero-logo {
+    max-width: 70% !important;
+    max-height: 7rem !important;
+    margin: 0 auto 0.6rem !important;
+    object-position: center bottom !important;
+}
+
+.dx-upright .dx-hero-meta {
+    justify-content: center !important;
+    flex-wrap: wrap;
+}
+
+.dx-upright .dx-hero-actions {
+    width: 100% !important;
+    justify-content: center !important;
+    flex-wrap: nowrap !important;
+    gap: 0.6rem !important;
+    overflow: visible !important;
+}
+
+.dx-upright .dx-hero-actions > * {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    white-space: nowrap;
+}
+
+.dx-upright .dx-hero-dots {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0.6rem !important;
+    justify-content: center !important;
+}
+
+.dx-upright #app [class*="board-content-"]:not([class*="board-content-container"]) {
+    scrollbar-width: none;
+}
+
+.dx-upright #app [class*="board-content-"]:not([class*="board-content-container"])::-webkit-scrollbar {
+    display: none;
+}
+
+/* Three titles across, as Android streaming apps have them */
+.dx-upright #app [class*="discover-content"] [class*="meta-items-container"],
+.dx-upright #app [class*="library-content"] [class*="meta-items-container"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.75rem 0.6rem !important;
+    padding: 0 0.75rem 1.5rem !important;
+}
+
+.dx-upright #app [class*="metadetails-container"] [class*="runtime-release-info-container"] {
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+    gap: 0.5rem 1rem !important;
+}
+
+/* Text sits on the picture: keep it readable over bright ones */
+.dx-upright #app [class*="metadetails-container"] [class*="meta-preview-container"]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+.dx-upright #app [class*="metadetails-container"] [class*="meta-preview-container"] > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* A phone is touched, not steered: no remote rings */
+.dx-phone #app :is(a, button, input, [tabindex]):not([class*="meta-item-link"]):focus-visible {
+    outline: none !important;
+}
+
+.dx-phone #app [class*="meta-item-container"]:focus-within [class*="poster-container"]::after {
+    box-shadow: none !important;
+}

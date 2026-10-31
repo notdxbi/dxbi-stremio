@@ -46,6 +46,18 @@
             android:textSize="17sp" />
     </LinearLayout>
 
+    <!-- The time now and when this ends, with the controls -->
+    <TextView
+        android:id="@+id/clock"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="28dp"
+        android:layout_marginEnd="48dp"
+        android:textColor="@android:color/white"
+        android:textSize="17sp"
+        android:visibility="gone" />
+
     <!-- Skip intro / recap / credits, while one is playing (times from dx.bi) -->
     <TextView
         android:id="@+id/skip_button"

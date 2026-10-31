@@ -35,10 +35,15 @@
   // held upright gets a 600-pixel-wide page instead, which Stremio and dx.bi lay out as a column.
   // ---------------------------------------------------------------------------
   const PHONE = (() => { try { return !!bridge.isPhone(); } catch (_) { return false; } })();
+  tv.phone = PHONE;
   const upright = () => PHONE && window.screen && screen.height > screen.width;
   let VIEWPORT = "width=1280, user-scalable=no";
   function fitViewport() {
-    VIEWPORT = upright() ? "width=600, user-scalable=no" : "width=1280, user-scalable=no";
+    // Upright, a phone is laid out at its own width, so everything is the size Android apps are.
+    // Marked from the screen, not the page: the keyboard opening makes the page look sideways.
+    VIEWPORT = upright() ? "width=device-width, initial-scale=1, user-scalable=no" : "width=1280, user-scalable=no";
+    document.documentElement.classList.toggle("dx-phone", PHONE);
+    document.documentElement.classList.toggle("dx-upright", upright());
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
       if (!document.head) return;
@@ -405,11 +410,15 @@
     who.className = "dxtv-row dxtv-settings-entry";
     who.innerHTML = `<span>Who's watching?<small>Add viewers and switch between them. Each viewer has their own library and Continue Watching</small></span><b>Open</b>`;
     who.addEventListener("click", () => { if (window.__dxbi && window.__dxbi.whoIsWatching) window.__dxbi.whoIsWatching.open(); });
+    const layout = document.createElement("button");
+    layout.className = "dxtv-row dxtv-settings-entry";
+    layout.innerHTML = `<span>Customise Home<small>Move, hide or rename Home's rows, whichever addon they come from</small></span><b>Open</b>`;
+    layout.addEventListener("click", () => { if (window.__dxbi && window.__dxbi.homeLayout) window.__dxbi.homeLayout.open(); });
     const support = document.createElement("button");
     support.className = "dxtv-row dxtv-settings-entry";
     support.innerHTML = `<span>Support dx.bi<small>dx.bi is free. If you enjoy it, you can buy its developer a coffee</small></span><b>Open</b>`;
     support.addEventListener("click", donate);
-    content.prepend(entry, who, server, problem, support);
+    content.prepend(entry, who, layout, server, problem, support);
   }
 
   // ---------------------------------------------------------------------------
@@ -596,6 +605,7 @@
       skips,
       torrent,
       autoSkip: (dx && dx.settings && dx.settings.autoSkip) || "off",
+      clock: !(dx && dx.settings) || dx.settings.playerClock !== false,
       audioLanguage: profile.audioLanguage || "",
       // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player
       subtitleStyle: {

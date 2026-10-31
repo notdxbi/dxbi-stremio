@@ -45,6 +45,8 @@ class PlayerActivity : AppCompatActivity() {
 
     private lateinit var playerView: PlayerView
     private lateinit var titleBar: View
+    private lateinit var clock: TextView
+    private var showClock = true
     private lateinit var seekFlash: TextView
     private var player: ExoPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -84,6 +86,18 @@ class PlayerActivity : AppCompatActivity() {
             handler.postDelayed(this, 700)
         }
     }
+    private val updateClock = object : Runnable {
+        override fun run() {
+            val exo = player
+            if (exo != null) {
+                val format = android.text.format.DateFormat.getTimeFormat(this@PlayerActivity)
+                val left = if (exo.duration > 0) ((exo.duration - exo.currentPosition) / exo.playbackParameters.speed).toLong() else 0L
+                val now = System.currentTimeMillis()
+                clock.text = format.format(now) + if (left > 0) " · Ends at ${format.format(now + left)}" else ""
+            }
+            handler.postDelayed(this, 1000)
+        }
+    }
     private val checkSkip = object : Runnable {
         override fun run() {
             updateSkip()
@@ -102,6 +116,7 @@ class PlayerActivity : AppCompatActivity() {
         setContentView(R.layout.activity_player)
         playerView = findViewById(R.id.player_view)
         titleBar = findViewById(R.id.title_bar)
+        clock = findViewById(R.id.clock)
         seekFlash = findViewById(R.id.seek_flash)
         skipButton = findViewById(R.id.skip_button)
         skipButton.setOnClickListener { doSkip() }
@@ -116,6 +131,7 @@ class PlayerActivity : AppCompatActivity() {
             }
         } ?: emptyList()
         autoSkip = stream.optString("autoSkip", "off")
+        showClock = stream.optBoolean("clock", true)
         torrent = stream.optBoolean("torrent", false)
         findViewById<TextView>(R.id.title).text = stream.optString("title")
         findViewById<TextView>(R.id.subtitle).apply {
@@ -165,6 +181,7 @@ class PlayerActivity : AppCompatActivity() {
         playerView.setControllerAnimationEnabled(false)
         playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
             titleBar.visibility = visibility
+            clock.visibility = if (showClock) visibility else View.GONE
             // The remote starts on play/pause, and the arrows move between the controls from there
             if (visibility == View.VISIBLE) playerView.findViewById<View>(androidx.media3.ui.R.id.exo_play_pause)?.requestFocus()
         })
@@ -220,6 +237,7 @@ class PlayerActivity : AppCompatActivity() {
         exo.prepare()
         exo.playWhenReady = true
         handler.postDelayed(reportProgress, PROGRESS_INTERVAL_MS)
+        if (showClock) handler.post(updateClock)
         if (segments.isNotEmpty()) handler.postDelayed(checkSkip, 500)
         if (torrent) handler.post(torrentStatus)
 
