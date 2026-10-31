@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.23.0
+- **Colours from the title.** A title's page and its player take a colour from its artwork: Dune goes orange, Avatar blue. The main button, other accent-coloured buttons and the seek bar follow it, always in a shade white text can be read on. Black and white or very muted artwork keeps your accent colour, and so does the Mono accent. Switch it off with *Match each title's colours* in Look. On dx.bi TV it's off to start with, and the TV's own player keeps its look.
+- **dx.bi TV finds updates more reliably.** It used to check only on a full start, which can be days apart on a TV. It now also checks when you come back to it, at most every 6 hours, and still finds an update when GitHub's limit on update checks has been reached.
+- **dx.bi TV: Update is the selected button.** The update message used to open on *Skip this version*, so pressing OK skipped it. After you allow dx.bi to install apps, the download now carries on by itself.
+- **dx.bi TV: Up in Settings no longer skips rows.** After the page had scrolled, Up jumped past rows above the screen to the top bar.
+- **dx.bi TV: Find streaming server lists the TV once.** A server on the TV itself used to show up twice.
+
 ## 2.22.1
 - **dx.bi's settings are back.** In 2.22.0 the dx.bi app and Stremio Enhanced refused all of dx.bi's settings because of one new option, so the Settings button disappeared. Your saved settings were kept and kept working. On dx.bi TV, *My List on Home* now shows as a normal choice.
 

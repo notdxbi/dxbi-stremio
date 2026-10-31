@@ -168,7 +168,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         hideSystemBars()
-        if (::web.isInitialized) web.requestFocus()
+        if (::web.isInitialized) {
+            web.requestFocus()
+            Updates.onResume(this)
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

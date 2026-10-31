@@ -25,6 +25,9 @@ object Updates {
     // The plugin from the latest release, not the main branch: unreleased work never reaches TVs
     private const val PLUGIN_URL = "https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi.plugin.js"
     private const val RELEASES_URL = "https://api.github.com/repos/notdxbi/dxbi-stremio/releases/latest"
+    private const val LATEST_PAGE = "https://github.com/notdxbi/dxbi-stremio/releases/latest"
+    private const val APK_URL = "$LATEST_PAGE/download/dxbi-tv.apk"
+    private const val RECHECK_MS = 6 * 60 * 60 * 1000L
     private const val APK_ASSET = "dxbi-tv.apk"
     private const val UPDATED_PLUGIN = "dxbi.plugin.js"
 
@@ -66,29 +69,67 @@ object Updates {
         } catch (_: Exception) { /* offline: try again next launch */ }
     }
 
+    /** A TV app is rarely closed: it comes back from Home for days, so look again when it does */
+    fun onResume(activity: MainActivity) {
+        pendingInstall?.let { retry ->
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || activity.packageManager.canRequestPackageInstalls()) {
+                pendingInstall = null
+                retry(activity)
+            }
+        }
+        if (lastCheck != 0L && System.currentTimeMillis() - lastCheck > RECHECK_MS) {
+            checkPlugin(activity)
+            checkApp(activity)
+        }
+    }
+
+    @Volatile private var lastCheck = 0L
+    @Volatile private var offering = false
+    private var pendingInstall: ((MainActivity) -> Unit)? = null
+
+    private class Latest(val version: String, val url: String, val size: Long)
+
+    private fun fromApi(): Latest? {
+        val release = JSONObject(get(RELEASES_URL) ?: return null)
+        val assets = release.optJSONArray("assets") ?: return null
+        // (only once GitHub has the whole file: an asset still uploading is listed too)
+        val asset = (0 until assets.length()).map { assets.getJSONObject(it) }
+            .firstOrNull { it.optString("name") == APK_ASSET && it.optString("state", "uploaded") == "uploaded" } ?: return null
+        return Latest(release.optString("tag_name").removePrefix("v"), asset.optString("browser_download_url"), asset.optLong("size", -1))
+    }
+
+    /** GitHub's API allows few checks per home connection. The releases page has no such limit: it redirects to the latest tag */
+    private fun fromPage(): Latest? {
+        val tag = http.newCall(Request.Builder().url(LATEST_PAGE).head().build()).execute().use { it.request.url.pathSegments.lastOrNull() }
+        val version = tag?.takeIf { it.startsWith("v") }?.removePrefix("v") ?: return null
+        // only a release that has its APK attached yet
+        val found = http.newCall(Request.Builder().url(APK_URL).head().build()).execute().use { it.isSuccessful }
+        return if (found) Latest(version, APK_URL, -1) else null
+    }
+
     fun checkApp(activity: MainActivity) = thread(name = "dxbi-app-update") {
+        if (offering) return@thread
+        lastCheck = System.currentTimeMillis()
         try {
-            val release = JSONObject(get(RELEASES_URL) ?: return@thread)
-            val latest = release.optString("tag_name").removePrefix("v")
+            val found = try { fromApi() } catch (_: Exception) { null } ?: fromPage() ?: return@thread
+            val latest = found.version
             val current = BuildConfigVersion.name(activity)
             if (!isNewer(latest, current)) return@thread
             val prefs = activity.getSharedPreferences("updates", Context.MODE_PRIVATE)
             if (prefs.getString("skipped", null) == latest) return@thread
-            val assets = release.optJSONArray("assets") ?: return@thread
-            // (only once GitHub has the whole file: an asset still uploading is listed too)
-            val asset = (0 until assets.length()).map { assets.getJSONObject(it) }
-                .firstOrNull { it.optString("name") == APK_ASSET && it.optString("state", "uploaded") == "uploaded" } ?: return@thread
-            val url = asset.optString("browser_download_url")
-            val size = asset.optLong("size", -1)
             activity.runOnUiThread {
-                if (activity.isFinishing) return@runOnUiThread
-                AlertDialog.Builder(activity)
+                if (activity.isFinishing || offering) return@runOnUiThread
+                offering = true
+                val dialog = AlertDialog.Builder(activity)
                     .setTitle("dx.bi $latest is out")
                     .setMessage("You have $current. Update now? It downloads in the background, then Android asks you to install it.")
-                    .setPositiveButton("Update") { _, _ -> download(activity, url, size, latest) }
+                    .setPositiveButton("Update") { _, _ -> download(activity, found.url, found.size, latest) }
                     .setNegativeButton("Not now", null)
                     .setNeutralButton("Skip this version") { _, _ -> prefs.edit().putString("skipped", latest).apply() }
+                    .setOnDismissListener { offering = false }
                     .show()
+                // Android selects the first button on a remote: OK must never mean Skip
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.requestFocus()
             }
         } catch (_: Exception) { /* offline: try again next launch */ }
     }
@@ -98,12 +139,14 @@ object Updates {
     private fun download(activity: MainActivity, url: String, size: Long, version: String) {
         // Android only installs apps from dx.bi once it's allowed to ("Install unknown apps")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.packageManager.canRequestPackageInstalls()) {
+            // It carries on by itself when they come back from that screen having allowed it
+            pendingInstall = { download(it, url, size, version) }
             try {
                 activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")))
-                Toast.makeText(activity, "Allow dx.bi to install apps, then choose Update again", Toast.LENGTH_LONG).show()
+                Toast.makeText(activity, "Allow dx.bi to install apps, then come back", Toast.LENGTH_LONG).show()
             } catch (_: Exception) {
                 // Some TVs (Fire OS among them) have no such screen to open directly
-                Toast.makeText(activity, "Allow dx.bi to install apps in the TV's settings (on Fire TV: My Fire TV → Developer options → Install unknown apps), then choose Update again", Toast.LENGTH_LONG).show()
+                Toast.makeText(activity, "Allow dx.bi to install apps in the TV's settings (on Fire TV: My Fire TV → Developer options → Install unknown apps), then come back", Toast.LENGTH_LONG).show()
             }
             return
         }

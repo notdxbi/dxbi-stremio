@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.22.1
+ * @version 2.23.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.22.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.23.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -108,6 +108,8 @@
     remainingTime: true,
     playerClock: true,
     crispPosters: true,
+    // not measured on a TV stick yet (it can be switched on)
+    posterAccent: !IN_TV,
     myList: "all",
     externalPlayer: true,
     skipButtons: true,
@@ -375,6 +377,7 @@
     { key: "addonTools", type: "toggle", label: "Addon order & backup", description: "Adds a button to the Addons page to reorder your addons (the order streams and catalogs appear in) and to back them up or restore them.", defaultValue: DEFAULTS.addonTools },
     { key: "externalPlayer", type: "toggle", label: "Open in mpv / VLC button", description: "Adds a button to the player that hands the stream to mpv or VLC (only shown when one is installed). Handy when a file stutters or won't play here: they handle more formats and are lighter on slower PCs.", defaultValue: DEFAULTS.externalPlayer },
     { key: "playerClock", type: "toggle", label: "Show the time in the player", description: "The time now and when this ends, at the top right, while the controls are showing.", defaultValue: DEFAULTS.playerClock },
+    { key: "posterAccent", type: "toggle", label: "Match each title's colours", description: "On a title's page and in its player, buttons and the seek bar take a colour from its artwork. Off: your accent colour everywhere.", defaultValue: DEFAULTS.posterAccent },
     { key: "crispPosters", type: "toggle", label: "Sharper posters", description: "Loads bigger posters when your screen can show them. On a TV, only for the title you're on, so browsing stays quick.", defaultValue: DEFAULTS.crispPosters },
     {
       key: "myList",
@@ -414,7 +417,7 @@
   // Settings come in groups (the dx.bi app and dx.bi TV show them as sections with a search). Each
   // option carries its group's name, and they're listed group by group.
   const SETTING_GROUPS = [
-    ["Look", ["accent", "focusColour", "builtInTheme", "crispPosters", "ratings", "animeTitles", "wideContinue"]],
+    ["Look", ["accent", "posterAccent", "focusColour", "builtInTheme", "crispPosters", "ratings", "animeTitles", "wideContinue"]],
     ["Home", ["myList", "videoRowsOnly", "billboard", "billboardSource", "billboardInterval", "newEpisodes", "airingRow", "whoIsWatching"]],
     ["Hover cards & trailers", ["previews", "trailers", "trailerDelay"]],
     ["Browsing & library", ["watchedTitles", "librarySort", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey"]],
@@ -2080,6 +2083,9 @@
       let next = this.listStep(focused, e);
       const listed = next !== undefined;
       if (!listed) next = look();
+      // TV: the top bar is only for the top of the page. Lower rows can be off screen above, where
+      // the search above can't see them
+      if (IN_TV && next && !inBar && next.closest(bar) && this.DIRS[e.key][1] && this.scroller(focused, e)) next = null;
       if (!next && IN_TV) {
         // TV: nothing that way on screen. Stremio's own navigation would search the whole page
         // first (over half a second on a stick, mostly to find nothing): what can scroll that way
@@ -6622,6 +6628,7 @@
     const steps = IN_TV
       ? [updateRoute, brandTitle, () => addonTools.ensure(), communitySync]
       : [updateRoute, brandTitle, () => player.ensure(), () => playerClock.ensure(), () => { convert.ensure().catch(() => { /* player state not ready */ }); }, () => convert.confirmHevc(), () => externalDefault.ensure(), () => placeholder.ensure(), () => playbackHelp.ensure(), () => scrub.ensure(), () => enhance.ensure(), () => watchParty.ensure(), () => skip.ensure(), () => tune.ensure(), () => streamInfo.ensure(), () => addonTools.ensure(), communitySync];
+    steps.push(() => { titleColour.ensure().catch(() => { /* next sync */ }); });
     if (currentRoute() === "detail") steps.push(() => streamTools.ensure());
     steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { endsAt.ensure().catch(() => { /* next sync */ }); }, () => { calendarFill.ensure().catch(() => { /* next sync */ }); }, () => { restrict.guard().catch(() => { /* next sync */ }); });
     if (currentRoute() !== "player") {
@@ -6681,6 +6688,10 @@
   .dx-mini-btn.is-play svg { width: 1.6rem; height: 1.6rem; }
   .dx-mini-line { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.2); }
   .dx-mini-line i { display: block; height: 100%; width: 0; background: var(--dx-accent, #e50914); }
+  [data-dx-tint] { --dx-accent: var(--dx-title-colour); --dx-accent-hover: color-mix(in srgb, var(--dx-accent) 85%, white); --dx-accent-soft: color-mix(in srgb, var(--dx-accent) 18%, transparent); --primary-accent-color: var(--dx-accent); --secondary-accent-color: var(--dx-accent); }
+  #app [data-dx-tint] [class*="meta-preview-container"] [class*="action-button-container"][class*="wide"] { background: var(--dx-accent) !important; }
+  #app [data-dx-tint] [class*="meta-preview-container"] [class*="action-button-container"][class*="wide"]:hover, #app [data-dx-tint] [class*="meta-preview-container"] [class*="action-button-container"][class*="wide"]:focus-visible { background: var(--dx-accent-hover) !important; }
+  #app [data-dx-tint] [class*="meta-preview-container"] [class*="action-button-container"][class*="wide"] * { color: #fff !important; fill: #fff !important; }
   .dx-keyshield { position: fixed; inset: 0; z-index: 2147483000; cursor: none; background: transparent; }
   .dxe-skip { position: absolute; z-index: 7; right: 3.2rem; bottom: 9.5rem; display: inline-flex; align-items: center; gap: .6rem; height: 3.1rem; padding: 0 1.3rem 0 1.5rem; border: 1px solid rgba(255,255,255,.55); border-radius: .4rem; background: rgba(24,24,24,.72); backdrop-filter: blur(10px); color: #fff; font: 700 1.05rem Inter, system-ui, sans-serif !important; cursor: pointer; opacity: 0; transform: translateY(6px); pointer-events: none; transition: opacity .25s ease, transform .25s ease, background-color .15s, border-color .15s; }
   .dxe-skip.is-on { opacity: 1; transform: none; pointer-events: auto; }
@@ -10745,6 +10756,138 @@
   // swapped in once they've loaded. A TV keeps the small ones for browsing: only the title you're on
   // is upgraded, and only the last few stay upgraded, so a weak stick doesn't run out of memory.
   // ---------------------------------------------------------------------------
+  // ---- A title's own colour on its page and in its player. Taken once per piece of artwork from a
+  // tiny copy: the most colourful hue that covers a fair part of it, set to a brightness white text
+  // can be read on. Artwork with little colour, or that can't be read, leaves the viewer's accent.
+  const titleColour = {
+    colours: new Map(),
+    route: "",
+
+    // (Stremio keeps a title's page under its player)
+    root(route) {
+      return document.querySelector(route === "player" ? '[class*="player-container"]' : '[class*="metadetails-container"]');
+    },
+
+    clear() {
+      if (!this.route) return;
+      for (const root of document.querySelectorAll("[data-dx-tint]")) delete root.dataset.dxTint;
+      this.route = "";
+    },
+
+    async ensure() {
+      const hash = location.hash;
+      const route = currentRoute();
+      if (!settings.posterAccent || settings.accent === "white" || (route !== "detail" && route !== "player")) return this.clear();
+      const root = this.root(route);
+      if (!root) return;
+      // Stremio can rebuild the page for the same title
+      if (this.route === hash && root.dataset.dxTint !== undefined) return;
+      if (this.route === hash && (this.pending || this.plain)) return;
+      if (this.route !== hash) delete root.dataset.dxTint;
+      this.route = hash;
+      this.pending = true;
+      this.plain = false;
+      try {
+        const url = await this.artwork(route);
+        if (!url) { this.route = ""; return; }
+        if (!this.colours.has(url)) {
+          if (this.colours.size >= 200) this.colours.delete(this.colours.keys().next().value);
+          this.colours.set(url, await this.read(url));
+        }
+        const colour = this.colours.get(url);
+        this.plain = !colour;
+        const now = this.root(route);
+        if (colour && now && location.hash === hash && settings.posterAccent) {
+          now.style.setProperty("--dx-title-colour", colour);
+          now.dataset.dxTint = "";
+        }
+      } finally {
+        this.pending = false;
+      }
+    },
+
+    async artwork(route) {
+      const s = await core().getState(route === "player" ? "player" : "meta_details");
+      const item = s && s.metaItem;
+      // (a title's page nests it one level deeper than the player)
+      const ready = item && (item.type ? item : item.content);
+      const meta = ready && ready.type === "Ready" ? ready.content : null;
+      return meta ? meta.background || meta.poster || "" : "";
+    },
+
+    async read(url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return "";
+        const image = await createImageBitmap(await response.blob(), { resizeWidth: 48, resizeHeight: 27, resizeQuality: "low" });
+        const canvas = document.createElement("canvas");
+        canvas.width = 48;
+        canvas.height = 27;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(image, 0, 0);
+        image.close();
+        return this.pick(ctx.getImageData(0, 0, 48, 27).data);
+      } catch (_) {
+        return ""; // a site that doesn't allow it, or no connection
+      }
+    },
+
+    linear: (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4),
+
+    pick(data) {
+      const BINS = 24;
+      const bins = Array.from({ length: BINS }, () => ({ weight: 0, a: 0, b: 0, n: 0 }));
+      let coloured = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const [r, g, b] = [data[i], data[i + 1], data[i + 2]].map((c) => this.linear(c / 255));
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        const n = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * n;
+        const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * n;
+        const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * n;
+        const chroma = Math.hypot(A, B);
+        if (chroma < 0.05 || L < 0.22 || L > 0.93) continue;
+        coloured++;
+        const bin = bins[Math.floor(((Math.atan2(B, A) / (2 * Math.PI) + 1) % 1) * BINS) % BINS];
+        bin.weight += chroma * chroma;
+        bin.a += A;
+        bin.b += B;
+        bin.n++;
+      }
+      if (coloured < data.length / 4 * 0.06) return "";
+      const score = (i) => bins[i].weight + 0.5 * (bins[(i + 1) % BINS].weight + bins[(i + BINS - 1) % BINS].weight);
+      const top = bins[bins.map((_, i) => i).sort((x, y) => score(y) - score(x))[0]];
+      if (!top.n) return "";
+      let hue = Math.atan2(top.b, top.a);
+      const degrees = ((hue * 180) / Math.PI + 360) % 360;
+      // Yellow can't be dark enough for white text without turning olive: amber instead
+      if (degrees > 85 && degrees < 115) hue = (70 * Math.PI) / 180;
+      return this.fit(hue, Math.min(0.19, Math.max(0.11, (Math.hypot(top.a, top.b) / top.n) * 1.25)));
+    },
+
+    // The lightest shade of the hue that white text reads on (4.5:1), which also keeps it clear of
+    // the dark page behind it
+    fit(hue, chroma) {
+      const srgb = (L, c) => {
+        const a = c * Math.cos(hue);
+        const b = c * Math.sin(hue);
+        const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+        const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+        const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+        return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+      };
+      for (let L = 0.8; L > 0.3; L -= 0.01) {
+        let c = chroma;
+        while (c > 0.02 && srgb(L, c).some((v) => v < 0 || v > 1)) c -= 0.005;
+        const rgb = srgb(L, c).map((v) => Math.min(1, Math.max(0, v)));
+        const luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        if (luminance <= 0.179) return "#" + rgb.map((v) => Math.round((v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055) * 255).toString(16).padStart(2, "0")).join("");
+      }
+      return "";
+    },
+  };
+
   const crisp = {
     timer: null,
     recent: [],
