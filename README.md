@@ -471,7 +471,7 @@ For a custom subtitle font on desktop, choose *Subtitles → Subtitle font → C
 
 The Home billboard, dx.bi previews and wide Continue Watching cards use your configured catalog and metadata addons. To see French (or another language's) titles and descriptions, configure an addon that supplies that language; changing Stremio's interface language alone does not translate addon content. Unavailable metadata falls back to Cinemeta.
 
-French interface settings also translate the billboard controls. Artwork comes from the addon; when localized title art is unavailable, the billboard displays the title as text instead of forcing an English logo. The IMDb-rated and children's billboard selections keep their existing rosters.
+French interface settings also translate the billboard controls. Artwork comes from the addon; when a translated title has no title art, the billboard displays it as text instead of forcing an English logo. In a non-English interface the billboard picks its titles from your addons' catalogs; in English it keeps Cinemeta's Popular titles. The IMDb-rated and children's billboard selections keep their existing rosters.
 
 <br>
 

@@ -130,6 +130,29 @@ assert.equal(a.hero.items[0].id, "tt1234567");
 assert.match(a.hero.slideHtml(a.hero.items[0], 0), /images\.metahub\.space\/logo\//);
 console.log("PASS language/addon changes invalidate old text; English default Cinemeta remains available");
 
+const english = setup();
+english.state.profile.settings.interfaceLanguage = "en-US";
+english.configured.manifest.catalogs.push({ type: "series", id: "popular" });
+await english.hero.load();
+assert.equal(english.hero.items[0].id, "tt1234567", "English keeps Cinemeta's Popular roster");
+assert.ok(!english.requests.some(url => url.includes("metadata.example") && url.includes("/catalog/")), "English must not swap the billboard for an addon's first catalog");
+assert.match(english.hero.slideHtml(english.hero.items[0], 0), /images\.metahub\.space\/logo\//, "English keeps title art when the addon has no logo");
+const noLogo = await english.getInfo("movie", "tt1234567");
+assert.equal(noLogo.logo, null);
+assert.match(english.hero.slideHtml({ ...noLogo, id: "tt1234567", type: "movie", name: "Journey to the Stars", description: "x", background: "https://images.example/b.jpg" }, 0), /metahub\.space\/logo\//);
+const german = setup();
+german.state.profile.settings.interfaceLanguage = "de-DE";
+german.state.profile.addons = [german.stock];
+await german.hero.load();
+assert.match(german.hero.slideHtml(german.hero.items[0], 0), /metahub\.space\/logo\//, "without translated text, other languages keep title art");
+console.log("PASS English keeps Popular and title art; other languages keep art unless the title is translated");
+
+const scoreOnly = setup();
+await scoreOnly.metadataSource.refresh();
+await scoreOnly.getInfo("movie", "tt1234567", null, true);
+assert.ok(!scoreOnly.requests.some(url => url.includes("metadata.example")), "rating badges must not fetch addon metadata per card");
+console.log("PASS rating badges don't call configured addons");
+
 const fallback = setup();
 fallback.state.catalogFailure = true;
 await fallback.hero.load();
@@ -214,7 +237,7 @@ const logo = { src: "https://images.example/english.png", remove() { logoRemoved
 const media = { querySelector: () => logoRemoved ? null : logo, classList: { remove: name => { if (name === "has-logo") hasLogo = false; } } };
 repaint.document.createElement = () => ({ querySelector: () => ({}) });
 repaint.preview.render = () => "localized details";
-repaint.preview.refreshDetails({ querySelector: selector => selector === ".dx-preview-name" ? title : selector === ".dx-preview-media" ? media : selector === ".dx-preview-body" ? { replaceWith() {} } : null }, card.info, { name: "Le Voyage des étoiles", logo: null, _configuredMeta: true });
+repaint.preview.refreshDetails({ querySelector: selector => selector === ".dx-preview-name" ? title : selector === ".dx-preview-media" ? media : selector === ".dx-preview-body" ? { replaceWith() {}, isEqualNode: () => false } : null }, card.info, { name: "Le Voyage des étoiles", logo: null, _configuredMeta: true });
 assert.equal(title.textContent, "Le Voyage des étoiles");
 assert.equal(logoRemoved, true);
 assert.equal(hasLogo, false, "translated text must become visible after removing an English logo");

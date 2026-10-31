@@ -887,7 +887,7 @@
 
     refresh() {
       if (this.pending) return this.pending;
-      if (this.key !== null && Date.now() - this.at < 4000) return Promise.resolve();
+      if (this.key !== null && Date.now() - this.at < (IN_TV ? 20000 : 4000)) return Promise.resolve(); // reading ctx is slow on a TV stick
       this.at = Date.now();
       this.pending = (async () => {
         const { getState } = core();
@@ -933,7 +933,9 @@
     async catalogs() {
       // Keep IMDb's rated list and the existing family/animation roster. Their metadata is still
       // resolved through configured addons below; an arbitrary catalog mustn't replace that filter.
-      if (settings.billboardSource === "rated" || restrict.kidsAge()) return [];
+      // In English the roster stays Cinemeta's Popular: an addon's first catalog is whatever it
+      // happens to list first (Netflix's back catalogue, say), not what's popular now.
+      if (settings.billboardSource === "rated" || restrict.kidsAge() || this.english()) return [];
       const types = settings.billboardSource === "movie" ? ["movie"] : settings.billboardSource === "series" ? ["series"] : ["movie", "series"];
       const urls = [];
       for (const addon of this.addons.filter((a) => !this.isDefault(a))) {
@@ -948,6 +950,11 @@
         return (Array.isArray(j?.metas) ? j.metas : []).filter((m) => m && typeof m.id === "string" && m.name && (m.type || type) === type).map((m) => ({ ...m, type, _stock: false }));
       }));
     },
+
+    english() { return /^en(?:-|$)/i.test(this.language); },
+
+    // MetaHub's title art is English. Keep it unless it would sit over a translated title.
+    englishArtFits(configured) { return this.english() || !configured; },
 
     labels() {
       // The surrounding app translates its own controls. These banner controls belong to dx.bi.
@@ -1028,8 +1035,8 @@
           const info = await getInfo(m.type, m.id, m);
           const item = { ...m, ...info, id: m.id, type: m.type };
           // Default title art is usually English. A configured addon may supply its own logo;
-          // otherwise show its title as text rather than replacing it with English MetaHub art.
-          if (!/^en(?:-|$)/i.test(metadataSource.language) && m._stock && !info._configuredMeta) item.logo = null;
+          // otherwise a translated title shows as text rather than under English MetaHub art.
+          if (!metadataSource.english() && m._stock && !info._configuredMeta) item.logo = null;
           return item;
         }));
         // Only keep slides whose backdrop actually loads
@@ -1115,7 +1122,7 @@
       const type = m.type === "series" ? "series" : "movie";
       const labels = metadataSource.labels();
       const id = encodeURIComponent(m.id);
-      const logo = artworkUrl(m.logo) || (m._stock && !m._configuredMeta && /^en(?:-|$)/i.test(metadataSource.language) && isImdb(m.id) ? art.logo(m.id) : null);
+      const logo = artworkUrl(m.logo) || (isImdb(m.id) && metadataSource.englishArtFits(m._configuredMeta || !m._stock) ? art.logo(m.id) : null);
       const year = m.releaseInfo ? String(m.releaseInfo).replace(/–$/, "–") : "";
       const genres = (m.genres || m.genre || []).slice(0, 3);
       const metaBits = [
@@ -1385,7 +1392,7 @@
   const RATED_POSTER = /ratingposterdb|\/rpdb\/|top-?posters|toppostersapi|easyratings|ratings?[-_]?posters?/i;
 
   // Everything we know about a title: the addon's own data first, Cinemeta fills the gaps
-  async function getInfo(type, id, catalogMeta) {
+  async function getInfo(type, id, catalogMeta, scoreOnly) {
     await metadataSource.refresh();
     const generation = metadataSource.generation;
     await coreMeta.refresh();
@@ -1396,7 +1403,7 @@
       info = mergeMetadata(info, slimMeta(catalogMeta));
       info.logo = catalogMeta.logo || null;
     }
-    const configured = await addonMeta(type, id, false);
+    const configured = scoreOnly ? null : await addonMeta(type, id, false);
     if (configured) {
       info = mergeMetadata(info, slimMeta(configured));
       info.logo = configured.logo || null;
@@ -1436,7 +1443,7 @@
   function artFor(info, id, kind) {
     const imdbId = isImdb(id) ? id : info && info.imdbId;
     if (kind === "background") return artworkUrl(info && info.background) || (imdbId ? art.backgroundMedium(imdbId) : null);
-    if (kind === "logo") return artworkUrl(info && info.logo) || (imdbId && !info?._configuredMeta && /^en(?:-|$)/i.test(metadataSource.language) ? art.logo(imdbId) : null);
+    if (kind === "logo") return artworkUrl(info && info.logo) || (imdbId && metadataSource.englishArtFits(info?._configuredMeta) ? art.logo(imdbId) : null);
     return null;
   }
 
@@ -1554,7 +1561,7 @@
       poster.append(b);
     };
     if (scoreOf(known)) place(scoreOf(known));
-    else getInfo(info.type, info.id).then((meta) => place(scoreOf(meta)));
+    else getInfo(info.type, info.id, null, true).then((meta) => place(scoreOf(meta))); // no addon fetch per card for a badge
   }
 
   function syncCards() {
@@ -2052,7 +2059,7 @@
       fresh.innerHTML = this.render(info, meta);
       const body = el.querySelector(".dx-preview-body");
       const next = fresh.querySelector(".dx-preview-body");
-      if (body && next) body.replaceWith(next);
+      if (body && next && !body.isEqualNode(next)) body.replaceWith(next); // keeps focus on a TV
       const title = el.querySelector(".dx-preview-name");
       if (title && meta.name) title.textContent = meta.name;
       const media = el.querySelector(".dx-preview-media");
