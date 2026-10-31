@@ -879,6 +879,99 @@
   // Billboard
   // ---------------------------------------------------------------------------
 
+  // Interface language and configured addon URLs are separate preferences. Keep addon metadata
+  // in memory, scoped to both, so changing a language, account or addon configuration cannot reuse
+  // another setup's titles. Configured URLs can contain credentials: never persist the scope key.
+  const metadataSource = {
+    language: "en-US", addons: [], key: null, generation: 0, at: 0, pending: null,
+
+    refresh() {
+      if (this.pending) return this.pending;
+      if (this.key !== null && Date.now() - this.at < 4000) return Promise.resolve();
+      this.at = Date.now();
+      this.pending = (async () => {
+        const { getState } = core();
+        if (!getState) return;
+        const ctx = await getState("ctx").catch(() => null);
+        if (!ctx || !ctx.profile) return;
+        const language = String(ctx.profile.settings?.interfaceLanguage || "en-US").replace(/_/g, "-");
+        const addons = (Array.isArray(ctx.profile.addons) ? ctx.profile.addons : []).filter((a) => a && typeof a.transportUrl === "string" && a.manifest);
+        const account = ctx.profile.uid || ctx.profile.auth?.user?._id || ctx.profile.auth?.user?.id || null;
+        const key = JSON.stringify([language, account, addons.map((a) => [a.transportUrl, a.manifest.version])]);
+        if (key === this.key) return;
+        const changed = this.key !== null || hero.items.length > 0 || !!hero.el;
+        this.key = key;
+        this.language = language;
+        this.addons = addons;
+        this.generation++;
+        addonMetaCache.clear();
+        coreMeta.map.clear();
+        coreMeta.at = 0;
+        if (changed) { hero.reset(); preview.prep = null; preview.close(true); }
+      })().catch(() => { /* core is still starting */ }).finally(() => { this.pending = null; });
+      return this.pending;
+    },
+
+    isDefault(addon) {
+      try {
+        const u = new URL(addon.transportUrl);
+        return u.hostname === "v3-cinemeta.strem.io" && u.pathname === "/manifest.json" && !u.search;
+      } catch (_) { return false; }
+    },
+
+    url(addon, resource, type, id) {
+      try {
+        const u = new URL(addon.transportUrl);
+        if (!/^https?:$/.test(u.protocol)) return null;
+        u.pathname = u.pathname.replace(/\/manifest\.json$/, "").replace(/\/$/, "")
+          + `/${resource}/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
+        u.hash = "";
+        return u.href; // retain query parameters and encoded configuration prefixes
+      } catch (_) { return null; }
+    },
+
+    async catalogs() {
+      // Keep IMDb's rated list and the existing family/animation roster. Their metadata is still
+      // resolved through configured addons below; an arbitrary catalog mustn't replace that filter.
+      if (settings.billboardSource === "rated" || restrict.kidsAge()) return [];
+      const types = settings.billboardSource === "movie" ? ["movie"] : settings.billboardSource === "series" ? ["series"] : ["movie", "series"];
+      const urls = [];
+      for (const addon of this.addons.filter((a) => !this.isDefault(a))) {
+        for (const type of types) {
+          const catalog = (Array.isArray(addon.manifest.catalogs) ? addon.manifest.catalogs : []).find((c) => c && c.type === type && !(Array.isArray(c.extra) ? c.extra : []).some((e) => e.isRequired));
+          const url = catalog && this.url(addon, "catalog", type, catalog.id);
+          if (url && urls.length < 4) urls.push({ url, type });
+        }
+      }
+      return Promise.all(urls.map(async ({ url, type }) => {
+        const j = await fetch(url, { signal: AbortSignal.timeout(6000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+        return (Array.isArray(j?.metas) ? j.metas : []).filter((m) => m && typeof m.id === "string" && m.name && (m.type || type) === type).map((m) => ({ ...m, type, _stock: false }));
+      }));
+    },
+
+    labels() {
+      // The surrounding app translates its own controls. These banner controls belong to dx.bi.
+      return /^fr(?:-|$)/i.test(this.language)
+        ? { featured: "À l’affiche", play: "Lire", more: "Plus d’infos", movie: "Film", series: "Série" }
+        : { featured: "Featured", play: "Play", more: "More Info", movie: "Film", series: "Series" };
+    },
+  };
+
+  function mergeMetadata(base, details) {
+    const result = { ...base };
+    for (const [key, value] of Object.entries(details || {})) {
+      if (value !== undefined && value !== null && value !== "" && (!Array.isArray(value) || value.length)) result[key] = value;
+    }
+    return result;
+  }
+
+  function artworkUrl(value) {
+    try {
+      const u = new URL(value);
+      return /^https?:$/.test(u.protocol) ? u.href.replace(/["'<>`]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`) : null;
+    } catch (_) { return null; }
+  }
+
   const hero = {
     el: null,
     items: [],
@@ -886,6 +979,8 @@
     timer: null,
     loading: null,
     stalled: false,
+    revision: 0,
+    retryAt: 0,
 
     sourceUrls() {
       const base = "https://v3-cinemeta.strem.io/catalog";
@@ -901,31 +996,55 @@
 
     async load() {
       if (this.loading) return this.loading;
-      this.loading = (async () => {
-        const lists = await Promise.all(
+      if (Date.now() < this.retryAt) return [];
+      const revision = this.revision;
+      const loading = (async () => {
+        await metadataSource.refresh();
+        const generation = metadataSource.generation;
+        let lists = await metadataSource.catalogs();
+        if (!lists.some((list) => list.length)) lists = await Promise.all(
           this.sourceUrls().map((u) =>
             fetch(u, { signal: AbortSignal.timeout(10000) })
               .then((r) => (r.ok ? r.json() : { metas: [] }))
-              .then((j) => j.metas || [])
+              .then((j) => (Array.isArray(j.metas) ? j.metas : []).map((m) => ({ ...m, _stock: true })))
               .catch(() => [])
           )
         );
         // Interleave movies and series, keep ones with real artwork and a description
         const merged = [];
+        const seen = new Set();
         const max = Math.max(...lists.map((l) => l.length), 0);
         for (let i = 0; i < max && merged.length < 24; i++) {
-          for (const list of lists) if (list[i]) merged.push(list[i]);
+          for (const list of lists) {
+            const m = list[i];
+            const key = m && `${m.type}:${m.id}`;
+            if (m && !seen.has(key)) { seen.add(key); merged.push(m); }
+          }
         }
-        const candidates = merged.filter((m) => isImdb(m.id) && m.description && (m.background || m.poster));
+        const candidates = merged.filter((m) => typeof m.id === "string" && m.name && ["movie", "series"].includes(m.type));
         // nothing hidden, and on a kids profile only what's rated for it
         const fits = await Promise.all(candidates.map((m) => restrict.decide(m.type, m.id).catch(() => false)));
-        const usable = candidates.filter((m, i) => fits[i]).slice(0, 8);
+        const usable = await Promise.all(candidates.filter((m, i) => fits[i]).slice(0, 8).map(async (m) => {
+          const info = await getInfo(m.type, m.id, m);
+          const item = { ...m, ...info, id: m.id, type: m.type };
+          // Default title art is usually English. A configured addon may supply its own logo;
+          // otherwise show its title as text rather than replacing it with English MetaHub art.
+          if (!/^en(?:-|$)/i.test(metadataSource.language) && m._stock && !info._configuredMeta) item.logo = null;
+          return item;
+        }));
         // Only keep slides whose backdrop actually loads
-        const checked = await Promise.all(usable.map(async (m) => ((await preload(art.background(m.id))) ? m : null)));
+        const checked = await Promise.all(usable.map(async (m) => m.description && this.background(m) && (await preload(this.background(m))) ? m : null));
+        if (revision !== this.revision || generation !== metadataSource.generation) { scheduleSync(); return []; }
         this.items = checked.filter(Boolean).slice(0, 6);
+        this.retryAt = this.items.length ? 0 : Date.now() + 5000;
         return this.items;
-      })();
-      return this.loading;
+      })().finally(() => { if (this.loading === loading) this.loading = null; });
+      this.loading = loading;
+      return loading;
+    },
+
+    background(m) {
+      return artworkUrl(m.background) || (isImdb(m.id) ? art.background(m.id) : artworkUrl(m.poster));
     },
 
     host() {
@@ -933,6 +1052,8 @@
     },
 
     async ensure() {
+      await metadataSource.refresh();
+      if (metadataSource.key === null && core().getState) return; // wait for the initial profile
       const host = this.host();
       if (!settings.billboard || !host) {
         if (!settings.billboard) this.remove();
@@ -963,7 +1084,7 @@
     build() {
       const el = document.createElement("section");
       el.className = "dx-hero";
-      el.setAttribute("aria-label", "Featured");
+      el.setAttribute("aria-label", metadataSource.labels().featured);
       el.innerHTML =
         this.items.map((m, i) => this.slideHtml(m, i)).join("") +
         `<div class="dx-hero-shade"></div>` +
@@ -992,27 +1113,30 @@
 
     slideHtml(m, i) {
       const type = m.type === "series" ? "series" : "movie";
+      const labels = metadataSource.labels();
+      const id = encodeURIComponent(m.id);
+      const logo = artworkUrl(m.logo) || (m._stock && !m._configuredMeta && /^en(?:-|$)/i.test(metadataSource.language) && isImdb(m.id) ? art.logo(m.id) : null);
       const year = m.releaseInfo ? String(m.releaseInfo).replace(/–$/, "–") : "";
       const genres = (m.genres || m.genre || []).slice(0, 3);
       const metaBits = [
         imdbHtml(m.imdbRating),
         year && `<span>${esc(year)}</span>`,
         m.runtime && `<span>${esc(formatRuntime(m.runtime))}</span>`,
-        `<span class="dx-pill">${type === "series" ? "Series" : "Film"}</span>`,
+        `<span class="dx-pill">${type === "series" ? labels.series : labels.movie}</span>`,
         genres.length && `<span>${genres.map(esc).join(" · ")}</span>`,
       ].filter(Boolean);
-      const playHref = type === "movie" ? `/detail/movie/${m.id}/${m.id}` : `/detail/series/${m.id}`;
+      const playHref = type === "movie" ? `/detail/movie/${id}/${id}` : `/detail/series/${id}`;
       return `
         <div class="dx-hero-slide" data-i="${i}">
-          <div class="dx-hero-backdrop" style="background-image:url('${art.background(m.id)}')"></div>
+          <div class="dx-hero-backdrop" style="${esc(`background-image:url(${JSON.stringify(this.background(m))})`)}"></div>
           <div class="dx-hero-content">
-            <div class="dx-hero-kicker"><b>DX.BI</b>${type === "series" ? "Series" : "Film"}</div>
-            <img class="dx-hero-logo" src="${art.logo(m.id)}" alt="${esc(m.name)}" draggable="false">
+            <div class="dx-hero-kicker"><b>DX.BI</b>${type === "series" ? labels.series : labels.movie}</div>
+            ${logo ? `<img class="dx-hero-logo" src="${esc(logo)}" alt="${esc(m.name)}" draggable="false">` : `<h1 class="dx-hero-title">${esc(m.name)}</h1>`}
             <div class="dx-hero-meta">${metaBits.join("")}</div>
             <p class="dx-hero-desc">${esc(m.description)}</p>
             <div class="dx-hero-actions">
-              <button class="dx-btn dx-btn-primary" data-href="${playHref}">${ICONS.play}<span>Play</span></button>
-              <button class="dx-btn dx-btn-secondary" data-href="/detail/${type}/${m.id}">${ICONS.info}<span>More Info</span></button>
+              <button class="dx-btn dx-btn-primary" data-href="${playHref}">${ICONS.play}<span>${labels.play}</span></button>
+              <button class="dx-btn dx-btn-secondary" data-href="/detail/${type}/${id}">${ICONS.info}<span>${labels.more}</span></button>
             </div>
           </div>
         </div>`;
@@ -1045,7 +1169,7 @@
           d.classList.add("is-active");
         }
       });
-      if (!instant) preload(art.background(this.items[(this.index + 1) % this.items.length].id));
+      if (!instant) preload(this.background(this.items[(this.index + 1) % this.items.length]));
       this.schedule();
     },
 
@@ -1085,6 +1209,8 @@
     },
 
     reset() {
+      this.revision++;
+      this.retryAt = 0;
       this.remove();
       this.items = [];
       this.loading = null;
@@ -1188,13 +1314,19 @@
     MODELS: ["board", "discover", "search", "library", "continue_watching_preview"],
 
     refresh(force) {
+      metadataSource.refresh();
       const { getState } = core();
       if (!getState) return Promise.resolve();
       if (!force && Date.now() - this.at < 4000) return this.loading || Promise.resolve();
       this.at = Date.now();
+      const generation = metadataSource.generation;
       this.loading = (async () => {
         for (const model of this.MODELS) {
-          try { this.collect(await getState(model), 0); } catch (_) { /* model not loaded yet */ }
+          try {
+            const state = await getState(model);
+            if (generation !== metadataSource.generation) return;
+            this.collect(state, 0);
+          } catch (_) { /* model not loaded yet */ }
         }
       })();
       return this.loading;
@@ -1253,23 +1385,42 @@
   const RATED_POSTER = /ratingposterdb|\/rpdb\/|top-?posters|toppostersapi|easyratings|ratings?[-_]?posters?/i;
 
   // Everything we know about a title: the addon's own data first, Cinemeta fills the gaps
-  async function getInfo(type, id) {
+  async function getInfo(type, id, catalogMeta) {
+    await metadataSource.refresh();
+    const generation = metadataSource.generation;
     await coreMeta.refresh();
     const fromAddon = coreMeta.get(type, id);
-    const imdbId = isImdb(id) ? id : fromAddon && fromAddon.imdbId;
+    let imdbId = isImdb(id) ? id : fromAddon && fromAddon.imdbId;
     let info = fromAddon ? { ...fromAddon } : {};
+    if (catalogMeta) {
+      info = mergeMetadata(info, slimMeta(catalogMeta));
+      info.logo = catalogMeta.logo || null;
+    }
+    const configured = await addonMeta(type, id, false);
+    if (configured) {
+      info = mergeMetadata(info, slimMeta(configured));
+      info.logo = configured.logo || null;
+      const externalId = configured.imdb_id || configured.id;
+      if (!imdbId && isImdb(externalId)) imdbId = externalId;
+    }
+    if (generation !== metadataSource.generation) return {};
+    info._configuredMeta = !!configured;
     const missing = !info.imdbRating || !(info.genres && info.genres.length) || !info.releaseInfo;
     if (imdbId && missing) {
       const cinemeta = await getMeta(type, imdbId);
       if (cinemeta) {
         for (const [k, v] of Object.entries(cinemeta)) {
+          if (k === "logo" && (configured || catalogMeta)) continue;
           const have = info[k];
           if (have === undefined || have === null || have === "" || (Array.isArray(have) && !have.length)) info[k] = v;
         }
       }
     }
     info.imdbId = imdbId || null;
+    info.background = artworkUrl(info.background);
+    info.logo = artworkUrl(info.logo);
     if (!info.imdbRating && !info.score && animeScore.parse(id)) info.score = await animeScore.get(id);
+    if (generation !== metadataSource.generation) return {};
     return info;
   }
 
@@ -1284,8 +1435,8 @@
   // Artwork for a title: addon-provided first, then MetaHub via its IMDb id
   function artFor(info, id, kind) {
     const imdbId = isImdb(id) ? id : info && info.imdbId;
-    if (kind === "background") return (info && info.background) || (imdbId ? art.backgroundMedium(imdbId) : null);
-    if (kind === "logo") return (info && info.logo) || (imdbId ? art.logo(imdbId) : null);
+    if (kind === "background") return artworkUrl(info && info.background) || (imdbId ? art.backgroundMedium(imdbId) : null);
+    if (kind === "logo") return artworkUrl(info && info.logo) || (imdbId && !info?._configuredMeta && /^en(?:-|$)/i.test(metadataSource.language) ? art.logo(imdbId) : null);
     return null;
   }
 
@@ -1336,35 +1487,41 @@
     const wantWide = isWideRow(card);
     let wide = poster.querySelector(":scope > .dx-wide-art");
     if (wantWide) {
-      if (!wide || wide.dataset.key !== key) {
+      const generation = metadataSource.generation;
+      const wideKey = `${generation}:${key}`;
+      if (!wide || wide.dataset.key !== wideKey) {
         if (wide) wide.remove();
         wide = document.createElement("div");
         wide.className = "dx-wide-art";
-        wide.dataset.key = key;
+        wide.dataset.key = wideKey;
         const target = wide;
-        const fallback = info.poster ? `url('${info.poster}')` : "none";
-        const useFallback = () => {
+        const posterUrl = artworkUrl(info.poster);
+        const fallback = posterUrl ? `url('${posterUrl}')` : "none";
+        const useFallback = (meta) => {
           target.classList.add("is-fallback");
           target.innerHTML =
-            (info.poster ? `<div class="dx-wide-blur" style="background-image:${fallback}"></div><img class="dx-wide-thumb" alt="" src="${esc(info.poster)}">` : "") +
-            `<div class="dx-wide-name">${esc(info.title)}</div>`;
+            (posterUrl ? `<div class="dx-wide-blur" style="background-image:${fallback}"></div><img class="dx-wide-thumb" alt="" src="${esc(posterUrl)}">` : "") +
+            `<div class="dx-wide-name">${esc(meta?.name || info.title)}</div>`;
         };
         const paint = (meta) => {
+          if (generation !== metadataSource.generation) return;
           const bg = artFor(meta, info.id, "background");
           const logoUrl = artFor(meta, info.id, "logo");
-          if (!bg) { useFallback(); return; }
+          if (!bg) { useFallback(meta); return; }
           preload(bg).then((ok) => {
-            if (!target.isConnected) return;
-            if (!ok) { useFallback(); return; }
+            if (!target.isConnected || generation !== metadataSource.generation) return;
+            if (!ok) { useFallback(meta); return; }
+            target.classList.remove("is-fallback");
+            const title = meta?.name || info.title;
             target.style.backgroundImage = `url('${bg}')`;
-            target.innerHTML = logoUrl ? `<img class="dx-wide-logo" alt="" src="${esc(logoUrl)}">` : `<div class="dx-wide-name">${esc(info.title)}</div>`;
+            target.innerHTML = logoUrl ? `<img class="dx-wide-logo" alt="" src="${esc(logoUrl)}">` : `<div class="dx-wide-name">${esc(title)}</div>`;
             target.querySelector(".dx-wide-logo")?.addEventListener("error", (ev) => {
-              ev.target.replaceWith(Object.assign(document.createElement("div"), { className: "dx-wide-name", textContent: info.title }));
+              ev.target.replaceWith(Object.assign(document.createElement("div"), { className: "dx-wide-name", textContent: title }));
             }, { once: true });
           });
         };
         if (known || isImdb(info.id)) paint(known);
-        else getInfo(info.type, info.id).then(paint);
+        if (!known || metadataSource.addons.some((a) => !metadataSource.isDefault(a) && addonServes(a.manifest, "meta", info.type, info.id))) getInfo(info.type, info.id).then(paint);
         poster.prepend(wide);
         // the row's landscape layout keys off this (see syncCards)
         const row = card.closest('[class*="continue-watching-row"]');
@@ -1422,7 +1579,7 @@
       const info = cardInfo(card);
       restrict.card(card, info);
       const key = info ? `${info.type}:${info.id}` : "";
-      const marks = `${settings.ratings}|${settings.newEpisodes}|${settings.animeTitles}|${episodes.version}`;
+      const marks = `${settings.ratings}|${settings.newEpisodes}|${settings.animeTitles}|${episodes.version}|${metadataSource.generation}`;
       if (card.dataset.dxKey === key && card.dataset.dxWide === String(isWideRow(card)) && card.dataset.dxRatings === marks) continue;
       card.dataset.dxKey = key;
       card.dataset.dxWide = String(isWideRow(card));
@@ -1558,10 +1715,18 @@
     prepare(card) {
       const info = cardInfo(card);
       if (!info) return null;
-      const key = `${info.type}:${info.id}`;
+      const generation = metadataSource.generation;
+      const key = `${generation}:${info.type}:${info.id}`;
       if (this.prep && this.prep.key === key) return this.prep.promise;
+      let timedOut = false;
+      const details = getInfo(info.type, info.id);
+      details.then((meta) => {
+        if (timedOut && generation === metadataSource.generation && this.prep?.key === key) this.prep.promise = Promise.resolve(meta);
+      });
       const promise = (async () => {
-        const meta = (await Promise.race([getInfo(info.type, info.id), new Promise((r) => setTimeout(() => r(undefined), 900))])) || coreMeta.get(info.type, info.id) || {};
+        const received = await Promise.race([details, new Promise((r) => setTimeout(() => r(undefined), 900))]);
+        timedOut = received === undefined;
+        const meta = received || coreMeta.get(info.type, info.id) || {};
         const urls = [artFor(meta, info.id, "background"), artFor(meta, info.id, "logo"), info.poster].filter(Boolean);
         await Promise.race([Promise.all(urls.map((u) => decodeImage(u))), new Promise((r) => setTimeout(r, 1200))]);
         return meta;
@@ -1743,20 +1908,12 @@
       el.innerHTML = this.render(info, meta);
       this.wire(el);
       trailer.schedule(el, info, meta, token);
-      if (!scoreOf(meta) || !meta.genres || !meta.genres.length) {
-        metaPromise.then((late) => {
-          if (late && token === this.token && this.el.classList.contains("is-open")) {
-            // only the details change: rebuilding the whole card would restart its reveal
-            const fresh = document.createElement("div");
-            fresh.innerHTML = this.render(info, late);
-            const body = el.querySelector(".dx-preview-body");
-            const next = fresh.querySelector(".dx-preview-body");
-            if (body && next) body.replaceWith(next);
-            this.wire(el);
-            if (!el.querySelector(".dxe-trailer")) trailer.schedule(el, info, late, token);
-          }
-        });
-      }
+      metaPromise.then((late) => {
+        if (late && token === this.token && this.el.classList.contains("is-open")) {
+          this.refreshDetails(el, info, late);
+          if (!el.querySelector(".dxe-trailer")) trailer.schedule(el, info, late, token);
+        }
+      });
 
       // Final geometry: wider than the card, centred on it, always fully on screen. Measured where
       // the card rests, not where it is mid-glide: moving along a row, the next card may still be
@@ -1886,6 +2043,24 @@
 
     unpush() {
       for (const n of document.querySelectorAll("[data-dx-pushed]")) this.release(n);
+    },
+
+    // Update late metadata without restarting the card's reveal. Removing an English logo must
+    // also reveal the text title; otherwise the old has-logo class keeps the translated name hidden.
+    refreshDetails(el, info, meta) {
+      const fresh = document.createElement("div");
+      fresh.innerHTML = this.render(info, meta);
+      const body = el.querySelector(".dx-preview-body");
+      const next = fresh.querySelector(".dx-preview-body");
+      if (body && next) body.replaceWith(next);
+      const title = el.querySelector(".dx-preview-name");
+      if (title && meta.name) title.textContent = meta.name;
+      const media = el.querySelector(".dx-preview-media");
+      const logo = media?.querySelector("img");
+      const logoUrl = artFor(meta, info.id, "logo");
+      if (!logoUrl) { logo?.remove(); media?.classList.remove("has-logo"); }
+      else if (logo && logo.src !== logoUrl) { media.classList.remove("has-logo"); logo.src = logoUrl; }
+      this.wire(el);
     },
 
     wire(el) {
@@ -12909,21 +13084,33 @@
 
   // Details from your own addons, for ids Cinemeta doesn't know (tmdb:…, kitsu:…)
   const addonMetaCache = new Map();
-  function addonMeta(type, id) {
-    const key = `${type}:${id}`;
-    if (!addonMetaCache.has(key)) {
-      addonMetaCache.set(key, (async () => {
-        const ctx = await core().getState("ctx").catch(() => null);
-        const addons = ((ctx && ctx.profile && ctx.profile.addons) || []).filter((a) => addonServes(a.manifest, "meta", type, id));
+  async function addonMeta(type, id, includeDefault = true) {
+    await metadataSource.refresh();
+    const generation = metadataSource.generation;
+    const key = `${generation}:${includeDefault}:${type}:${id}`;
+    const cached = addonMetaCache.get(key);
+    if (!cached || Date.now() - cached.at > (cached.failed ? 10000 : META_TTL)) {
+      const entry = { at: Date.now(), failed: false, promise: null };
+      entry.promise = (async () => {
+        const addons = metadataSource.addons.filter((a) => (includeDefault || !metadataSource.isDefault(a)) && addonServes(a.manifest, "meta", type, id))
+          .sort((a, b) => Number(metadataSource.isDefault(a)) - Number(metadataSource.isDefault(b)));
         for (const a of addons) {
-          const j = await fetch(`${addonBase(a)}/meta/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`, { signal: AbortSignal.timeout(10000) })
+          const url = metadataSource.url(a, "meta", type, id);
+          if (!url) continue;
+          const j = await fetch(url, { signal: AbortSignal.timeout(6000) })
             .then((r) => (r.ok ? r.json() : null)).catch(() => null);
-          if (j && j.meta) return j.meta;
+          if (generation !== metadataSource.generation) return null;
+          // Providers may canonicalize tt… requests to tmdb:… (or the reverse). Keep the original
+          // navigation ID at the call site; a different returned ID alone is not a lookup failure.
+          if (j && j.meta && typeof j.meta === "object" && !Array.isArray(j.meta) && (!j.meta.type || j.meta.type === type)) return j.meta;
         }
+        entry.failed = true;
         return null;
-      })());
+      })();
+      addonMetaCache.set(key, entry);
+      if (addonMetaCache.size > 256) addonMetaCache.delete(addonMetaCache.keys().next().value);
     }
-    return addonMetaCache.get(key);
+    return addonMetaCache.get(key).promise;
   }
 
   const prefetch = {
