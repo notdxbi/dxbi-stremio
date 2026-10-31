@@ -107,6 +107,7 @@ function mainWorld(): void {
     w.__dxbiMpv = Object.freeze({
         get: (name: string) => mpv[name],
         set: (name: string, value: unknown) => send("mpv-set-prop", [name, value]),
+        subtitleStyle: (properties: Record<string, unknown>) => send("dxbi-subtitle-style", properties),
         command: (...args: unknown[]) => send("mpv-command", args),
         observe: (name: string) => send("mpv-observe-prop", name),
         // [{ name, source }] of mpv GLSL user shaders; [] removes them

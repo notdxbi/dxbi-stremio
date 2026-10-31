@@ -247,7 +247,7 @@
       key: "subtitleStyle",
       type: "select",
       label: "Subtitle style",
-      description: "Size and position stay on Stremio's own subtitle settings.",
+      description: "Size and position stay on Stremio's own subtitle settings. Original ASS styling, when enabled, and picture-based subtitles keep their own appearance.",
       defaultValue: DEFAULTS.subtitleStyle,
       options: [
         { label: "Stremio default", value: "stremio" },
@@ -7066,6 +7066,23 @@
     mono: { family: "monospace", css: "'JetBrains Mono', ui-monospace, monospace" },
   };
 
+  // mpv equivalents of the browser presets. Use its native outline, shadow and box rendering;
+  // size, position, font selection and the original-ASS preference remain under their own controls.
+  const SUB_MPV_PRESETS = {
+    netflix: { "sub-color": "#FFFFFFFF", "sub-border-size": 0, "sub-shadow-offset": 2, "sub-blur": 0, "sub-bold": true },
+    outline: { "sub-color": "#FFFFFFFF", "sub-border-size": 2, "sub-shadow-offset": 0, "sub-blur": 0, "sub-bold": true },
+    boxed: { "sub-color": "#FFFFFFFF", "sub-border-style": "background-box", "sub-back-color": "#C7000000", "sub-border-size": 0, "sub-shadow-offset": 3, "sub-blur": 0, "sub-bold": false },
+    yellow: { "sub-color": "#FFFFD84D", "sub-border-size": 1.5, "sub-shadow-offset": 0, "sub-blur": 0, "sub-bold": true },
+    soft: { "sub-color": "#EBFFFFFF", "sub-border-size": 0, "sub-shadow-offset": 1, "sub-blur": 0, "sub-bold": false },
+  };
+
+  function applyNativeSubtitleStyle(style) {
+    const preset = Object.hasOwn(SUB_MPV_PRESETS, style) ? SUB_MPV_PRESETS[style] : null;
+    window.__dxbiMpv?.subtitleStyle?.(preset ? {
+      "sub-border-style": "outline-and-shadow", "sub-border-color": "#FF000000", "sub-back-color": "#E6000000", ...preset,
+    } : {});
+  }
+
   function selectedSubtitleFont() {
     if (settings.subtitleFont === "custom") {
       const family = String(settings.subtitleCustomFont || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 128);
@@ -7080,8 +7097,9 @@
     // mpv draws subtitles outside the page, so CSS alone cannot change their font.
     // This option persists across streams; changing it also updates a video already playing.
     window.__dxbiMpv?.set("sub-font", font.family);
+    applyNativeSubtitleStyle(settings.subtitleStyle);
     let el = document.getElementById("dx-sub-style");
-    const decl = (SUB_PRESETS[settings.subtitleStyle] || "").replace(/;/g, " !important;")
+    const decl = (Object.hasOwn(SUB_PRESETS, settings.subtitleStyle) ? SUB_PRESETS[settings.subtitleStyle] : "").replace(/;/g, " !important;")
       + (font.css ? ` font-family: ${font.css} !important;` : "");
     if (!decl) {
       if (el) el.remove();
@@ -13428,6 +13446,7 @@
       sub2.stop();
       volumeTip.stop();
       window.__dxbiMpv?.set("sub-font", "sans-serif");
+      applyNativeSubtitleStyle("stremio");
       frame.ensure(null);
       document.documentElement.classList.remove("dx-hdr-subs");
       document.body.classList.remove("dx-watched-dim", "dx-watched-hide");
