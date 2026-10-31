@@ -262,7 +262,8 @@ await wide.refresh(); await wide.coreMeta.refresh(true);
 wide.decorate(wideCard);
 await new Promise(done => setTimeout(done, 10));
 assert.notEqual(wideNode, previousWide);
-assert.match(wideNode.innerHTML, /Journey to the Stars/);
+assert.match(wideNode.innerHTML, /metahub\.space\/logo\//, "English keeps title art on wide cards");
+assert.doesNotMatch(wideNode.innerHTML, /Le Voyage/);
 assert.equal(previousWide.isConnected, false);
 console.log("PASS Continue Watching uses configured titles and repaints after a language/configuration change");
 
