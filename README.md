@@ -465,6 +465,8 @@ The settings are grouped, with a list to jump between groups and a search box:
 
 <br clear="right">
 
+On desktop, *Subtitle style* applies the selected colours, outline, shadow and background to the built-in mpv player and browser subtitles. Choose *Stremio default* to restore Stremio's own appearance settings. Size and position stay under Stremio's subtitle controls.
+
 For a custom subtitle font on desktop, choose *Subtitles → Subtitle font → Custom installed font* and enter its family name in *Custom subtitle font* (for example, *Tahoma* or *Noto Naskh Arabic*). The font must be installed on your computer. This applies to the built-in mpv player and browser subtitles; picture-based subtitles and ASS subtitles with original styling enabled keep their own appearance.
 
 <br>

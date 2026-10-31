@@ -6,6 +6,7 @@ import { join } from "path";
 import { IPC_CHANNELS } from "../constants";
 import { getLogger } from "../utils/logger";
 import { isFullScreen, setFullScreen } from "./Maximize";
+import MpvSubtitleStyle from "./MpvSubtitleStyle";
 
 // dx.bi plays video the way the official Stremio desktop app does: in mpv, behind the page.
 //
@@ -89,6 +90,13 @@ export default class MpvShell {
     private static handle: BrowserWindow | null = null;
     private static drag: { x: number; y: number; bounds: Electron.Rectangle; timer: NodeJS.Timeout } | null = null;
     private static requestId = 0;
+    private static answers = new Map<number, (message: any) => void>();
+    private static subtitleStyle = new MpvSubtitleStyle(
+        (name, done) => this.command(["get_property", name], (message) => {
+            if (message.error === "success") done(message.data);
+        }),
+        (name, value) => this.command(["set_property", name, value]),
+    );
     private static observed = new Map<string, number>(); // property name → observe id
     private static queue: string[] = [];
     private static playing = false;
@@ -304,8 +312,10 @@ export default class MpvShell {
         });
     }
 
-    private static command(args: unknown[]): void {
-        const line = JSON.stringify({ command: args, request_id: ++this.requestId }) + "\n";
+    private static command(args: unknown[], answer?: (message: any) => void): void {
+        const request_id = ++this.requestId;
+        if (answer) this.answers.set(request_id, answer);
+        const line = JSON.stringify({ command: args, request_id }) + "\n";
         if (this.socket) this.socket.write(line);
         else this.queue.push(line);
     }
@@ -313,6 +323,8 @@ export default class MpvShell {
     private static onMpvLine(line: string): void {
         let msg: any;
         try { msg = JSON.parse(line); } catch { logger.warn(`mpv sent something unreadable: ${line.slice(0, 120)}`); return; }
+        const answer = this.answers.get(msg.request_id);
+        if (answer) { this.answers.delete(msg.request_id); answer(msg); }
         if (DEBUG && !(msg.event === "property-change" && msg.name === "time-pos")) logger.info(`mpv → ${line.slice(0, 200)}`);
         if (msg.event === "property-change") {
             this.signal("mpv-prop-change", { name: msg.name, data: this.propValue(msg.name, msg.data) });
@@ -379,9 +391,12 @@ export default class MpvShell {
             case "mpv-set-prop": {
                 const [name, value] = data as [string, unknown];
                 if (IGNORED_PROPS.has(name)) break;
-                this.command(["set_property", name, value]);
+                this.command(["set_property", name, this.subtitleStyle.property(name, value)]);
                 break;
             }
+            case "dxbi-subtitle-style":
+                this.subtitleStyle.apply(data);
+                break;
             case "mpv-observe-prop": {
                 const name = String(data);
                 if (this.observed.has(name)) {
