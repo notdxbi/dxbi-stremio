@@ -26,7 +26,6 @@ object Updates {
     private const val PLUGIN_URL = "https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi.plugin.js"
     private const val RELEASES_URL = "https://api.github.com/repos/notdxbi/dxbi-stremio/releases/latest"
     private const val LATEST_PAGE = "https://github.com/notdxbi/dxbi-stremio/releases/latest"
-    private const val APK_URL = "$LATEST_PAGE/download/dxbi-tv.apk"
     private const val RECHECK_MS = 6 * 60 * 60 * 1000L
     private const val APK_ASSET = "dxbi-tv.apk"
     private const val UPDATED_PLUGIN = "dxbi.plugin.js"
@@ -102,9 +101,10 @@ object Updates {
     private fun fromPage(): Latest? {
         val tag = http.newCall(Request.Builder().url(LATEST_PAGE).head().build()).execute().use { it.request.url.pathSegments.lastOrNull() }
         val version = tag?.takeIf { it.startsWith("v") }?.removePrefix("v") ?: return null
-        // only a release that has its APK attached yet
-        val found = http.newCall(Request.Builder().url(APK_URL).head().build()).execute().use { it.isSuccessful }
-        return if (found) Latest(version, APK_URL, -1) else null
+        // That release's own copy (just after a release, "latest" can differ from page to file), once attached
+        val url = "https://github.com/notdxbi/dxbi-stremio/releases/download/$tag/$APK_ASSET"
+        val found = http.newCall(Request.Builder().url(url).head().build()).execute().use { it.isSuccessful }
+        return if (found) Latest(version, url, -1) else null
     }
 
     fun checkApp(activity: MainActivity) = thread(name = "dxbi-app-update") {
