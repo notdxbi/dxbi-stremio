@@ -175,6 +175,10 @@ async function main() {
   await sleep(8000);
   await screenshot("search");
   await evaluate("location.hash = '#/settings'; true");
+  // One option of a kind the app doesn't know makes it refuse them all, and Settings is left empty
+  const options = await evaluate("window.StremioEnhancedAPI.getRegisteredSettings('dxbi').then((s) => (s || []).length)");
+  if (options) console.log(`  ok: ${options} settings registered`);
+  else fail("dx.bi's settings were not registered");
   await sleep(4000);
   await screenshot("settings");
 

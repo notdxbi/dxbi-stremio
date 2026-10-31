@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.22.1
+- **dx.bi's settings are back.** In 2.22.0 the dx.bi app and Stremio Enhanced refused all of dx.bi's settings because of one new option, so the Settings button disappeared. Your saved settings were kept and kept working. dx.bi TV's settings list is back in full too, with *My List on Home* now shown properly.
+
 ## 2.22.0
 - **Support dx.bi.** The dx.bi app has a *Support dx.bi* button in Settings → About, and dx.bi TV has a *Support dx.bi* row in Settings with a code to scan with your phone. dx.bi stays free.
 - **dx.bi on Android phones fits upright.** The app is laid out at the phone's own width, so text and buttons are the normal size. The billboard shows in full with its logo and buttons centred, the tabs move to a bar at the bottom, and Discover and Library show three titles across.

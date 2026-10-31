@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.22.0
+ * @version 2.22.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.22.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.22.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -378,7 +378,7 @@
     { key: "crispPosters", type: "toggle", label: "Sharper posters", description: "Loads bigger posters when your screen can show them. On a TV, only for the title you're on, so browsing stays quick.", defaultValue: DEFAULTS.crispPosters },
     {
       key: "myList",
-      type: "dropdown",
+      type: "select",
       label: "My List on Home",
       description: "Your library as a row under Continue Watching.",
       defaultValue: DEFAULTS.myList,
@@ -460,7 +460,7 @@
       await window.StremioEnhancedAPI?.clearRegisteredSettings?.(PLUGIN_KEY);
     } catch (_) { /* nothing registered yet */ }
     // dx.bi TV's own options stay out of the app's and Stremio Enhanced's settings
-    Promise.resolve(API.registerSettings(SCHEMA.filter((o) => IN_TV || !o.tvOnly))).catch(() => { /* already registered */ });
+    Promise.resolve(API.registerSettings(SCHEMA.filter((o) => IN_TV || !o.tvOnly))).catch((err) => log("settings not registered", err));
     const values = await Promise.all(
       Object.keys(DEFAULTS).map((key) => API.getSetting(key).then((v) => [key, v]).catch(() => [key, null]))
     );
