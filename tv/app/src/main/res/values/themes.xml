@@ -10,4 +10,38 @@
         <item name="android:selectableItemBackground">@drawable/player_focus</item>
         <item name="android:selectableItemBackgroundBorderless">@drawable/player_focus</item>
     </style>
+
+    <style name="PlayerButton">
+        <item name="android:layout_width">52dp</item>
+        <item name="android:layout_height">52dp</item>
+        <item name="android:layout_marginEnd">4dp</item>
+        <item name="android:background">@drawable/controls_button</item>
+        <item name="android:focusable">true</item>
+        <item name="android:padding">13dp</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
+
+    <style name="PanelButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/panel_row</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">7dp</item>
+        <item name="android:paddingBottom">7dp</item>
+        <item name="android:textColor">@color/panel_button</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlayerTime">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minWidth">72dp</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+    </style>
 </resources>

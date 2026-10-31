@@ -220,6 +220,8 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 - **Sharper posters** — bigger posters load when your screen can show them. On a TV, only the title you're on.
 
+- **Colours from the title** — a title's page and player take a colour from its artwork, always in a shade white text reads on. Black and white films keep your accent.
+
 - **Watched titles** — optionally dim or hide what you've already seen in Discover, Search and Home.
 
 ### The player

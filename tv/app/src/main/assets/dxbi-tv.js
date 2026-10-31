@@ -18,6 +18,7 @@
     activePlayback: () => bridge.activePlayback(TOKEN),
     takePendingClose: () => bridge.takePendingClose(TOKEN),
     openExternal: (url) => bridge.openExternal(TOKEN, url),
+    control: (command) => bridge.control(TOKEN, JSON.stringify(command)),
     findServers: () => bridge.findServers(TOKEN),
     torrentUrl: (json) => (bridge.torrentUrl ? bridge.torrentUrl(TOKEN, json) : ""),
     deviceInfo: () => { try { return JSON.parse(bridge.deviceInfo ? bridge.deviceInfo(TOKEN) : "{}"); } catch (_) { return {}; } },
@@ -36,12 +37,17 @@
   // ---------------------------------------------------------------------------
   const PHONE = (() => { try { return !!bridge.isPhone(); } catch (_) { return false; } })();
   tv.phone = PHONE;
+  // Words written for a TV, as a phone shows them
+  const forDevice = (text) => (PHONE && typeof text === "string"
+    ? text.replace(/ On a TV, only[^.]*\./, "").replace(/\bthis TV\b/g, "this phone").replace(/\bthis TV's\b/g, "this phone's")
+    : text);
   const upright = () => PHONE && window.screen && screen.height > screen.width;
   let VIEWPORT = "width=1280, user-scalable=no";
   function fitViewport() {
     // Upright, a phone is laid out at its own width, so everything is the size Android apps are.
     // Marked from the screen, not the page: the keyboard opening makes the page look sideways.
-    VIEWPORT = upright() ? "width=device-width, initial-scale=1, user-scalable=no" : "width=1280, user-scalable=no";
+    // (a phone on its side too: 1280 pixels across made everything tiny there)
+    VIEWPORT = PHONE ? "width=device-width, initial-scale=1, user-scalable=no" : "width=1280, user-scalable=no";
     document.documentElement.classList.toggle("dx-phone", PHONE);
     document.documentElement.classList.toggle("dx-upright", upright());
     let meta = document.querySelector('meta[name="viewport"]');
@@ -183,6 +189,7 @@
 
   // Resolves with the button index (or { button, value } when there's an input); -1 when dismissed
   async function dialog({ title, message, buttons, input, qr }) {
+    message = forDevice(message);
     ensureStyle();
     closeModal();
     // One dialog at a time: Stremio's own (a promotion, an addon to install) goes first, since it
@@ -320,12 +327,14 @@
   // dx.bi's settings: an entry at the top of Stremio's Settings, opening a list made for the remote
   // Options for dx.bi's in-page player, which the TV doesn't use (it has its own player)
   const DESKTOP_ONLY = new Set(["playerExtras", "enhance", "seekPreviews", "subtitleStyle", "subtitleFont", "subtitleCustomFont",
-    "convertVideo", "subtitlesStart", "hdrSubtitles", "pictureSound", "streamStats", "preloadNext", "upNext", "skipFiller",
-    "rememberPlayback", "playerKeys", "pip", "externalPlayer", "remainingTime", "watchParty", "partyFollow", "partyActivity", "partySounds"]);
+    "convertVideo", "subtitlesStart", "hdrSubtitles", "pictureSound", "streamStats", "preloadNext", "skipFiller",
+    "rememberPlayback", "playerKeys", "pip", "externalPlayer", "remainingTime"]);
 
   function settingsSheet() {
     const plugin = PLUGIN.replace(/\.plugin\.js$/, "");
-    const schema = (schemas[plugin] || []).filter((o) => !DESKTOP_ONLY.has(o.key));
+    // (no remote on a phone, so no highlight for it)
+    const schema = (schemas[plugin] || []).filter((o) => !DESKTOP_ONLY.has(o.key) && !(PHONE && o.key === "focusColour"))
+      .map((o) => ({ ...o, label: forDevice(o.label), description: forDevice(o.description) }));
     ensureStyle();
     closeModal();
     const el = document.createElement("div");
@@ -404,7 +413,7 @@
     problem.addEventListener("click", reportProblem);
     const server = document.createElement("button");
     server.className = "dxtv-row dxtv-settings-entry";
-    server.innerHTML = `<span>Streaming server for torrents<small>Torrents play through dx.bi or Stremio running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`;
+    server.innerHTML = forDevice(`<span>Streaming server for torrents<small>Torrents play through dx.bi or Stremio running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`);
     server.addEventListener("click", () => findServer());
     const who = document.createElement("button");
     who.className = "dxtv-row dxtv-settings-entry";
@@ -512,6 +521,7 @@
     for (let i = 0; i < 60 && location.hash === hash; i++) {
       state = await playerState();
       const stream = state && state.selected && state.selected.stream;
+      if (stream && stream.ytId) break;
       const streamKnown = stream && (stream.url || (state.stream && state.stream.type === "Ready") || stream.infoHash || stream.externalUrl);
       if (streamKnown) {
         known++;
@@ -525,12 +535,16 @@
     }
     if (location.hash !== hash || !state || !state.selected) { handoff = null; return; }
     const stream = state.selected.stream || {};
-    // Trailers are YouTube videos, which Stremio plays through a streaming server (none on a TV): the
-    // TV's YouTube app plays them instead, and Back comes straight back here
+    // Trailers are YouTube videos, which Stremio plays through a streaming server (none on a TV).
+    // dx.bi's trailer player shows them; only one whose owner forbids embedding goes to the YouTube app
     if (stream.ytId) {
+      const youtube = () => native.openExternal(`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`);
+      const dx = window.__dxbi;
+      const meta = state.metaItem && state.metaItem.type === "Ready" ? state.metaItem.content : {};
       handoff = null;
+      if (dx && dx.openTrailer) dx.openTrailer({ id: stream.ytId, start: 0, title: meta.name || "Trailer", logo: meta.logo, onFail: youtube });
+      else youtube();
       history.back();
-      native.openExternal(`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`);
       return;
     }
     silenceWebPlayer();
@@ -599,6 +613,8 @@
       : [];
     if (location.hash !== hash) { handoff = null; return; }
     handoff = { hash, videoId, started: Date.now() };
+    tv.partyVideo = new NativeVideo();
+    partySeen = "";
     native.play(JSON.stringify({
       hash,
       videoId,
@@ -606,6 +622,9 @@
       torrent,
       autoSkip: (dx && dx.settings && dx.settings.autoSkip) || "off",
       clock: !(dx && dx.settings) || dx.settings.playerClock !== false,
+      accent: await accentFor(meta),
+      next: nextLink(state) ? { title: nextTitle(state.nextVideo), thumbnail: state.nextVideo.thumbnail || "" } : null,
+      upNext: (dx && dx.settings && dx.settings.upNext) || "10",
       audioLanguage: profile.audioLanguage || "",
       // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player
       subtitleStyle: {
@@ -627,6 +646,68 @@
     }));
   }
 
+  // Watch party: the party works with a video element, so it gets this stand-in for the native player
+  class NativeVideo extends EventTarget {
+    constructor() {
+      super();
+      Object.assign(this, { time: 0, length: NaN, stopped: true, rate: 1, buffering: true, seeking: false, checked: 0 });
+    }
+    get currentTime() { return this.time; }
+    set currentTime(s) {
+      this.time = s;
+      native.control({ cmd: "seek", ms: Math.round(s * 1000) });
+    }
+    get duration() { return this.length; }
+    get paused() { return this.stopped; }
+    get readyState() { return this.buffering ? 2 : 4; }
+    get playbackRate() { return this.rate; }
+    set playbackRate(r) {
+      this.rate = r;
+      native.control({ cmd: "rate", rate: r });
+    }
+    play() {
+      native.control({ cmd: "play" });
+      return Promise.resolve();
+    }
+    pause() { native.control({ cmd: "pause" }); }
+    // The native player's latest: plays, pauses and jumps show as the events a video would fire
+    update(ms, durationMs, paused, buffering, rate) {
+      const now = Date.now();
+      const expected = this.time + (this.stopped ? 0 : ((now - this.checked) / 1000) * this.rate);
+      const jumped = this.checked && Math.abs(ms / 1000 - expected) > 1.5;
+      const changed = paused !== this.stopped;
+      Object.assign(this, { time: ms / 1000, length: durationMs > 0 ? durationMs / 1000 : NaN, stopped: paused, buffering, checked: now });
+      this.rate = rate;
+      if (jumped) {
+        this.dispatchEvent(new Event("seeking"));
+        this.dispatchEvent(new Event("seeked"));
+      }
+      if (changed) this.dispatchEvent(new Event(paused ? "pause" : "play"));
+      this.dispatchEvent(new Event("timeupdate"));
+    }
+  }
+
+  tv.partyToast = (text) => native.control({ cmd: "toast", text });
+  tv.onPartyTick = (ms, durationMs, paused, buffering, rate) => {
+    if (tv.partyVideo) tv.partyVideo.update(ms, durationMs, paused, buffering, rate);
+  };
+  // Who's in the party, for the player's Party button (and a stream changed by the host: the player
+  // on screen closes, and the new one opens)
+  let partySeen = "";
+  setInterval(() => {
+    if (!handoff || !handoff.started || !window.__dxbi || !window.__dxbi.partyInfo) return;
+    if (handoff.hash !== location.hash) {
+      handoff = null;
+      native.control({ cmd: "close" });
+      return;
+    }
+    const info = window.__dxbi.partyInfo();
+    const now = JSON.stringify(info);
+    if (now === partySeen) return;
+    partySeen = now;
+    native.control({ cmd: "party", on: !!info, code: info ? info.code : "", people: info ? info.people : [] });
+  }, 1000);
+
   // The native player reports where it is every few seconds, and once more when it closes
   tv.onProgress = (timeMs, durationMs, paused) => {
     if (!handoff || !/^#\/player\//.test(location.hash)) return;
@@ -635,12 +716,45 @@
     dispatch({ action: "Player", args: { action: "PausedChanged", args: { paused: !!paused } } });
   };
 
-  function closeHandoff(timeMs, durationMs, ended, error) {
+  // The title's own colour for the player's seek bar when dx.bi has one quickly, else the accent
+  async function accentFor(meta) {
+    const dx = window.__dxbi;
+    const colour = dx && dx.titleColourOf
+      ? await Promise.race([dx.titleColourOf(meta.background || meta.poster), new Promise((r) => setTimeout(r, 900))]).catch(() => "")
+      : "";
+    return colour || getComputedStyle(document.documentElement).getPropertyValue("--dx-accent").trim();
+  }
+
+  const nextTitle = (v) => `S${v.season} · E${v.episode}${v.title || v.name ? ` · ${v.title || v.name}` : ""}`;
+
+  // The next episode's list of streams, or its own player screen
+  function nextLink(state) {
+    const links = state && state.nextVideo && state.nextVideo.deepLinks;
+    return links && (links.player || links.metaDetailsStreams);
+  }
+
+  // Straight into the next episode with the same release, as on a computer, when one is found quickly
+  async function nextLinkFor(state) {
+    const dx = window.__dxbi;
+    const sel = state && state.selected;
+    const mp = sel && sel.metaRequest && sel.metaRequest.path;
+    if (dx && dx.findStream && mp && state.nextVideo) {
+      const media = { type: mp.type, metaId: mp.id, videoId: state.nextVideo.id, hints: dx.streamHints(sel.stream) };
+      const found = await Promise.race([dx.findStream(media, () => true), new Promise((r) => setTimeout(r, 8000))]).catch(() => null);
+      if (found && found.link) return found.link.startsWith("#") ? found.link : `#${found.link}`;
+    }
+    return nextLink(state);
+  }
+
+  async function closeHandoff(timeMs, durationMs, ended, error, next) {
+    tv.partyVideo = null;
     if (handoff && /^#\/player\//.test(location.hash)) {
       if (timeMs > 0) tv.onProgress(timeMs, durationMs, true);
       if (ended) dispatch({ action: "Player", args: { action: "Ended" } });
       handoff = null;
-      history.back();
+      const link = next && await nextLinkFor(await playerState());
+      if (link) location.replace(link);
+      else history.back();
     } else {
       handoff = null;
     }
@@ -655,7 +769,7 @@
     if (!raw) return;
     try {
       const c = JSON.parse(raw);
-      closeHandoff(c.timeMs, c.durationMs, c.ended, c.error);
+      closeHandoff(c.timeMs, c.durationMs, c.ended, c.error, c.next);
     } catch (err) {
       console.warn("[dx.bi TV] couldn't read how the player closed", err);
     }
@@ -685,7 +799,7 @@
     silenceWebPlayer();
     resuming = false;
     if (closed) {
-      closeHandoff(info.timeMs, info.durationMs, info.ended, info.error);
+      closeHandoff(info.timeMs, info.durationMs, info.ended, info.error, info.next);
     } else {
       tv.playerClosed(); // it may have closed while we waited
     }
@@ -705,6 +819,8 @@
       if (close) close.click(); else sheet.remove();
       return true;
     }
+    if (window.__dxbi && typeof window.__dxbi.closeTrailer === "function" && window.__dxbi.closeTrailer()) return true;
+    if (window.__dxbi && typeof window.__dxbi.closeParty === "function" && window.__dxbi.closeParty()) return true;
     if (window.__dxbi && typeof window.__dxbi.closePreview === "function" && window.__dxbi.closePreview()) return true;
     // Stremio's own dialogs (addon install, promotions…) close with their × button
     const stremioModal = document.querySelector('[class*="modal-container"]');
