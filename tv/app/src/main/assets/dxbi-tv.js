@@ -36,12 +36,17 @@
   // ---------------------------------------------------------------------------
   const PHONE = (() => { try { return !!bridge.isPhone(); } catch (_) { return false; } })();
   tv.phone = PHONE;
+  // Words written for a TV, as a phone shows them
+  const forDevice = (text) => (PHONE && typeof text === "string"
+    ? text.replace(/ On a TV, only[^.]*\./, "").replace(/\bthis TV\b/g, "this phone").replace(/\bthis TV's\b/g, "this phone's")
+    : text);
   const upright = () => PHONE && window.screen && screen.height > screen.width;
   let VIEWPORT = "width=1280, user-scalable=no";
   function fitViewport() {
     // Upright, a phone is laid out at its own width, so everything is the size Android apps are.
     // Marked from the screen, not the page: the keyboard opening makes the page look sideways.
-    VIEWPORT = upright() ? "width=device-width, initial-scale=1, user-scalable=no" : "width=1280, user-scalable=no";
+    // (a phone on its side too: 1280 pixels across made everything tiny there)
+    VIEWPORT = PHONE ? "width=device-width, initial-scale=1, user-scalable=no" : "width=1280, user-scalable=no";
     document.documentElement.classList.toggle("dx-phone", PHONE);
     document.documentElement.classList.toggle("dx-upright", upright());
     let meta = document.querySelector('meta[name="viewport"]');
@@ -183,6 +188,7 @@
 
   // Resolves with the button index (or { button, value } when there's an input); -1 when dismissed
   async function dialog({ title, message, buttons, input, qr }) {
+    message = forDevice(message);
     ensureStyle();
     closeModal();
     // One dialog at a time: Stremio's own (a promotion, an addon to install) goes first, since it
@@ -325,7 +331,9 @@
 
   function settingsSheet() {
     const plugin = PLUGIN.replace(/\.plugin\.js$/, "");
-    const schema = (schemas[plugin] || []).filter((o) => !DESKTOP_ONLY.has(o.key));
+    // (no remote on a phone, so no highlight for it)
+    const schema = (schemas[plugin] || []).filter((o) => !DESKTOP_ONLY.has(o.key) && !(PHONE && o.key === "focusColour"))
+      .map((o) => ({ ...o, label: forDevice(o.label), description: forDevice(o.description) }));
     ensureStyle();
     closeModal();
     const el = document.createElement("div");
@@ -404,7 +412,7 @@
     problem.addEventListener("click", reportProblem);
     const server = document.createElement("button");
     server.className = "dxtv-row dxtv-settings-entry";
-    server.innerHTML = `<span>Streaming server for torrents<small>Torrents play through dx.bi or Stremio running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`;
+    server.innerHTML = forDevice(`<span>Streaming server for torrents<small>Torrents play through dx.bi or Stremio running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`);
     server.addEventListener("click", () => findServer());
     const who = document.createElement("button");
     who.className = "dxtv-row dxtv-settings-entry";

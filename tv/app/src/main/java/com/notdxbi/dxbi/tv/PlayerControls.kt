@@ -110,6 +110,8 @@ class PlayerControls(
         row.setPadding(0, if (upright) dp(46) else 0, 0, 0)
         titles.layoutParams = (titles.layoutParams as android.widget.FrameLayout.LayoutParams).apply { gravity = if (upright) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER; topMargin = if (upright) dp(-44) else 0 }
         val side = dp(if (upright) 12 else 56)
+        // (the seek bar gets the room when it's narrow)
+        for (id in listOf(R.id.time_now, R.id.time_left)) activity.findViewById<TextView>(id).minWidth = dp(if (upright) 44 else 72)
         activity.findViewById<View>(R.id.controls_bottom).setPadding(side, 0, side, dp(26))
         panel.layoutParams = (panel.layoutParams as android.widget.FrameLayout.LayoutParams).apply { width = minOf(dp(340), dp(widthDp - 24)); marginEnd = if (upright) dp(12) else dp(56); bottomMargin = dp(if (upright) 170 else 104) }
     }
