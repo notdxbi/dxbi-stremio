@@ -140,6 +140,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             // The page takes the details from PlaybackBus (a restarted page picks them up as it loads)
+            override fun onPartyTick(positionMs: Long, durationMs: Long, paused: Boolean, buffering: Boolean, rate: Float) {
+                js("window.__dxbiTv && window.__dxbiTv.onPartyTick($positionMs, $durationMs, $paused, $buffering, $rate)")
+            }
+
+            override fun onPartyLeave() {
+                js("window.__dxbi && window.__dxbi.partyLeave()")
+            }
+
             override fun onClosed() {
                 js("window.__dxbiTv && window.__dxbiTv.playerClosed && window.__dxbiTv.playerClosed()")
             }

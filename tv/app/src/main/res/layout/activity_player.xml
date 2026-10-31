@@ -170,6 +170,12 @@
                     style="@style/PlayerButton"
                     android:contentDescription="Audio"
                     android:src="@drawable/ic_audio" />
+                <ImageButton
+                    android:id="@+id/ctl_party"
+                    style="@style/PlayerButton"
+                    android:contentDescription="Watch party"
+                    android:src="@drawable/ic_party"
+                    android:visibility="gone" />
                 </LinearLayout>
             </FrameLayout>
         </LinearLayout>

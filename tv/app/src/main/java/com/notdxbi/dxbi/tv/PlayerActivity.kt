@@ -55,6 +55,44 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var controls: PlayerControls
     private lateinit var zoom: PictureZoom
+    private var party = false
+    private val partyTick = object : Runnable {
+        override fun run() {
+            val exo = player ?: return
+            val duration = exo.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+            PlaybackBus.listener?.onPartyTick(exo.currentPosition, duration, !exo.playWhenReady, exo.playbackState == Player.STATE_BUFFERING, exo.playbackParameters.speed)
+            handler.postDelayed(this, 500)
+        }
+    }
+    private val hideToast = Runnable { seekFlash.visibility = View.GONE }
+
+    /** The page's watch party: plays, pauses and seeks with everyone, and says what's happening */
+    fun control(json: String) {
+        val exo = player ?: return
+        val c = JSONObject(json)
+        when (c.optString("cmd")) {
+            "play" -> exo.play()
+            "pause" -> exo.pause()
+            "seek" -> exo.seekTo(c.optLong("ms"))
+            "rate" -> exo.setPlaybackSpeed(c.optDouble("rate", 1.0).toFloat())
+            "close" -> finishWith()
+            "party" -> {
+                val on = c.optBoolean("on")
+                if (on != party) {
+                    party = on
+                    handler.removeCallbacks(partyTick)
+                    if (on) handler.post(partyTick)
+                }
+                controls.party(on, c.optString("code"), c.optJSONArray("people")?.let { list -> (0 until list.length()).map { list.optString(it) } } ?: emptyList())
+            }
+            "toast" -> {
+                seekFlash.text = c.optString("text")
+                seekFlash.visibility = View.VISIBLE
+                handler.removeCallbacks(hideToast)
+                handler.postDelayed(hideToast, 3500)
+            }
+        }
+    }
     private val sound = SoundMode()
     @Volatile private var subtitleDelayMs = 0L
     private val refreshSubtitles = Runnable { player?.let { it.seekTo(it.currentPosition) } }
@@ -232,7 +270,8 @@ class PlayerActivity : AppCompatActivity() {
         nextArt = next?.optString("thumbnail").orEmpty()
         upNextSeconds = if (next == null) 0 else stream.optString("upNext", "10").toIntOrNull() ?: 0
         upNextCard = findViewById(R.id.up_next)
-        controls = PlayerControls(this, playerView, exo, sound, zoom, ::shiftSubtitles, accent, clock.takeIf { showClock }, next != null, ::seek) { go -> finishWith(next = go) }
+        controls = PlayerControls(this, playerView, exo, sound, zoom, ::shiftSubtitles, accent, clock.takeIf { showClock }, next != null, ::seek, { PlaybackBus.listener?.onPartyLeave() }) { go -> finishWith(next = go) }
+        PlaybackBus.player = this
         fitControls()
         findViewById<View>(R.id.up_next_play).setOnClickListener { finishWith(next = true) }
         findViewById<View>(R.id.up_next_cancel).setOnClickListener {
@@ -419,6 +458,8 @@ class PlayerActivity : AppCompatActivity() {
         return subtitleDelayMs
     }
 
+    fun refit() = fitControls()
+
     private fun fitControls() {
         val config = resources.configuration
         controls.fit(config.screenWidthDp, config.orientation == Configuration.ORIENTATION_PORTRAIT)
@@ -477,6 +518,7 @@ class PlayerActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (!closed) finishWith()
         handler.removeCallbacksAndMessages(null)
+        if (PlaybackBus.player === this) PlaybackBus.player = null
         if (::controls.isInitialized) controls.release()
         if (::zoom.isInitialized) zoom.release()
         player?.release()

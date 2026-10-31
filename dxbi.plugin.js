@@ -5396,7 +5396,9 @@
       },
 
       findVideo() {
-        return this.inPlayer() ? document.querySelector('[class*="player-container"] video') : null;
+        if (!this.inPlayer()) return null;
+        // TV: the native player plays, and dx.bi TV's stand-in passes everything on to it
+        return IN_TV ? (window.__dxbiTv && window.__dxbiTv.partyVideo) || null : document.querySelector('[class*="player-container"] video');
       },
 
       // Re-read Stremio's player state whenever the player URL changes
@@ -5428,7 +5430,8 @@
                 hints: streamHints(sel.stream),
               };
             }
-            if (location.hash === hash) this.mediaHash = hash;
+            // (Stremio may not have the stream yet: asked again on the next round)
+            if (location.hash === hash && this.media) this.mediaHash = hash;
           } catch (_) {
             this.media = null;
           }
@@ -6324,6 +6327,8 @@
         if (header && !header.querySelector(".dxp-nav-btn")) {
           const b = document.createElement("div");
           b.className = "dxp-nav-btn";
+          // (a remote can only reach what takes focus)
+          b.tabIndex = 0;
           b.title = "Watch party";
           b.innerHTML = PARTY_ICONS.party;
           b.addEventListener("click", (e) => { e.stopPropagation(); this.toggle(); });
@@ -6534,6 +6539,7 @@
       },
 
       toast(text, sound, html) {
+        if (IN_TV && window.__dxbiTv && window.__dxbiTv.partyVideo) window.__dxbiTv.partyToast(text);
         if (!this.toasts) return;
         if (local.inPlayer() && !settings.partyActivity && sound !== "join" && sound !== "leave") return;
         if (sound === "join" || sound === "leave") chime.play(sound);
@@ -6584,6 +6590,14 @@
       party,
       findStream,
       streamHints,
+      prettyCode,
+      closePanel() {
+        if (!ui.open) return false;
+        ui.toggle(false);
+        const button = document.querySelector(".dxp-nav-btn");
+        if (button) button.focus();
+        return true;
+      },
       // Called from the main sync loop
       ensure() {
         if (!settings.watchParty) {
@@ -6625,7 +6639,7 @@
 
   function sync() {
     const steps = IN_TV
-      ? [updateRoute, brandTitle, () => addonTools.ensure(), communitySync]
+      ? [updateRoute, brandTitle, () => addonTools.ensure(), () => watchParty.ensure(), communitySync]
       : [updateRoute, brandTitle, () => player.ensure(), () => playerClock.ensure(), () => { convert.ensure().catch(() => { /* player state not ready */ }); }, () => convert.confirmHevc(), () => externalDefault.ensure(), () => placeholder.ensure(), () => playbackHelp.ensure(), () => scrub.ensure(), () => enhance.ensure(), () => watchParty.ensure(), () => skip.ensure(), () => tune.ensure(), () => streamInfo.ensure(), () => addonTools.ensure(), communitySync];
     steps.push(() => { titleColour.ensure().catch(() => { /* next sync */ }); });
     if (currentRoute() === "detail") steps.push(() => streamTools.ensure());
@@ -13557,6 +13571,13 @@
     },
     // dx.bi TV's Back button: closes an open hover card, keeping its title selected (true if one was open)
     openTrailer: (info) => theatre.open(info),
+    partyInfo() {
+      const p = watchParty.party;
+      if (!p || !p.active) return null;
+      return { code: watchParty.prettyCode(p.code), people: [...p.peers.values()].map((x) => x.name).filter(Boolean) };
+    },
+    partyLeave: () => watchParty.party.leave(),
+    closeParty: () => watchParty.closePanel(),
     findStream: (media, stillWanted) => watchParty.findStream(media, stillWanted),
     streamHints: (stream) => watchParty.streamHints(stream),
     async titleColourOf(url) {

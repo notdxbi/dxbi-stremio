@@ -35,6 +35,7 @@ class PlayerControls(
     private val clock: View?,
     hasNext: Boolean,
     private val seek: (Int) -> Unit,
+    private val leaveParty: () -> Unit,
     private val leave: (Boolean) -> Unit,
 ) {
     private val root: View = activity.findViewById(R.id.controls)
@@ -58,7 +59,7 @@ class PlayerControls(
         }
     }
 
-    private val buttons = listOf(R.id.ctl_play, R.id.ctl_rewind, R.id.ctl_forward, R.id.ctl_next, R.id.ctl_stats, R.id.ctl_picture, R.id.ctl_speed, R.id.ctl_subtitles, R.id.ctl_audio)
+    private val buttons = listOf(R.id.ctl_play, R.id.ctl_rewind, R.id.ctl_forward, R.id.ctl_next, R.id.ctl_stats, R.id.ctl_picture, R.id.ctl_speed, R.id.ctl_subtitles, R.id.ctl_audio, R.id.ctl_party)
         .map { activity.findViewById<View>(it) }
 
     val visible get() = root.visibility == View.VISIBLE
@@ -77,6 +78,7 @@ class PlayerControls(
         click(R.id.ctl_speed) { showSpeed(it) }
         click(R.id.ctl_subtitles) { showTracks(it, C.TRACK_TYPE_TEXT, "Subtitles") }
         click(R.id.ctl_audio) { showTracks(it, C.TRACK_TYPE_AUDIO, "Audio") }
+        click(R.id.ctl_party) { showParty(it) }
         // Phones: a tap shows or hides them, and the bar can be touched
         playerView.setOnClickListener { if (visible) hide() else show() }
         root.setOnClickListener { hide() }
@@ -232,6 +234,29 @@ class PlayerControls(
     private fun focusFirst() {
         val rows = (0 until panelRows.childCount).map { panelRows.getChildAt(it) }.filter { it.isFocusable }
         (rows.firstOrNull { it.tag == "on" } ?: rows.firstOrNull())?.requestFocus()
+    }
+
+    private var partyCode = ""
+    private var partyPeople = emptyList<String>()
+
+    /** The Party button shows while this viewer is in a watch party */
+    fun party(on: Boolean, code: String, people: List<String>) {
+        partyCode = code
+        partyPeople = people
+        val button = activity.findViewById<View>(R.id.ctl_party)
+        val shown = if (on) View.VISIBLE else View.GONE
+        if (button.visibility != shown) {
+            button.visibility = shown
+            activity.refit()
+        }
+    }
+
+    private fun showParty(from: View) {
+        openPanel(from, "Watch party · $partyCode")
+        heading(if (partyPeople.isEmpty()) "Waiting for friends" else "Watching with")
+        for (name in partyPeople) row(name, false, keepOpen = true) {}
+        row("Leave the party", false) { leaveParty() }
+        focusFirst()
     }
 
     private fun showSpeed(from: View) {

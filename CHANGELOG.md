@@ -10,6 +10,7 @@
 - **Up next on dx.bi TV.** A card with the next episode's picture counts down over the credits, and the next episode starts with the same release when dx.bi finds it.
 - **Colours from the title are on for dx.bi TV too,** including the seek bar.
 - **Android phones.** The player turns upright, and the phone layout now works on its side too: text was tiny and the profile menu ran off the screen. Phones no longer mention "this TV" or the remote.
+- **Watch party on dx.bi TV.** Start or join a party from the people button at the top, with the remote. Play, pause and jumps stay in sync with everyone, you follow the host to a new episode, and a Party button in the player shows the code and who's watching, and lets you leave.
 - **dx.bi TV finds updates more reliably.** It used to check only on a full start, which can be days apart on a TV. It now also checks when you come back to it, at most every 6 hours, and still finds an update when GitHub's limit on update checks has been reached.
 - **dx.bi TV: Update is the selected button.** The update message used to open on *Skip this version*, so pressing OK skipped it. After you allow dx.bi to install apps, the download now carries on by itself.
 - **dx.bi TV: Up in Settings no longer skips rows.** After the page had scrolled, Up jumped past rows above the screen to the top bar.

@@ -15,7 +15,13 @@ object PlaybackBus {
     interface Listener {
         fun onProgress(positionMs: Long, durationMs: Long, paused: Boolean)
         fun onClosed()
+        fun onPartyTick(positionMs: Long, durationMs: Long, paused: Boolean, buffering: Boolean, rate: Float)
+        fun onPartyLeave()
     }
+
+    /** The open player, for what the page's watch party asks of it */
+    @Volatile
+    var player: PlayerActivity? = null
 
     @Volatile
     var listener: Listener? = null

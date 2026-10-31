@@ -18,6 +18,7 @@
     activePlayback: () => bridge.activePlayback(TOKEN),
     takePendingClose: () => bridge.takePendingClose(TOKEN),
     openExternal: (url) => bridge.openExternal(TOKEN, url),
+    control: (command) => bridge.control(TOKEN, JSON.stringify(command)),
     findServers: () => bridge.findServers(TOKEN),
     torrentUrl: (json) => (bridge.torrentUrl ? bridge.torrentUrl(TOKEN, json) : ""),
     deviceInfo: () => { try { return JSON.parse(bridge.deviceInfo ? bridge.deviceInfo(TOKEN) : "{}"); } catch (_) { return {}; } },
@@ -327,7 +328,7 @@
   // Options for dx.bi's in-page player, which the TV doesn't use (it has its own player)
   const DESKTOP_ONLY = new Set(["playerExtras", "enhance", "seekPreviews", "subtitleStyle", "subtitleFont", "subtitleCustomFont",
     "convertVideo", "subtitlesStart", "hdrSubtitles", "pictureSound", "streamStats", "preloadNext", "skipFiller",
-    "rememberPlayback", "playerKeys", "pip", "externalPlayer", "remainingTime", "watchParty", "partyFollow", "partyActivity", "partySounds"]);
+    "rememberPlayback", "playerKeys", "pip", "externalPlayer", "remainingTime"]);
 
   function settingsSheet() {
     const plugin = PLUGIN.replace(/\.plugin\.js$/, "");
@@ -612,6 +613,8 @@
       : [];
     if (location.hash !== hash) { handoff = null; return; }
     handoff = { hash, videoId, started: Date.now() };
+    tv.partyVideo = new NativeVideo();
+    partySeen = "";
     native.play(JSON.stringify({
       hash,
       videoId,
@@ -642,6 +645,68 @@
       background: meta.background || meta.poster || "",
     }));
   }
+
+  // Watch party: the party works with a video element, so it gets this stand-in for the native player
+  class NativeVideo extends EventTarget {
+    constructor() {
+      super();
+      Object.assign(this, { time: 0, length: NaN, stopped: true, rate: 1, buffering: true, seeking: false, checked: 0 });
+    }
+    get currentTime() { return this.time; }
+    set currentTime(s) {
+      this.time = s;
+      native.control({ cmd: "seek", ms: Math.round(s * 1000) });
+    }
+    get duration() { return this.length; }
+    get paused() { return this.stopped; }
+    get readyState() { return this.buffering ? 2 : 4; }
+    get playbackRate() { return this.rate; }
+    set playbackRate(r) {
+      this.rate = r;
+      native.control({ cmd: "rate", rate: r });
+    }
+    play() {
+      native.control({ cmd: "play" });
+      return Promise.resolve();
+    }
+    pause() { native.control({ cmd: "pause" }); }
+    // The native player's latest: plays, pauses and jumps show as the events a video would fire
+    update(ms, durationMs, paused, buffering, rate) {
+      const now = Date.now();
+      const expected = this.time + (this.stopped ? 0 : ((now - this.checked) / 1000) * this.rate);
+      const jumped = this.checked && Math.abs(ms / 1000 - expected) > 1.5;
+      const changed = paused !== this.stopped;
+      Object.assign(this, { time: ms / 1000, length: durationMs > 0 ? durationMs / 1000 : NaN, stopped: paused, buffering, checked: now });
+      this.rate = rate;
+      if (jumped) {
+        this.dispatchEvent(new Event("seeking"));
+        this.dispatchEvent(new Event("seeked"));
+      }
+      if (changed) this.dispatchEvent(new Event(paused ? "pause" : "play"));
+      this.dispatchEvent(new Event("timeupdate"));
+    }
+  }
+
+  tv.partyToast = (text) => native.control({ cmd: "toast", text });
+  tv.onPartyTick = (ms, durationMs, paused, buffering, rate) => {
+    if (tv.partyVideo) tv.partyVideo.update(ms, durationMs, paused, buffering, rate);
+  };
+  // Who's in the party, for the player's Party button (and a stream changed by the host: the player
+  // on screen closes, and the new one opens)
+  let partySeen = "";
+  setInterval(() => {
+    if (!handoff || !handoff.started || !window.__dxbi || !window.__dxbi.partyInfo) return;
+    if (handoff.hash !== location.hash) {
+      handoff = null;
+      native.control({ cmd: "close" });
+      return;
+    }
+    const info = window.__dxbi.partyInfo();
+    const now = JSON.stringify(info);
+    if (now === partySeen) return;
+    partySeen = now;
+    native.control({ cmd: "party", on: !!info, code: info ? info.code : "", people: info ? info.people : [] });
+  }, 1000);
 
   // The native player reports where it is every few seconds, and once more when it closes
   tv.onProgress = (timeMs, durationMs, paused) => {
@@ -682,6 +747,7 @@
   }
 
   async function closeHandoff(timeMs, durationMs, ended, error, next) {
+    tv.partyVideo = null;
     if (handoff && /^#\/player\//.test(location.hash)) {
       if (timeMs > 0) tv.onProgress(timeMs, durationMs, true);
       if (ended) dispatch({ action: "Player", args: { action: "Ended" } });
@@ -754,6 +820,7 @@
       return true;
     }
     if (window.__dxbi && typeof window.__dxbi.closeTrailer === "function" && window.__dxbi.closeTrailer()) return true;
+    if (window.__dxbi && typeof window.__dxbi.closeParty === "function" && window.__dxbi.closeParty()) return true;
     if (window.__dxbi && typeof window.__dxbi.closePreview === "function" && window.__dxbi.closePreview()) return true;
     // Stremio's own dialogs (addon install, promotions…) close with their × button
     const stremioModal = document.querySelector('[class*="modal-container"]');
