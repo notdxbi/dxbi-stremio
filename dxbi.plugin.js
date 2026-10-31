@@ -938,7 +938,8 @@
       if (settings.billboardSource === "rated" || restrict.kidsAge() || this.english()) return [];
       const types = settings.billboardSource === "movie" ? ["movie"] : settings.billboardSource === "series" ? ["series"] : ["movie", "series"];
       const urls = [];
-      for (const addon of this.addons.filter((a) => !this.isDefault(a))) {
+      // Addons the viewer chose: Stremio's built-ins would put Public Domain Movies on the billboard
+      for (const addon of this.addons.filter((a) => !this.isDefault(a) && !a.flags?.official)) {
         for (const type of types) {
           const catalog = (Array.isArray(addon.manifest.catalogs) ? addon.manifest.catalogs : []).find((c) => c && c.type === type && !(Array.isArray(c.extra) ? c.extra : []).some((e) => e.isRequired));
           const url = catalog && this.url(addon, "catalog", type, catalog.id);
@@ -951,14 +952,15 @@
       }));
     },
 
-    english() { return /^en(?:-|$)/i.test(this.language); },
+    // Stremio's own default is the three-letter "eng"; its language menu can store "en-US"
+    english() { return /^eng?(?:-|$)/i.test(this.language); },
 
     // MetaHub's title art is English. Keep it unless it would sit over a translated title.
     englishArtFits(configured) { return this.english() || !configured; },
 
     labels() {
       // The surrounding app translates its own controls. These banner controls belong to dx.bi.
-      return /^fr(?:-|$)/i.test(this.language)
+      return /^fr[ae]?(?:-|$)/i.test(this.language)
         ? { featured: "À l’affiche", play: "Lire", more: "Plus d’infos", movie: "Film", series: "Série" }
         : { featured: "Featured", play: "Play", more: "More Info", movie: "Film", series: "Series" };
     },

@@ -140,6 +140,19 @@ assert.match(english.hero.slideHtml(english.hero.items[0], 0), /images\.metahub\
 const noLogo = await english.getInfo("movie", "tt1234567");
 assert.equal(noLogo.logo, null);
 assert.match(english.hero.slideHtml({ ...noLogo, id: "tt1234567", type: "movie", name: "Journey to the Stars", description: "x", background: "https://images.example/b.jpg" }, 0), /metahub\.space\/logo\//);
+const stockEnglish = setup();
+stockEnglish.state.profile.settings.interfaceLanguage = "eng"; // what a real profile holds by default
+await stockEnglish.hero.load();
+assert.equal(stockEnglish.hero.items[0].id, "tt1234567", "Stremio's three-letter English code keeps the Popular roster");
+assert.match(stockEnglish.hero.slideHtml(stockEnglish.hero.items[0], 0), />Play</);
+const threeLetter = setup();
+threeLetter.state.profile.settings.interfaceLanguage = "fra";
+await threeLetter.hero.load();
+assert.match(threeLetter.hero.slideHtml(threeLetter.hero.items[0], 0), />Lire</);
+const builtIn = setup();
+builtIn.configured.flags = { official: true };
+await builtIn.hero.load();
+assert.ok(!builtIn.requests.some(url => url.includes("metadata.example") && url.includes("/catalog/")), "Stremio's built-in addons must not fill the billboard");
 const german = setup();
 german.state.profile.settings.interfaceLanguage = "de-DE";
 german.state.profile.addons = [german.stock];
