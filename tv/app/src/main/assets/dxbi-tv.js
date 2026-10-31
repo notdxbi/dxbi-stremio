@@ -512,6 +512,7 @@
     for (let i = 0; i < 60 && location.hash === hash; i++) {
       state = await playerState();
       const stream = state && state.selected && state.selected.stream;
+      if (stream && stream.ytId) break;
       const streamKnown = stream && (stream.url || (state.stream && state.stream.type === "Ready") || stream.infoHash || stream.externalUrl);
       if (streamKnown) {
         known++;
@@ -525,12 +526,16 @@
     }
     if (location.hash !== hash || !state || !state.selected) { handoff = null; return; }
     const stream = state.selected.stream || {};
-    // Trailers are YouTube videos, which Stremio plays through a streaming server (none on a TV): the
-    // TV's YouTube app plays them instead, and Back comes straight back here
+    // Trailers are YouTube videos, which Stremio plays through a streaming server (none on a TV).
+    // dx.bi's trailer player shows them; only one whose owner forbids embedding goes to the YouTube app
     if (stream.ytId) {
+      const youtube = () => native.openExternal(`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`);
+      const dx = window.__dxbi;
+      const meta = state.metaItem && state.metaItem.type === "Ready" ? state.metaItem.content : {};
       handoff = null;
+      if (dx && dx.openTrailer) dx.openTrailer({ id: stream.ytId, start: 0, title: meta.name || "Trailer", logo: meta.logo, onFail: youtube });
+      else youtube();
       history.back();
-      native.openExternal(`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`);
       return;
     }
     silenceWebPlayer();
@@ -705,6 +710,7 @@
       if (close) close.click(); else sheet.remove();
       return true;
     }
+    if (window.__dxbi && typeof window.__dxbi.closeTrailer === "function" && window.__dxbi.closeTrailer()) return true;
     if (window.__dxbi && typeof window.__dxbi.closePreview === "function" && window.__dxbi.closePreview()) return true;
     // Stremio's own dialogs (addon install, promotions…) close with their × button
     const stremioModal = document.querySelector('[class*="modal-container"]');

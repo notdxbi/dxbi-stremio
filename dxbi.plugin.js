@@ -11130,9 +11130,12 @@
     idleTimer: null,
     tick: null,
 
-    open({ id, start, title, logo, href }) {
+    open({ id, start, title, logo, href, onFail }) {
       this.close();
       ensureExtrasStyle();
+      this.onFail = onFail;
+      // a TV has no pointer to close a player that never starts (some trailers can't be embedded)
+      if (onFail) this.failTimer = setTimeout(() => { if (this.el && !this.el.classList.contains("is-playing")) this.fail(); }, 15000);
       const el = document.createElement("div");
       el.className = "dxe-theatre";
       el.setAttribute("role", "dialog");
@@ -11179,7 +11182,7 @@
       document.addEventListener("fullscreenchange", this.onFullscreen);
       requestAnimationFrame(() => el.classList.add("is-in"));
       // true full screen when the window isn't already
-      if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().then(() => { this.ownFullscreen = true; }).catch(() => {});
+      if (!IN_TV && !document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().then(() => { this.ownFullscreen = true; }).catch(() => {});
       this.tick = setInterval(() => this.paint(), 250);
       this.wake();
     },
@@ -11191,6 +11194,7 @@
       this.frame = null;
       clearInterval(this.tick);
       clearTimeout(this.idleTimer);
+      clearTimeout(this.failTimer);
       window.removeEventListener("message", this.onMessage);
       window.removeEventListener("keydown", this.onKey, true);
       document.removeEventListener("fullscreenchange", this.onFullscreen);
@@ -11198,6 +11202,13 @@
       this.ownFullscreen = false;
       el.classList.remove("is-in");
       setTimeout(() => el.remove(), 260);
+    },
+
+    fail() {
+      const onFail = this.onFail;
+      this.close();
+      if (onFail) onFail();
+      else playerToast("This trailer can't be played");
     },
 
     // leaving full screen with the window's own controls closes the theatre too
@@ -11219,7 +11230,7 @@
       let d;
       try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (_) { return; }
       const info = d && d.info;
-      if (d && d.event === "onError") { t.close(); playerToast("This trailer can't be played"); return; }
+      if (d && d.event === "onError") { t.fail(); return; }
       if (!info || typeof info !== "object") return;
       if (typeof info.currentTime === "number") t.state.time = info.currentTime;
       if (typeof info.duration === "number" && info.duration > 0) t.state.duration = info.duration;
@@ -11241,7 +11252,7 @@
     onKey: (e) => {
       const t = theatre;
       if (!t.el) return;
-      const handled = { Escape: () => t.close(), " ": () => t.toggle(), k: () => t.toggle(), m: () => t.toggleMute(), ArrowLeft: () => t.seekBy(-10), ArrowRight: () => t.seekBy(10) }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+      const handled = { Escape: () => t.close(), " ": () => t.toggle(), k: () => t.toggle(), m: () => t.toggleMute(), ArrowLeft: () => t.seekBy(-10), ArrowRight: () => t.seekBy(10), ...(IN_TV && { Enter: () => t.toggle(), ArrowUp: () => {}, ArrowDown: () => {} }) }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
       if (!handled) return;
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -13546,6 +13557,12 @@
       return skip.cache.get(key);
     },
     // dx.bi TV's Back button: closes an open hover card, keeping its title selected (true if one was open)
+    openTrailer: (info) => theatre.open(info),
+    closeTrailer() {
+      if (!theatre.el) return false;
+      theatre.close();
+      return true;
+    },
     closePreview() {
       if (!preview.el || !preview.el.classList.contains("is-open")) return false;
       const card = preview.card;

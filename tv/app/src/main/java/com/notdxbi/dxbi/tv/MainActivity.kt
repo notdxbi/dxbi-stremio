@@ -122,7 +122,8 @@ class MainActivity : AppCompatActivity() {
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
-                if (url.host == "web.stremio.com") return false
+                // Embedded trailers stay in the page
+                if (!request.isForMainFrame || url.host == "web.stremio.com") return false
                 if (url.scheme == "stremio") {
                     openStremioLink(url)
                     return true
