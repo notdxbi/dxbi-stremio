@@ -214,6 +214,12 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 - **Wide Continue Watching** — landscape cards with title art and progress.
 
+- **My List on Home** — your library as a row under Continue Watching, or separate rows for films and shows.
+
+- **Customise Home** — move, hide or rename any Home row, whichever addon it comes from. In your profile menu (on TV, also in *Settings*), saved per viewer.
+
+- **Sharper posters** — bigger posters load when your screen can show them. On a TV, only the title you're on.
+
 - **Watched titles** — optionally dim or hide what you've already seen in Discover, Search and Home.
 
 ### The player
@@ -237,6 +243,8 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 - **Up next** — a countdown to the next episode when the credits roll. The next episode is loaded in advance so it starts sooner.
 
 - **Open in mpv or VLC** — for files that won't play or stutter here.
+
+- **The time in the player** — the time now and when this ends, top right with the controls, on desktop and TV.
 
 - **Picture-in-picture** — keep watching in a small window.
 
@@ -531,7 +539,7 @@ With the plugin, that comes from a preview build of Stremio Enhanced (the dx.bi 
 
 ### Does it work on my phone or TV?
 
-On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). The same APK also installs on Android phones and tablets, upright or sideways. iPhones, iPads, LG (webOS) and Samsung (Tizen) TVs aren't supported.
+On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). The same APK also installs on Android phones and tablets, upright or sideways. Upright, it has a phone layout with the tabs in a bar at the bottom. iPhones, iPads, LG (webOS) and Samsung (Tizen) TVs aren't supported.
 
 ### A friend can't connect to a party
 

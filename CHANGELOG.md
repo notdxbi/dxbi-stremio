@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.22.0
 - **Support dx.bi.** The dx.bi app has a *Support dx.bi* button in Settings → About, and dx.bi TV has a *Support dx.bi* row in Settings with a code to scan with your phone. dx.bi stays free.
 - **dx.bi on Android phones fits upright.** The app is laid out at the phone's own width, so text and buttons are the normal size. The billboard shows in full with its logo and buttons centred, the tabs move to a bar at the bottom, and Discover and Library show three titles across.
 - **Customise Home.** Move, hide or rename any Home row, whichever addon it comes from, from the profile menu (on TV, also in Settings). Saved per viewer.
