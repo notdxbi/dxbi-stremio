@@ -611,6 +611,8 @@
       torrent,
       autoSkip: (dx && dx.settings && dx.settings.autoSkip) || "off",
       clock: !(dx && dx.settings) || dx.settings.playerClock !== false,
+      accent: getComputedStyle(document.querySelector('[class*="player-container"]') || document.documentElement).getPropertyValue("--dx-accent").trim(),
+      hasNext: !!nextLink(state),
       audioLanguage: profile.audioLanguage || "",
       // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player
       subtitleStyle: {
@@ -640,12 +642,20 @@
     dispatch({ action: "Player", args: { action: "PausedChanged", args: { paused: !!paused } } });
   };
 
-  function closeHandoff(timeMs, durationMs, ended, error) {
+  // The next episode's own player screen, or its list of streams
+  function nextLink(state) {
+    const links = state && state.nextVideo && state.nextVideo.deepLinks;
+    return links && (links.player || links.metaDetailsStreams);
+  }
+
+  async function closeHandoff(timeMs, durationMs, ended, error, next) {
     if (handoff && /^#\/player\//.test(location.hash)) {
       if (timeMs > 0) tv.onProgress(timeMs, durationMs, true);
       if (ended) dispatch({ action: "Player", args: { action: "Ended" } });
       handoff = null;
-      history.back();
+      const link = next && nextLink(await playerState());
+      if (link) location.replace(link);
+      else history.back();
     } else {
       handoff = null;
     }
@@ -660,7 +670,7 @@
     if (!raw) return;
     try {
       const c = JSON.parse(raw);
-      closeHandoff(c.timeMs, c.durationMs, c.ended, c.error);
+      closeHandoff(c.timeMs, c.durationMs, c.ended, c.error, c.next);
     } catch (err) {
       console.warn("[dx.bi TV] couldn't read how the player closed", err);
     }
@@ -690,7 +700,7 @@
     silenceWebPlayer();
     resuming = false;
     if (closed) {
-      closeHandoff(info.timeMs, info.durationMs, info.ended, info.error);
+      closeHandoff(info.timeMs, info.durationMs, info.ended, info.error, info.next);
     } else {
       tv.playerClosed(); // it may have closed while we waited
     }

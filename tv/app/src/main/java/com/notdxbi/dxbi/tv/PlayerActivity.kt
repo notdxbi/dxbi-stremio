@@ -44,7 +44,7 @@ import java.util.concurrent.TimeUnit
 class PlayerActivity : AppCompatActivity() {
 
     private lateinit var playerView: PlayerView
-    private lateinit var titleBar: View
+    private lateinit var controls: PlayerControls
     private lateinit var clock: TextView
     private var showClock = true
     private lateinit var seekFlash: TextView
@@ -115,7 +115,6 @@ class PlayerActivity : AppCompatActivity() {
         }
         setContentView(R.layout.activity_player)
         playerView = findViewById(R.id.player_view)
-        titleBar = findViewById(R.id.title_bar)
         clock = findViewById(R.id.clock)
         seekFlash = findViewById(R.id.seek_flash)
         skipButton = findViewById(R.id.skip_button)
@@ -176,15 +175,8 @@ class PlayerActivity : AppCompatActivity() {
             .build()
         player = exo
         playerView.player = exo
-        // Animated, the controls never fully go: they shrink to a thin bar, and the title (which
-        // follows them) stayed on screen over the film
-        playerView.setControllerAnimationEnabled(false)
-        playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
-            titleBar.visibility = visibility
-            clock.visibility = if (showClock) visibility else View.GONE
-            // The remote starts on play/pause, and the arrows move between the controls from there
-            if (visibility == View.VISIBLE) playerView.findViewById<View>(androidx.media3.ui.R.id.exo_play_pause)?.requestFocus()
-        })
+        val accent = try { Color.parseColor(stream.optString("accent")) } catch (_: Exception) { Color.parseColor("#E50914") }
+        controls = PlayerControls(this, playerView, exo, accent, clock.takeIf { showClock }, stream.optBoolean("hasNext"), ::seek) { next -> finishWith(next = next) }
 
         // Subtitles start off, like Netflix (and dx.bi's default): pick one from the subtitles button.
         // Files with several audio tracks (dual-audio releases) start in Stremio's audio language
@@ -243,7 +235,9 @@ class PlayerActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             // Back leaves the player straight away, like Netflix (the position is kept)
-            override fun handleOnBackPressed() = finishWith()
+            override fun handleOnBackPressed() {
+                if (!controls.closePanel()) finishWith()
+            }
         })
     }
 
@@ -255,27 +249,28 @@ class PlayerActivity : AppCompatActivity() {
         val exo = player ?: return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> { exo.playWhenReady = !exo.playWhenReady; playerView.showController(); return true }
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> { exo.playWhenReady = !exo.playWhenReady; controls.show(); return true }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> { exo.play(); return true }
-                KeyEvent.KEYCODE_MEDIA_PAUSE -> { exo.pause(); playerView.showController(); return true }
+                KeyEvent.KEYCODE_MEDIA_PAUSE -> { exo.pause(); controls.show(); return true }
                 KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seek(+1); return true }
                 KeyEvent.KEYCODE_MEDIA_REWIND -> { seek(-1); return true }
             }
             // OK presses Skip while it's up (and the controls aren't)
-            if (showing != null && !playerView.isControllerFullyVisible && (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
+            if (showing != null && !controls.visible && (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
                 doSkip()
                 return true
             }
-            if (!playerView.isControllerFullyVisible) {
+            if (controls.visible) controls.poke()
+            if (!controls.visible) {
                 when (event.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> { seek(-1); return true }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> { seek(+1); return true }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                         exo.playWhenReady = !exo.playWhenReady
-                        playerView.showController()
+                        controls.show()
                         return true
                     }
-                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { playerView.showController(); return true }
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { controls.show(); return true }
                 }
             }
         }
@@ -309,7 +304,7 @@ class PlayerActivity : AppCompatActivity() {
             else -> "Skip credits"
         }
         skipButton.visibility = View.VISIBLE
-        if (!playerView.isControllerFullyVisible) skipButton.requestFocus()
+        if (!controls.visible) skipButton.requestFocus()
     }
 
     private fun doSkip(seg: Segment? = showing) {
@@ -337,14 +332,15 @@ class PlayerActivity : AppCompatActivity() {
         PlaybackBus.listener?.onProgress(exo.currentPosition, duration, !exo.isPlaying)
     }
 
-    private fun finishWith(ended: Boolean = false, error: String? = null) {
+    private fun finishWith(ended: Boolean = false, error: String? = null, next: Boolean = false) {
         if (closed) return
         closed = true
         handler.removeCallbacksAndMessages(null)
+        if (::controls.isInitialized) controls.release()
         val exo = player
         val duration = exo?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L
         val position = if (ended) duration else exo?.currentPosition ?: 0L
-        PlaybackBus.closed(position, duration, ended, error)
+        PlaybackBus.closed(position, duration, ended, error, next)
         if (torrent) TorrentEngine.close()
         finish()
     }
@@ -359,6 +355,7 @@ class PlayerActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (!closed) finishWith()
         handler.removeCallbacksAndMessages(null)
+        if (::controls.isInitialized) controls.release()
         player?.release()
         player = null
         super.onDestroy()

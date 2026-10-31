@@ -33,12 +33,13 @@ object PlaybackBus {
         pendingClose = null
     }
 
-    fun closed(positionMs: Long, durationMs: Long, ended: Boolean, error: String?) {
+    fun closed(positionMs: Long, durationMs: Long, ended: Boolean, error: String?, next: Boolean = false) {
         val stream = try { JSONObject(activePlayback ?: "{}") } catch (_: Exception) { JSONObject() }
         pendingClose = JSONObject()
             .put("timeMs", positionMs)
             .put("durationMs", durationMs)
             .put("ended", ended)
+            .put("next", next)
             .put("error", error ?: JSONObject.NULL)
             .put("hash", stream.optString("hash"))
             .put("videoId", stream.optString("videoId"))
