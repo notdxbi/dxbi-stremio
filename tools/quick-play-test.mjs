@@ -56,3 +56,27 @@ const gone = { res: 720, provider: "Nobody", langs: [] };
 assert.equal(pick([cached1080], gone, { fallback: "ask" }), null, "asked to show the list");
 assert.equal(pick([cached1080], gone, { fallback: "best" }), cached1080.label);
 console.log("PASS missing choice: next best, or the list");
+
+const spareA = item("[RD+] Torrentio\n1080p", "A.1080p.WEB 💾 4 GB", { infoHash: "a" });
+const spareB = item("[RD+] Torrentio\n720p", "B.720p.WEB 💾 1 GB", { infoHash: "b" });
+const sameRelease = item("[RD+] Other\n4k", "A.2160p.WEB 💾 9 GB", { infoHash: "a" });
+const labels = (list) => Array.from(list, (x) => x.label);
+assert.deepEqual(labels(streamChoice.spares([spareA, spareB, uncached, cam], spareA)), [spareB.label], "never a download or a cam");
+assert.deepEqual(labels(streamChoice.spares([spareA, sameRelease, spareB], spareA)), [spareB.label], "not the same release again");
+assert.equal(streamChoice.spares([cached4k, cachedDv, cached1080, remux, spareB], cached4k).length, 2, "two tries at most");
+console.log("PASS a failed pick moves on to a different safe release");
+
+const upscaled = item("[RD+] Torrentio\n4k", "Breaking Bad. S01. 2008 2160P.Ai Upscaled.BluRay.60FPS.H265");
+const real1080 = item("[RD+] Torrentio\n1080p", "Breaking.Bad.S01.1080p.BluRay.x265");
+const threeD = item("[RD+] Torrentio\n1080p", "Film.2010.1080p.3D.HSBS.BluRay");
+assert.equal(pick([upscaled, real1080]), real1080.label, "real 1080p before fake 4K");
+assert.equal(pick([threeD, real1080]), real1080.label, "2D before 3D");
+assert.equal(pick([upscaled]), upscaled.label, "still plays if it's all there is");
+console.log("PASS upscaled and 3D copies come after real ones");
+
+const details = describeStream("[RD+] Torrentio\n1080p", "[RD+] Torrentio\nFilm.1080p.WEB.x265\n👤 12 💾 4.2 GB ⚙️ RARBG");
+assert.equal(details.seeds, 12);
+assert.equal(details.site, "RARBG");
+assert.equal(details.codec, "HEVC");
+assert.equal(details.provider, "Torrentio");
+console.log("PASS seeds, provider, site and codec are read");

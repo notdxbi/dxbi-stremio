@@ -758,6 +758,13 @@
     } else {
       handoff = null;
     }
+    // A stream dx.bi picked by itself: on to the next best before asking the viewer to choose
+    const dx = window.__dxbi;
+    if (error && dx && dx.quickPlayNext) {
+      await new Promise((r) => setTimeout(r, 500));
+      const label = dx.quickPlayNext();
+      if (label) return toast(`That stream didn't play. Trying ${label}.`, 5000);
+    }
     if (error) toast(`This stream couldn't play: ${error}. Try another one.`, 7000);
   }
 

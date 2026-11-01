@@ -3,8 +3,9 @@
 ## Unreleased
 
 - **Just press Play.** Turn it on in Settings under Player, and Play or an episode click starts the best stream straight away. dx.bi remembers what you choose for each series or everywhere, and you can cap the quality. It never picks a stream that would start a new debrid download or a cinema recording. A note in the player says what it picked, with a Change button (#55).
-- **A clean stream list.** Each stream is now one simple row with its quality, source, size and whether it's ready to play. The best match comes first, and links out to rent or buy come last.
-- **Because you watched.** A new Home row suggests popular titles that share genres with what you watched last. Kids viewers don't get it.
+- **A clean stream list.** Each stream is now one simple row with its quality, type, provider, seeds, size and whether it's ready to play. The best match comes first, links out to rent or buy come last, and Stremio's old rows no longer flash up while a title opens.
+- **If a picked stream won't play, dx.bi tries the next one.** Just press Play moves on to a different release by itself, up to twice, on desktop and TV. It also skips upscaled and 3D copies when a real one is there, and now works from the billboard and hover cards too.
+- **Because you watched.** A new Home row based on what you watched last: popular titles in the same genres, or real recommendations if you add a TMDB key. Kids viewers don't get it.
 - **Save my year.** Your stats can now be saved as a picture to share, with your hours, top titles and top genre. It stays on your device unless you share it.
 - **Lite mode on dx.bi TV.** Slower boxes load fewer Home rows at once, skip hover cards and sharper posters, and ignore presses that arrive too late. It turns on by itself with 2 GB of memory or less, and can be set in Settings (#56).
 - **Nightly check against Stremio.** A test now runs every night and opens an issue if a change to web.stremio.com breaks dx.bi.

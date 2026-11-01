@@ -4022,6 +4022,10 @@ body[data-dx-ptitle] #app .custom-episode-title {
     position: relative;
     margin: 0;
     padding: 0.9rem 1.1rem !important;
+    display: flex !important;
+    align-items: center;
+    flex: none !important;
+    height: auto !important;
     min-height: 5.5rem;
     border-radius: 0;
     border-bottom: 1px solid var(--dx-line);
@@ -4033,6 +4037,23 @@ body[data-dx-ptitle] #app .custom-episode-title {
     background: rgba(255, 255, 255, 0.08);
     transform: none;
     --dxv-tile: var(--dx-accent);
+}
+
+/* Not drawn until dx.bi's row is ready, and loading rows match the finished ones */
+html[data-dx-rows] [class*="streams-container"] > [class*="stream-container"]:not([data-dxv]) {
+    visibility: hidden;
+}
+
+html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder-container"] {
+    min-height: 5.5rem;
+    margin: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--dx-line);
+    background: none;
+}
+
+html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder-container"] > * {
+    visibility: hidden;
 }
 
 [data-dxv] > :not(.dxv-row):not([class*="menu-container"]) {
@@ -4091,12 +4112,19 @@ body[data-dx-ptitle] #app .custom-episode-title {
     color: var(--dx-text);
 }
 
+.dxv-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+/* Seeds, provider and size are never cut off: they wrap instead */
 .dxv-main small {
     font: 500 0.82rem/1.3 Inter, system-ui, sans-serif !important;
     color: var(--dx-text-2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .dxv-main u {
