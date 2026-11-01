@@ -362,10 +362,13 @@ The look is built into the plugin, so no theme file is needed. Applying any othe
 
 Once you're watching:
 
-- anyone can pause, play or skip, and it happens for everyone
-- if someone is buffering, everyone waits for them
+- the host and any mods control playback, and it happens for everyone
+- anyone else who presses pause or skips goes straight back to the party
+- if someone is buffering, everyone waits for them (a viewer can only hold the party up a few times)
 - the party follows the host to the next episode
 - chat and reactions appear in the player
+
+In the People list, the host can make someone a mod, or choose *let everyone control* for a party of friends. The host can remove anyone, and mods can remove viewers. The party code proves who the host is and every message is signed, so a changed copy of the app can't take over the party. Someone who's been removed could still come back with a fresh install, so keep public codes short-lived. The code still lets anyone watch and chat, and a party only remembers its host on the device that started it.
 
 Stream links are never shared, because debrid links contain your API key. Friends only receive the title, the release's torrent hash and the playback position. Everything is end-to-end encrypted with the party code and passed through public relays that only see scrambled data. No account and no server to run.
 

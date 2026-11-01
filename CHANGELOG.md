@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.25.0
+
+- **Smoother 4K in the desktop app.** Chromium only held about 150 MB of a film, so high-bitrate 4K kept stalling with next to nothing loaded ahead. It now keeps much more. Seek previews also wait until 10 seconds are loaded, so they no longer compete with the film.
+- **A proper phone layout upright.** Movie and series pages are tighter, so episodes and streams are much closer to the top. The top bar stays readable, See All sits at the edge, Search keeps your profile on screen, and the empty band above the bottom bar is gone.
+- **Watch party roles.** The person who starts a party is the host, and only the host and mods can now play, pause and skip for everyone. Anyone else who tries goes straight back to the party. In the People list the host can make someone a mod, remove anyone, or choose *let everyone control* for a party of friends. Mods can remove viewers. If the host leaves, the mods carry on, and the host gets their role back on returning from the same device.
+- **Parties can't be taken over.** New party codes are longer because they prove who the host is, and every message is signed, so a changed copy of the app can't pretend to be the host or pause everyone. A viewer can also only hold the party up for buffering a few times. Everyone needs 2.25.0 for the new codes. Older codes still work, with everyone in control.
+
 ## 2.24.0
 - **Sound on every film and episode on phones.** Most phones have no Dolby or DTS decoder, so those films and episodes played in silence. dx.bi TV now decodes them itself when the device can't. Sound sent straight to an AV receiver works as before. The Audio list names each track's format, and a track that still can't play is listed with the reason. From Nathflix, thanks to Lavagnou.
 - **Viewers stay the same on every device.** With two or more viewers, a title watched on the TV no longer turns up in the first viewer's Continue Watching on your computer. Viewers, who owns which title, hidden titles and Home layouts now follow your Stremio account. If you made the same person on two devices, they're joined by name. This uses a small dx.bi server: your Stremio login key is only used to check who you are and is never saved, and your parental PIN stays on each device. With one viewer nothing is sent. Turn it off with *Keep viewers the same on every device*. From Nathflix, thanks to Lavagnou.
