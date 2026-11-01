@@ -1615,6 +1615,25 @@
     else getInfo(info.type, info.id, null, true).then((meta) => place(scoreOf(meta))); // no addon fetch per card for a badge
   }
 
+  // A series opens on its episodes. Stremio's Continue Watching cards go straight to the last episode's
+  // stream list instead. (Its play button is separate and still resumes.)
+  function seriesOpensOnEpisodes(card) {
+    const link = card.querySelector('a[class*="meta-item-link"]');
+    const m = link && /^#\/detail\/series\/([^/?]+)\/[^/?]/.exec(link.getAttribute("href") || "");
+    if (!m) return;
+    link.setAttribute("href", `#/detail/series/${m[1]}`);
+    link.setAttribute("data-dx-episodes", "");
+  }
+
+  // Stremio navigates from its own copy of the link, so the click has to be caught before it
+  const onCardOpen = (e) => {
+    const link = e.target.closest && e.target.closest("a[data-dx-episodes]");
+    if (!link || e.target.closest('[class*="play-icon"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(link.getAttribute("href").slice(1));
+  };
+
   function syncCards() {
     coreMeta.refresh();
     // Plain marker attributes instead of CSS :has(): a :has() that looks inside rows makes the
@@ -1629,6 +1648,7 @@
     if (!settings.newEpisodes) document.querySelectorAll("#app .dxe-new-ep").forEach((b) => b.remove());
     if (!settings.animeTitles) document.querySelectorAll("#app .dx-anime-title").forEach((b) => b.remove());
     for (const card of allCards()) {
+      seriesOpensOnEpisodes(card);
       if (markWatched) {
         // Continue Watching is never dimmed or hidden
         const watched = !card.closest('[class*="continue-watching-row"]') && !!card.querySelector('[class*="watched-icon-layer"]');
@@ -11087,7 +11107,7 @@
         <div class="${esc(c.track)}">${list.map((i) => {
           const poster = i.poster || (/^tt/.test(i._id) ? `https://images.metahub.space/poster/small/${i._id}/img` : "");
           const id = encodeURIComponent(i._id);
-          return `<div class="${esc(c.card)}"><a tabindex="0" title="${esc(i.name)}" class="${esc(c.link)}" href="#/detail/${esc(i.type)}/${id}/${id}">
+          return `<div class="${esc(c.card)}"><a tabindex="0" title="${esc(i.name)}" class="${esc(c.link)}" href="#/detail/${esc(i.type)}/${id}${i.type === "series" ? "" : `/${id}`}">
             <div class="${esc(c.poster)}"><div class="${esc(c.layer)}"><img class="${esc(c.image)}" src="${esc(poster)}" alt=" " loading="lazy"></div></div>
             <div class="${esc(c.bar)}"><div class="${esc(c.label)}">${esc(i.name)}</div></div>
           </a></div>`;
@@ -14070,6 +14090,7 @@
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     if (crisp.lean) document.addEventListener("focusin", onCardFocus);
     document.addEventListener("mouseover", onOver, { passive: true });
+    document.addEventListener("click", onCardOpen, true);
     document.addEventListener("mouseout", onOut, { passive: true });
     window.addEventListener("hashchange", onHash);
     window.addEventListener("resize", onResize);
@@ -14220,6 +14241,7 @@
       document.removeEventListener("scroll", onScroll, { capture: true });
       document.removeEventListener("focusin", onCardFocus);
       document.removeEventListener("mouseover", onOver);
+      document.removeEventListener("click", onCardOpen, true);
       document.removeEventListener("mouseout", onOut);
       window.removeEventListener("hashchange", onHash);
       window.removeEventListener("resize", onResize);
