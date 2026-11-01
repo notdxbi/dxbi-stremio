@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.24.0
+- **Sound on every film and episode on phones.** Most phones have no Dolby or DTS decoder, so those films and episodes played in silence. dx.bi TV now decodes them itself when the device can't. Sound sent straight to an AV receiver works as before. The Audio list names each track's format, and a track that still can't play is listed with the reason. From Nathflix, thanks to Lavagnou.
+- **Viewers stay the same on every device.** With two or more viewers, a title watched on the TV no longer turns up in the first viewer's Continue Watching on your computer. Viewers, who owns which title, hidden titles and Home layouts now follow your Stremio account. If you made the same person on two devices, they're joined by name. This uses a small dx.bi server: your Stremio login key is only used to check who you are and is never saved, and your parental PIN stays on each device. With one viewer nothing is sent. Turn it off with *Keep viewers the same on every device*. From Nathflix, thanks to Lavagnou.
+- **A quicker Home on dx.bi TV.** Home used to load every row, which made it much heavier on long addon lists. It now loads the first rows, then more just ahead of the remote. Big soft shadows are gone on TV too, and row arrows are only measured for the row under the mouse, on every device. From Nathflix, thanks to Lavagnou.
+- **mpv on Linux under Hyprland, for those who want to try it.** Start dx.bi with `DXBI_MPV=1` and `--ozone-platform=x11`. It needs mpv installed. Thanks to cgngtr.
+
 ## 2.23.0
 - **Colours from the title.** A title's page and its player take a colour from its artwork: Dune goes orange, Avatar blue. The main button, other accent-coloured buttons and the seek bar follow it, always in a shade white text can be read on. Black and white or very muted artwork keeps your accent colour, and so does the Mono accent. Switch it off with *Match each title's colours* in Look. It works on dx.bi TV too, including the seek bar.
 - **dx.bi TV: trailers play inside dx.bi.** They used to flash the player screen and then open the YouTube app. Now they open straight in dx.bi's own full-screen trailer player. OK pauses, left and right skip 10 seconds, and Back returns to the title. The YouTube app is only used for the few trailers whose owners don't allow them to be played elsewhere.

@@ -14,6 +14,14 @@ GNU General Public License for more details.
 In short: you may use, study, change and share dx.bi. If you share a copy or a changed
 version, you must keep this notice and publish your full source code under the same licence.
 
+## Contributions from other forks
+
+Viewer sync, the FFmpeg audio decoder set-up and parts of dx.bi TV's Home loading come from
+[Nathflix](https://github.com/Lavagnou/dxbi-stremio-android) by Lavagnou (GPL-3.0). mpv on Linux
+under Hyprland comes from [cgngtr's fork](https://github.com/cgngtr/dxbi-stremio) (GPL-3.0). dx.bi TV's
+FFmpeg decoder is [Jellyfin's build](https://github.com/jellyfin/jellyfin-androidx-media) of Media3's
+FFmpeg extension.
+
 ## Earlier versions
 
 dx.bi 2.15.9 and earlier were released under the MIT licence, and copies of those versions

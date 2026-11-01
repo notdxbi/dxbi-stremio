@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.23.0
+ * @version 2.24.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.23.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.24.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -142,6 +142,7 @@
     splash: true,
     introSound: true,
     uiSounds: false,
+    profileSync: true,
     soundVolume: "subtle",
     focusColour: "white",
     tvTorrents: false,
@@ -398,6 +399,7 @@
     { key: "partySounds", type: "toggle", label: "Watch party: sounds", description: "Soft chimes when people join, leave or send a message.", defaultValue: DEFAULTS.partySounds },
     { key: "splash", type: "toggle", label: "Intro animation", description: "Plays once each time the app starts.", defaultValue: DEFAULTS.splash },
     { key: "introSound", type: "toggle", label: "Intro sound", description: "Play the intro's score (a 'ta-dum', a chord and a whoosh).", defaultValue: DEFAULTS.introSound },
+    { key: "profileSync", type: "toggle", label: "Keep viewers the same on every device", description: "With two or more viewers, your viewers and each one's library, hidden titles and Home follow your Stremio account, through dx.bi's sync server. Your login key is only used to check who you are and is never saved. The parental PIN stays on each device.", defaultValue: DEFAULTS.profileSync },
     { key: "uiSounds", type: "toggle", label: "Interface sounds", description: "Soft sounds for tabs, opening titles, previews, My List, player controls and keyboard navigation.", defaultValue: DEFAULTS.uiSounds },
     {
       key: "soundVolume",
@@ -419,7 +421,7 @@
     ["Look", ["accent", "posterAccent", "focusColour", "builtInTheme", "crispPosters", "ratings", "animeTitles", "wideContinue"]],
     ["Home", ["myList", "videoRowsOnly", "billboard", "billboardSource", "billboardInterval", "newEpisodes", "airingRow", "whoIsWatching"]],
     ["Hover cards & trailers", ["previews", "trailers", "trailerDelay"]],
-    ["Browsing & library", ["watchedTitles", "librarySort", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey"]],
+    ["Browsing & library", ["watchedTitles", "librarySort", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey", "profileSync"]],
     ["Player", ["tvTorrents", "playerExtras", "remainingTime", "playerClock", "seekPreviews", "enhance", "pictureSound", "streamStats", "rememberPlayback", "playerKeys", "pip", "externalPlayer", "convertVideo"]],
     ["Subtitles", ["subtitleStyle", "subtitleFont", "subtitleCustomFont", "subtitlesStart", "hdrSubtitles"]],
     ["Episodes & skipping", ["skipButtons", "autoSkip", "upNext", "preloadNext", "fillerGuide", "skipFiller"]],
@@ -6877,7 +6879,7 @@
     if (currentRoute() === "detail") steps.push(() => streamTools.ensure());
     steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { endsAt.ensure().catch(() => { /* next sync */ }); }, () => { calendarFill.ensure().catch(() => { /* next sync */ }); }, () => { restrict.guard().catch(() => { /* next sync */ }); });
     if (currentRoute() !== "player") {
-      steps.push(() => hero.ensure(), filterRows, () => homeLayout.ensure(), () => myList.ensure(), updateAllArrows, syncCards, () => librarySort.ensure(), () => libraryWatched.ensure(), applyWatchedTitles);
+      steps.push(() => cloudSync.watch(), () => hero.ensure(), filterRows, () => homeLayout.ensure(), () => myList.ensure(), updateAllArrows, syncCards, () => librarySort.ensure(), () => libraryWatched.ensure(), applyWatchedTitles);
     }
     // One failing step must never stop the others
     for (const step of steps) {
@@ -8682,6 +8684,15 @@
       this.saveLocal();
       this.dirty.add(key);
       this.schedule();
+      cloudSync.changed(key);
+    },
+
+    // An entry from another device: its own time, not sent back
+    put(key, entry) {
+      this.data[key] = entry;
+      this.saveLocal();
+      this.dirty.add(key);
+      this.schedule();
     },
 
     saveLocal() {
@@ -8701,6 +8712,305 @@
       for (const key of keys) {
         try { await bridge.saveSetting(DATA_FILE, key, this.data[key]); } catch (_) { this.dirty.add(key); }
       }
+    },
+  };
+
+  // ---------------------------------------------------------------------------
+  // Viewers on every device. The Stremio account has one library, and who owns what lived on each
+  // device, so a title Mum watched on the TV landed in the first viewer's Continue Watching on the
+  // computer. With two or more viewers, the viewers and what's theirs follow the account through
+  // tools/profile-sync (way of working from Nathflix, by Lavagnou). The session key goes to that Worker
+  // only, which checks it with Stremio and never keeps it. The parental PIN stays on each device.
+  // ---------------------------------------------------------------------------
+
+  const SYNC_ENDPOINT = "https://dxbi-sync.dxbialt.workers.dev/sync";
+  const SYNCED = /^(viewers|libraryOwners|kidsAllow|(homeLayout|hidden|cwDismissed):[\w-]{1,40})$/;
+  const SYNC_MAX_VALUE = 100 * 1024;
+
+  // Two copies of the same thing, from two devices. Nothing here touches the page or the store.
+  const syncMerge = {
+    // (whatever order the keys came in, or two devices would answer each other for ever)
+    same(a, b) {
+      const sorted = (_, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : 1))) : v);
+      return JSON.stringify(a, sorted) === JSON.stringify(b, sorted);
+    },
+
+    // Which viewer is picked belongs to each device
+    shared(viewers) {
+      const { current, ...rest } = viewers || {};
+      return rest.removed ? { ...rest, removed: [...rest.removed].sort() } : rest;
+    },
+
+    // Devices made their viewers apart, so one person can have two ids: the same name is the same
+    // person, and both devices settle on the smaller id. { value, aliases: { old id: kept id } }
+    viewers(mine, theirs, theirsNewer) {
+      const older = theirsNewer ? mine : theirs;
+      const newer = theirsNewer ? theirs : mine;
+      const removed = [...new Set([...((older && older.removed) || []), ...((newer && newer.removed) || [])])].sort().slice(-50);
+      const byId = new Map();
+      for (const v of [...((newer && newer.list) || []), ...((older && older.list) || [])]) {
+        if (v && v.id && !byId.has(v.id) && !removed.includes(v.id)) byId.set(v.id, v);
+      }
+      const aliases = {};
+      const byName = new Map();
+      for (const v of byId.values()) {
+        const name = String(v.name || "").trim().toLowerCase();
+        const other = byName.get(name);
+        if (!other) { byName.set(name, v); continue; }
+        const [keep, drop] = other.id < v.id ? [other, v] : [v, other];
+        aliases[drop.id] = keep.id;
+        byId.set(keep.id, { ...drop, ...keep });
+        byId.delete(drop.id);
+        byName.set(name, byId.get(keep.id));
+      }
+      const list = [...byId.values()];
+      const here = aliases[mine && mine.current] || (mine && mine.current);
+      const value = { list, current: list.some((v) => v.id === here) ? here : list[0] && list[0].id };
+      if (removed.length) value.removed = removed;
+      return { value, aliases };
+    },
+
+    // Title by title: the newer copy wins a title both have; a title only one has stays
+    owners(mine, theirs, theirsNewer, aliases = {}) {
+      const rename = (list) => [...new Set((list || []).map((id) => aliases[id] || id))];
+      const out = {};
+      for (const [id, list] of Object.entries((theirsNewer ? mine : theirs) || {})) out[id] = rename(list);
+      for (const [id, list] of Object.entries((theirsNewer ? theirs : mine) || {})) out[id] = rename(list);
+      return out;
+    },
+
+    // Latest time of each title
+    latest(mine, theirs) {
+      const out = { ...(theirs || {}) };
+      for (const [id, at] of Object.entries(mine || {})) out[id] = Math.max(Number(out[id]) || 0, Number(at) || 0);
+      return out;
+    },
+  };
+
+  const cloudSync = {
+    dirty: new Set(),
+    timer: 0,
+    firstDirty: 0,
+    busy: false,
+    lastTry: 0,
+    retryAt: 0,
+    failures: 0,
+    rejectedKey: "",
+
+    // Nothing leaves a device with a single viewer: there's nothing to keep apart. (Unless it's down to
+    // one because a viewer was removed: the other devices have to hear of that.)
+    on() {
+      const v = viewers.list();
+      return settings.profileSync !== false && (v.list.length > 1 || !!(v.removed && v.removed.length));
+    },
+
+    auth() {
+      try {
+        const profile = JSON.parse(localStorage.getItem("profile") || "null");
+        const a = profile && profile.auth;
+        return a && a.key && a.user && a.user._id ? { key: a.key, id: a.user._id } : null;
+      } catch (_) { return null; }
+    },
+
+    local(name, value) {
+      try {
+        if (value === undefined) return localStorage.getItem(name);
+        if (value === null) localStorage.removeItem(name);
+        else localStorage.setItem(name, value);
+      } catch (_) { /* storage full or blocked */ }
+      return null;
+    },
+
+    changed(key) {
+      if (!SYNCED.test(key) || !this.on()) return;
+      this.dirty.add(key);
+      this.schedule();
+    },
+
+    // 20 s after the last change, and never more than a minute after the first one
+    schedule() {
+      const now = Date.now();
+      if (!this.firstDirty) this.firstDirty = now;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.run(), Math.max(0, Math.min(20000, this.firstDirty + 60000 - now)));
+    },
+
+    // Another account on this device: its viewers replace the last one's, never the other way round
+    switchAccount() {
+      for (const k of Object.keys(store.data)) {
+        if (SYNCED.test(k)) store.put(k, { t: 1 });
+      }
+      this.dirty.clear();
+    },
+
+    async run({ keepalive = false } = {}) {
+      clearTimeout(this.timer);
+      if (!this.on() || this.busy) return;
+      const auth = this.auth();
+      if (!auth || this.rejectedKey === auth.key) return;
+      if (Date.now() < this.retryAt && !keepalive) return;
+      this.busy = true;
+      this.lastTry = Date.now();
+      try {
+        const previous = this.local("dxbi.syncAccount");
+        if (previous && previous !== auth.id) {
+          this.switchAccount();
+          this.local("dxbi.syncSince:" + previous, null);
+        }
+        this.local("dxbi.syncAccount", auth.id);
+        const sinceKey = "dxbi.syncSince:" + auth.id;
+        const first = !this.local(sinceKey);
+        const entries = [];
+        for (const k of [...this.dirty]) {
+          if (entries.length >= 200) break;
+          this.dirty.delete(k);
+          const entry = store.data[k];
+          if (entry && JSON.stringify(entry.v === undefined ? null : entry.v).length <= SYNC_MAX_VALUE) {
+            entries.push({ k, t: entry.t, v: entry.v === undefined ? null : entry.v });
+          }
+        }
+        const body = JSON.stringify({ since: Number(this.local(sinceKey)) || 0, entries });
+        const r = await fetch(SYNC_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Stremio ${auth.key}` },
+          body,
+          signal: AbortSignal.timeout(15000),
+          keepalive: keepalive && body.length < 60000,
+        }).catch(() => null);
+        if (!r || !r.ok) {
+          for (const e of entries) this.dirty.add(e.k); // goes again next time
+          if (r && r.status === 401) this.rejectedKey = auth.key;
+          else {
+            this.failures++;
+            this.retryAt = Date.now() + (r && r.status === 413 ? 60 : r && r.status === 429 ? 5 : [1, 5, 15][Math.min(2, this.failures - 1)]) * 60000;
+          }
+          return;
+        }
+        const answer = await r.json().catch(() => ({}));
+        this.failures = 0;
+        this.retryAt = 0;
+        const received = Array.isArray(answer.entries) ? answer.entries : [];
+        this.merge(received);
+        if (Number(answer.now)) this.local(sinceKey, String(answer.now));
+        // this device's first sync with this account: what it already has goes up too
+        if (first) {
+          const came = new Set(received.map((e) => e && e.k));
+          for (const k of Object.keys(store.data)) if (SYNCED.test(k) && store.data[k].v !== undefined && !came.has(k)) this.dirty.add(k);
+        }
+      } catch (err) {
+        log("viewer sync failed", err);
+      } finally {
+        this.busy = false;
+        this.firstDirty = 0;
+        if (this.dirty.size && !this.retryAt) this.schedule();
+      }
+    },
+
+    // One id for one person: everything saved under the old id moves to the kept one
+    rekey(aliases) {
+      for (const [from, to] of Object.entries(aliases)) {
+        for (const k of Object.keys(store.data)) {
+          const i = k.lastIndexOf(":");
+          if (i < 0 || k.slice(i + 1) !== from) continue;
+          const target = `${k.slice(0, i)}:${to}`;
+          if (!store.data[target] || store.data[target].t < store.data[k].t) store.put(target, store.data[k]);
+          if (SYNCED.test(target)) this.dirty.add(target);
+          delete store.data[k];
+        }
+      }
+      store.saveLocal();
+    },
+
+    // The merged copy is kept. If it isn't what came, it goes back out with a new time (even when it's
+    // what this device already had: the server holds the other copy, and the other device needs this one)
+    keep(key, entry, before, merged, shared = (v) => v) {
+      const ours = !syncMerge.same(shared(merged), shared(entry.v));
+      const same = syncMerge.same(merged, before);
+      if (same && !ours) return this.dirty.delete(key), false;
+      store.put(key, { t: ours ? Date.now() : entry.t, v: merged });
+      if (ours) this.dirty.add(key);
+      else this.dirty.delete(key);
+      return !same;
+    },
+
+    merge(list) {
+      if (!list.length) return;
+      const changed = new Set();
+      let aliases = {};
+      const incoming = [...list].filter((e) => e && SYNCED.test(e.k) && Number(e.t)).sort((a, b) => (b.k === "viewers") - (a.k === "viewers"));
+      for (const e of incoming) {
+        const i = e.k.lastIndexOf(":");
+        const key = i > 0 && aliases[e.k.slice(i + 1)] ? `${e.k.slice(0, i)}:${aliases[e.k.slice(i + 1)]}` : e.k;
+        const mine = store.data[key];
+        const before = mine && mine.v;
+        const newer = !mine || e.t > mine.t;
+        if (key === "viewers" && e.v && Array.isArray(e.v.list)) {
+          const merged = syncMerge.viewers(before, e.v, newer);
+          aliases = merged.aliases;
+          this.rekey(aliases);
+          if (!this.keep(key, e, before, merged.value, syncMerge.shared)) continue;
+        } else if (key === "libraryOwners" && e.v && typeof e.v === "object") {
+          const merged = syncMerge.owners(before, e.v, newer, aliases);
+          if (!this.keep(key, e, before, merged)) continue;
+        } else if (/^cwDismissed:/.test(key) && e.v && typeof e.v === "object") {
+          if (!this.keep(key, e, before, syncMerge.latest(before, e.v))) continue;
+        } else {
+          if (!newer) continue;
+          store.put(key, { t: e.t, v: e.v });
+          this.dirty.delete(key);
+        }
+        changed.add(key);
+      }
+      const renamed = Object.keys(aliases).length > 0;
+      if (renamed && store.data.libraryOwners) {
+        const owners = syncMerge.owners(store.data.libraryOwners.v, {}, false, aliases);
+        if (!syncMerge.same(owners, store.data.libraryOwners.v)) {
+          store.put("libraryOwners", { t: Date.now(), v: owners });
+          this.dirty.add("libraryOwners");
+        }
+      }
+      if (!changed.size && !renamed) return;
+      stats.load();
+      restrict.apply();
+      viewerLibrary.switched();
+      if ([...changed].some((k) => /^(viewers|kidsAllow|hidden:)/.test(k))) hero.reset();
+      if (whoIsWatching.el) whoIsWatching.render();
+      scheduleSync();
+    },
+
+    // Signing in doesn't reload the page: looked at now and then from the main loop
+    seenKey: "",
+    nextLook: 0,
+    watch() {
+      if (this.busy || Date.now() < this.nextLook || !this.on()) return;
+      this.nextLook = Date.now() + 5000;
+      const auth = this.auth();
+      const key = auth ? auth.key : "";
+      if (key === this.seenKey) return;
+      this.seenKey = key;
+      if (auth) {
+        this.retryAt = 0;
+        this.run();
+      }
+    },
+
+    start() {
+      const auth = this.auth();
+      this.seenKey = auth ? auth.key : "";
+      // back in front: what other devices did (every 15 s at most); going to the back: send now
+      this.onVisible = () => {
+        if (!this.on()) return;
+        if (document.hidden) {
+          if (this.dirty.size) this.run({ keepalive: true });
+        } else if (Date.now() - this.lastTry > 15000) this.run();
+      };
+      document.addEventListener("visibilitychange", this.onVisible);
+      setTimeout(() => this.run(), 3000);
+    },
+
+    stop() {
+      clearTimeout(this.timer);
+      if (this.onVisible) document.removeEventListener("visibilitychange", this.onVisible);
     },
   };
 
@@ -8744,6 +9054,7 @@
       viewerLibrary.forget(id);
       v.list = v.list.filter((x) => x.id !== id);
       if (v.current === id) v.current = v.list[0].id;
+      v.removed = [...(v.removed || []), id].slice(-50); // so another device doesn't bring them back
       this.save(v);
     },
     rename(id, name) {
@@ -13792,6 +14103,7 @@
     // (a new stylesheet restyles the whole page: half a second on a stick, just as you start moving)
     if (IN_TV) keyNav.looks();
     store.load().then(() => {
+      cloudSync.start();
       stats.load();
       setTimeout(() => subtitlesStart.apply().catch(() => { /* core not ready */ }), 3000);
       if (!miniPlayer.info) whoIsWatching.maybeShow().catch(() => { /* nothing to show */ });
@@ -13877,6 +14189,7 @@
       upNext.hide();
       tune.close();
       streamInfo.close();
+      cloudSync.stop();
       sub2.stop();
       volumeTip.stop();
       window.__dxbiMpv?.set("sub-font", "sans-serif");

@@ -1,0 +1,24 @@
+name = "dxbi-sync"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# The profiles, one row per account and key (schema.sql). Make the database with
+#   npx wrangler d1 create dxbi-sync
+# and put the database_id it prints here
+[[d1_databases]]
+binding = "DB"
+database_name = "dxbi-sync"
+database_id = "SET-BY-DEPLOY"
+
+# Each address can sync 60 times a minute, each account 30 times (a device syncs once a minute at most,
+# and a few times in a row at most when a lot changes)
+[[ratelimits]]
+name = "IP_LIMIT"
+namespace_id = "2101"
+simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "ACCOUNT_LIMIT"
+namespace_id = "2102"
+simple = { limit = 30, period = 60 }
