@@ -122,6 +122,8 @@
     pictureSound: true,
     streamStats: true,
     preloadNext: true,
+    liteMode: "auto",
+    forYou: true,
     quickPlay: false,
     quickPlayMemory: "series",
     quickPlayQuality: "best",
@@ -191,6 +193,8 @@
         { label: "Yellow", value: "yellow" },
       ],
     },
+    { key: "liteMode", type: "select", label: "Lite mode", description: "For slower TV boxes: loads fewer Home rows at once, skips hover cards and sharper posters, and ignores presses that arrive too late. Auto turns on with 2 GB of memory or less.", defaultValue: DEFAULTS.liteMode, tvOnly: true, options: [{ label: "Auto", value: "auto" }, { label: "On", value: "on" }, { label: "Off", value: "off" }] },
+    { key: "forYou", type: "toggle", label: "Because you watched", description: "A Home row of popular titles that share genres with what you watched last. Skipped for kids viewers.", defaultValue: DEFAULTS.forYou },
     { key: "quickPlay", type: "toggle", label: "Just press Play", description: "Play and episode clicks start the best stream straight away, and dx.bi remembers what you choose. Skips streams that would start a new debrid download.", defaultValue: DEFAULTS.quickPlay },
     { key: "quickPlayMemory", type: "select", label: "Remember my stream choice", defaultValue: DEFAULTS.quickPlayMemory, options: [{ label: "For each series", value: "series" }, { label: "Everywhere", value: "global" }] },
     { key: "quickPlayQuality", type: "select", label: "Highest quality to pick", defaultValue: DEFAULTS.quickPlayQuality, options: [{ label: "Best available", value: "best" }, { label: "4K", value: "2160" }, { label: "1080p", value: "1080" }, { label: "720p", value: "720" }] },
@@ -428,8 +432,8 @@
   // Settings come in groups (the dx.bi app and dx.bi TV show them as sections with a search). Each
   // option carries its group's name, and they're listed group by group.
   const SETTING_GROUPS = [
-    ["Look", ["accent", "posterAccent", "focusColour", "builtInTheme", "crispPosters", "ratings", "animeTitles", "wideContinue"]],
-    ["Home", ["myList", "videoRowsOnly", "billboard", "billboardSource", "billboardInterval", "newEpisodes", "airingRow", "whoIsWatching"]],
+    ["Look", ["liteMode", "accent", "posterAccent", "focusColour", "builtInTheme", "crispPosters", "ratings", "animeTitles", "wideContinue"]],
+    ["Home", ["myList", "forYou", "videoRowsOnly", "billboard", "billboardSource", "billboardInterval", "newEpisodes", "airingRow", "whoIsWatching"]],
     ["Hover cards & trailers", ["previews", "trailers", "trailerDelay"]],
     ["Browsing & library", ["watchedTitles", "librarySort", "streamRows", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey", "profileSync"]],
     ["Player", ["quickPlay", "quickPlayMemory", "quickPlayQuality", "quickPlayFallback", "tvTorrents", "playerExtras", "remainingTime", "playerClock", "seekPreviews", "enhance", "pictureSound", "streamStats", "rememberPlayback", "playerKeys", "pip", "externalPlayer", "convertVideo"]],
@@ -450,6 +454,13 @@
   }
 
   const settings = { ...DEFAULTS };
+  // Slower TV boxes: 2 GB covers the Mi Box, onn and Chromecast models people report as slow
+  const lite = {
+    get on() {
+      if (!IN_TV || settings.liteMode === "off") return false;
+      return settings.liteMode === "on" || (navigator.deviceMemory || 8) <= 2;
+    },
+  };
 
   function normalise(raw) {
     const out = { ...DEFAULTS };
@@ -828,9 +839,9 @@
   const homeRows = {
     timer: null,
     BATCH: 8,
-    FIRST: 6,
+    get FIRST() { return lite.on ? 3 : 6; },
     LOW: 3,
-    AHEAD: 6,
+    get AHEAD() { return lite.on ? 3 : 6; },
 
     preload(tries = 4) {
       const all = homeLayout.active();
@@ -1718,7 +1729,7 @@
     library: { ids: new Set(), at: 0 },
 
     eligible(card) {
-      if (!settings.previews) return false;
+      if (!settings.previews || lite.on) return false;
       // Continue Watching stays calm: the card lifts and shows play / remove, nothing pops out
       if (card.closest('[class*="continue-watching-row"]')) return false;
       // a title cut off by the edge of the screen stays in its row: no card popping out over the edge
@@ -1780,7 +1791,7 @@
     onFocus(card) {
       clearTimeout(this.openTimer);
       const open = this.el && this.el.classList.contains("is-open");
-      if (!card || !settings.previews || !cardInfo(card)) {
+      if (!card || !settings.previews || lite.on || !cardInfo(card)) {
         if (open) this.scheduleClose();
         return;
       }
@@ -2254,6 +2265,13 @@
       if (!NAV_KEYS.includes(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
       // A held direction on a TV remote repeats faster than a stick can draw: the presses queued up
       // and the selection kept going after the button was let go. Repeats pass at a steady pace.
+      // On a slow box presses can sit in a queue and all land at once, long after the button was
+      // pressed: a late press is dropped so the selection only moves when it's asked to
+      if (lite.on && performance.now() - e.timeStamp > 350) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
       if (IN_TV && e.repeat) {
         const now = performance.now();
         if (now - (this.lastRepeat || 0) < 140) {
@@ -7238,7 +7256,7 @@
     steps.push(() => { quickPlay.note().catch(() => { /* next sync */ }); });
     steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { endsAt.ensure().catch(() => { /* next sync */ }); }, () => { calendarFill.ensure().catch(() => { /* next sync */ }); }, () => { restrict.guard().catch(() => { /* next sync */ }); });
     if (currentRoute() !== "player") {
-      steps.push(() => cloudSync.watch(), () => hero.ensure(), filterRows, () => homeLayout.ensure(), () => myList.ensure(), updateAllArrows, syncCards, () => librarySort.ensure(), () => libraryWatched.ensure(), applyWatchedTitles);
+      steps.push(() => cloudSync.watch(), () => hero.ensure(), filterRows, () => homeLayout.ensure(), () => myList.ensure(), () => forYou.ensure(), updateAllArrows, syncCards, () => librarySort.ensure(), () => libraryWatched.ensure(), applyWatchedTitles);
     }
     // One failing step must never stop the others
     for (const step of steps) {
@@ -10654,9 +10672,56 @@
           this.close();
           whoIsWatching.open();
         }
+        if (e.target.closest("[data-act=year]")) this.saveYear();
       });
       document.body.append(el);
       this.el = el;
+    },
+
+    // Your year as a picture to share. Saved to this device only: nothing is uploaded.
+    yearFacts(year) {
+      const d = stats.data;
+      const titles = Object.values(d.titles).map((t) => ({ n: t.n || "", s: (t.y && t.y[year]) || 0 })).filter((t) => t.s > 0 && t.n).sort((a, b) => b.s - a.s);
+      const genre = Object.entries(d.genres).map(([g, y]) => [g, y[year] || 0]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1])[0];
+      return { total: stats.sumDays(`${year}-01-01`, `${year}-12-31`), top: titles.slice(0, 5), genre: genre ? genre[0] : "", best: stats.streaks().best };
+    },
+
+    saveYear() {
+      const year = String(new Date().getFullYear());
+      const f = this.yearFacts(year);
+      const c = document.createElement("canvas");
+      c.width = 1080;
+      c.height = 1350;
+      const g = c.getContext("2d");
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--dx-accent").trim() || "#e50914";
+      g.fillStyle = "#0b0b0e";
+      g.fillRect(0, 0, 1080, 1350);
+      const glow = g.createRadialGradient(900, 120, 40, 900, 120, 900);
+      glow.addColorStop(0, accent);
+      glow.addColorStop(1, "rgba(11,11,14,0)");
+      g.globalAlpha = 0.45;
+      g.fillStyle = glow;
+      g.fillRect(0, 0, 1080, 1350);
+      g.globalAlpha = 1;
+      const text = (value, x, y, font, colour = "#fff") => {
+        g.font = `${font} Inter, system-ui, sans-serif`;
+        g.fillStyle = colour;
+        let s = String(value);
+        while (g.measureText(s).width > 930 && s.length > 4) s = `${s.slice(0, -2).trimEnd()}…`;
+        g.fillText(s, x, y);
+      };
+      text("dx.bi", 80, 120, "800 44px");
+      text(`My ${year}`, 80, 240, "800 96px");
+      text(hoursText(f.total), 80, 420, "800 124px", accent);
+      text("watched", 80, 480, "500 40px", "rgba(255,255,255,.7)");
+      text("Most watched", 80, 610, "700 34px", "rgba(255,255,255,.6)");
+      f.top.forEach((t, i) => text(`${i + 1}. ${t.n}`, 80, 680 + i * 66, "700 44px"));
+      text(f.genre ? `Top genre: ${f.genre}` : "", 80, 1110, "600 40px");
+      text(`Longest streak: ${f.best} day${f.best === 1 ? "" : "s"}`, 80, 1170, "600 40px");
+      const link = document.createElement("a");
+      link.download = `dxbi-${year}.png`;
+      link.href = c.toDataURL("image/png");
+      link.click();
     },
 
     close() {
@@ -10714,6 +10779,7 @@
         <div class="dxe-head">
           <b>Your stats<small>${esc(viewer.name)} · counted by dx.bi since ${esc(since)} · ${hoursText(total)} in total</small></b>
           ${viewers.list().list.length > 1 ? '<button class="dxe-btn" data-act="who">Switch viewer</button>' : ""}
+          ${IN_TV || tiles[3][1] < 60 ? "" : '<button class="dxe-btn" data-act="year">Save my year</button>'}
           <button class="dxe-btn" data-act="close">Close</button>
         </div>
         <div class="dxe-stats">
@@ -11462,6 +11528,97 @@
   };
 
   // ---------------------------------------------------------------------------
+  // Because you watched: popular titles sharing genres with the last thing this viewer watched.
+  // Cinemeta needs no key, and works out which titles match from public lists, so nothing about
+  // the viewer's library leaves the device beyond the id of that one title.
+  // ---------------------------------------------------------------------------
+  const forYou = {
+    el: null,
+    built: null,
+    loading: null,
+    MAX: 20,
+    KEEP: 6 * 3600e3,
+    BASE: "https://v3-cinemeta.strem.io",
+
+    seed() {
+      return stremioLibrary()
+        .filter((i) => /^tt/.test(i._id) && (i.type === "movie" || i.type === "series") && i.state && i.state.lastWatched)
+        .sort((a, b) => Date.parse(b.state.lastWatched) - Date.parse(a.state.lastWatched))[0] || null;
+    },
+
+    // Titles on both genre lists come first: they're the closest match
+    pick(lists, skip) {
+      const hits = new Map();
+      for (const list of lists) for (const m of list) {
+        if (!m || !m.id || skip.has(m.id)) continue;
+        const hit = hits.get(m.id) || { m, n: 0 };
+        hit.n += 1;
+        hits.set(m.id, hit);
+      }
+      return [...hits.values()].sort((a, b) => b.n - a.n).slice(0, this.MAX).map((h) => h.m);
+    },
+
+    async load(seed, sig) {
+      const json = (path) => fetch(`${this.BASE}${path}`, { signal: AbortSignal.timeout(10000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const meta = await json(`/meta/${seed.type}/${encodeURIComponent(seed._id)}.json`);
+      const genres = ((meta && meta.meta && (meta.meta.genres || meta.meta.genre)) || []).slice(0, 2);
+      const lists = await Promise.all(genres.map((g) => json(`/catalog/${seed.type}/top/genre=${encodeURIComponent(g)}.json`)));
+      const skip = new Set([seed._id, ...stremioLibrary().map((i) => i._id), ...(store.get(viewers.key("hidden"), null) || []).map((x) => String(x.key).split(":").slice(1).join(":"))]);
+      const list = this.pick(lists.map((l) => (l && l.metas) || []), skip).map((m) => ({ _id: m.id, type: seed.type, name: m.name, poster: m.poster }));
+      try { localStorage.setItem("dxbi.forYou", JSON.stringify({ sig, t: Date.now(), name: seed.name, list })); } catch (_) { /* full */ }
+      this.built = null;
+      this.loading = null;
+      scheduleSync();
+    },
+
+    saved(sig) {
+      try {
+        const data = JSON.parse(localStorage.getItem("dxbi.forYou") || "null");
+        return data && data.sig === sig && Date.now() - data.t < this.KEEP ? data : null;
+      } catch (_) { return null; }
+    },
+
+    ensure() {
+      const content = document.querySelector('[class*="board-content-"]:not([class*="board-content-container"])');
+      const off = !settings.forYou || lite.on || viewers.current().kids;
+      if (off) this.remove();
+      if (off || !content || currentRoute() !== "board") return;
+      const seed = this.seed();
+      if (!seed) return this.remove();
+      const sig = `${viewers.current().id}|${seed._id}`;
+      const data = this.saved(sig);
+      if (!data) {
+        if (this.loading !== sig) {
+          this.loading = sig;
+          this.load(seed, sig).catch((err) => log("for you failed", err && err.message));
+        }
+        return;
+      }
+      if (!data.list.length) return this.remove();
+      if (this.built !== sig || !this.el) {
+        const looks = myList.looks();
+        if (!looks) return;
+        this.remove();
+        this.el = myList.row([`Because you watched ${data.name}`, data.list], looks);
+        this.el.classList.add("dxe-foryou");
+        this.el.querySelector('[class*="see-all-container"]')?.remove();
+        this.built = sig;
+      }
+      const after = myList.els[myList.els.length - 1] || content.querySelector(':scope > [class*="continue-watching-row"]') || content.querySelector(":scope > .dxe-airing") || content.querySelector(":scope > .dx-hero");
+      if (after ? after.nextElementSibling !== this.el : content.firstElementChild !== this.el) {
+        if (after) after.after(this.el);
+        else content.prepend(this.el);
+      }
+    },
+
+    remove() {
+      if (this.el) this.el.remove();
+      this.el = null;
+      this.built = null;
+    },
+  };
+
+  // ---------------------------------------------------------------------------
   // Customise Home: rows moved, hidden and renamed for this viewer, whichever addon they're from.
   // Rows belong to Stremio's page, so they're only moved on screen (CSS order), never in the page.
   // ---------------------------------------------------------------------------
@@ -11849,7 +12006,7 @@
     },
 
     card(card) {
-      if (!settings.crispPosters || this.lean) return;
+      if (!settings.crispPosters || lite.on || this.lean) return;
       const img = card.querySelector('img[class*="poster-image"]');
       if (!img || img.dataset.dxSmall === img.getAttribute("src") || !img.getAttribute("src")) return;
       const need = card.clientWidth * (window.devicePixelRatio || 1);
@@ -11858,7 +12015,7 @@
     },
 
     onFocus(e) {
-      if (!settings.crispPosters) return;
+      if (!settings.crispPosters || lite.on) return;
       const card = e.target.closest && e.target.closest('[class*="meta-item-container"]');
       clearTimeout(this.timer);
       if (!card) return;
@@ -14759,6 +14916,8 @@
     partyLeave: () => watchParty.party.leave(),
     closeParty: () => watchParty.closePanel(),
     findStream: (media, stillWanted) => watchParty.findStream(media, stillWanted),
+    saveYear: () => { stats.flush(); if (!stats.data) stats.load(); statsPanel.saveYear(); },
+    lite,
     streamHints: (stream) => watchParty.streamHints(stream),
     async titleColourOf(url) {
       if (!url || !settings.posterAccent || settings.accent === "white") return "";
