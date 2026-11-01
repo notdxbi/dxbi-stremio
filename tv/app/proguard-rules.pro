@@ -7,3 +7,6 @@
 -keep class org.libtorrent4j.** { *; }
 -dontwarn org.libtorrent4j.**
 -keep class fi.iki.elonen.** { *; }
+
+# The FFmpeg audio decoder: Media3 finds it by name and builds it by reflection
+-keep class androidx.media3.decoder.ffmpeg.** { *; }

@@ -4434,6 +4434,27 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
 .dx-win #app *,
 .dx-win body > *,
 .dx-tv #app *,
+/* No big soft shadows on a TV: each is a blur painted again whenever what it surrounds changes, the
+   selected poster's at every press of the remote. A fine line instead (from Nathflix, by Lavagnou) */
+html.dx-tv {
+    --dx-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --dx-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.dx-tv body #app [class*="main-nav-bars-container"] > nav[class*="horizontal-nav-bar"][data-dx-scrolled] {
+    box-shadow: 0 1px 0 var(--dx-line);
+}
+
+.dx-tv .dx-btn:focus-visible,
+.dx-tv #app [class*="meta-item-container"] [class*="dismiss-icon-layer"] {
+    box-shadow: none;
+}
+
+.dx-tv .dx-hero-title,
+.dx-tv .dx-hero-desc {
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
 .dx-tv body > * {
     backdrop-filter: none !important;
 }
