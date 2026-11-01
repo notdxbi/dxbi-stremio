@@ -542,7 +542,7 @@ No tracking and no accounts. Apart from viewer sync, it only asks public service
 - viewer sync, only with two or more viewers on a signed-in account: dx.bi's own server, which keeps your viewers and each one's library choices under your Stremio account id (see above, and it can be turned off)
 - fonts: Google Fonts and jsDelivr
 
-Watch stats and viewers stay on your computer. *Order & backup* talks to Stremio's own servers only when you press Save or Restore. Watch parties only connect while you're in one, and are end-to-end encrypted.
+Watch stats stay on your computer, and so do your viewers unless you have two or more. *Order & backup* talks to Stremio's own servers only when you press Save or Restore. Watch parties only connect while you're in one, and are end-to-end encrypted.
 
 ### A giant black arrow covers the video and every click goes back
 
