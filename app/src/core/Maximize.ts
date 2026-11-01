@@ -27,12 +27,29 @@ export function useManualMaximize(win: BrowserWindow, transparent: boolean): voi
     win.on("moved", check);
 }
 
+// Hyprland draws nothing behind a full screen window, so the mpv picture would vanish: there MpvShell
+// does full screen its own way (see hyprFullScreen there)
+const custom = new WeakMap<BrowserWindow, { on: boolean; set: (on: boolean) => void }>();
+export function useCustomFullScreen(win: BrowserWindow, set: (on: boolean) => void): void {
+    custom.set(win, { on: false, set });
+}
+
 export function isFullScreen(win: BrowserWindow): boolean {
+    const c = custom.get(win);
+    if (c) return c.on;
     const state = manual.get(win);
     return state ? state.fullScreen : win.isFullScreen();
 }
 
 export function setFullScreen(win: BrowserWindow, on: boolean): void {
+    const c = custom.get(win);
+    if (c) {
+        if (c.on === on) return;
+        c.on = on;
+        c.set(on);
+        win.emit(on ? "enter-full-screen" : "leave-full-screen");
+        return;
+    }
     const state = manual.get(win);
     if (!state) return win.setFullScreen(on);
     if (state.fullScreen === on) return;

@@ -98,7 +98,10 @@ async function createWindow() {
         fullscreenable: true,
         useContentSize: true,
         icon: join(__dirname, "..", "images", process.platform === "win32" ? "icon.ico" : "icon.png"),
-        frame: transparencyEnabled ? false : true,
+        // On Linux Chromium paints a grey strip across the top of a frameless see-through window, over
+        // the mpv picture. Tiling window managers (Hyprland, Sway…) draw no title bar of their own, so
+        // a framed window looks the same there, without the strip
+        frame: transparencyEnabled ? process.platform === "linux" : true,
         transparent: transparencyEnabled,
         hasShadow: false,
         visualEffectState: transparencyEnabled ? "active" : "followWindow",

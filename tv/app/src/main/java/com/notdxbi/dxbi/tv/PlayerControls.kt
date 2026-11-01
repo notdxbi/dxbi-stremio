@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -304,12 +305,19 @@ class PlayerControls(
         }
         var number = 0
         for (group in groups) for (i in 0 until group.length) {
-            if (!group.isTrackSupported(i)) continue
+            val supported = group.isTrackSupported(i)
+            // (a sound track that can't play stays listed, so it's clear why there's no sound)
+            if (!supported && type != C.TRACK_TYPE_AUDIO) continue
             number++
             val format = group.getTrackFormat(i)
             val name = format.label ?: format.language?.let { java.util.Locale.forLanguageTag(it).displayLanguage }?.takeIf { it.isNotEmpty() } ?: "Track $number"
             val channels = if (type == C.TRACK_TYPE_AUDIO && format.channelCount > 0) " · ${channelName(format.channelCount)}" else ""
-            row(name + channels, group.isTrackSelected(i)) {
+            val kind = if (type == C.TRACK_TYPE_AUDIO) audioKind(format.sampleMimeType) else ""
+            if (!supported) {
+                row("$name$channels$kind · can't play here", false) {}
+                continue
+            }
+            row(name + channels + kind, group.isTrackSelected(i)) {
                 exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(type, false)
                     .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
@@ -318,6 +326,14 @@ class PlayerControls(
         }
         if (number == 0 && type == C.TRACK_TYPE_AUDIO) row("No other audio", false) {}
         focusFirst()
+    }
+
+    private fun audioKind(mime: String?) = when (mime) {
+        MimeTypes.AUDIO_AC3 -> " · Dolby Digital"
+        MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC -> " · Dolby Digital+"
+        MimeTypes.AUDIO_TRUEHD -> " · TrueHD"
+        MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_EXPRESS -> " · DTS"
+        else -> ""
     }
 
     private fun channelName(count: Int) = when (count) {

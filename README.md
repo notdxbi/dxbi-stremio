@@ -473,6 +473,8 @@ The Home billboard, dx.bi previews and wide Continue Watching cards use your con
 
 French interface settings also translate the billboard controls. Artwork comes from the addon; when a translated title has no title art, the billboard displays it as text instead of forcing an English logo. In a non-English interface the billboard picks its titles from your addons' catalogs; in English it keeps Cinemeta's Popular titles. The IMDb-rated and children's billboard selections keep their existing rosters.
 
+With two or more viewers, *Keep viewers the same on every device* keeps your viewers and each one's library, hidden titles and Home layout the same on all your devices, through a small dx.bi server. It stores that data under your Stremio account id. Your Stremio login key is sent to that server only so it can check who you are with Stremio, and it's never saved. Your parental PIN, watch stats, addons and stream links are never sent. With one viewer nothing is sent. [How it works](tools/profile-sync/README.md).
+
 <br>
 
 ## Everything built in
@@ -530,16 +532,17 @@ The plugin: switch it off and apply the *Default* theme. Nothing else is changed
 
 ### Does it collect anything?
 
-No tracking and no accounts. It only asks public services about the titles you're looking at, never about you:
+No tracking and no accounts. Apart from viewer sync, it only asks public services about the titles you're looking at, never about you:
 
 - ratings and artwork: Cinemeta, MetaHub, Kitsu, AniList
 - skip times: TheIntroDB, AniSkip
 - filler lists: animefillerlist.com
 - reviews: Wikidata and Wikipedia; TMDB and MDBList only if you add your own key
 - trailers: YouTube (privacy-enhanced mode, only while a trailer plays)
+- viewer sync, only with two or more viewers on a signed-in account: dx.bi's own server, which keeps your viewers and each one's library choices under your Stremio account id (see above, and it can be turned off)
 - fonts: Google Fonts and jsDelivr
 
-Watch stats and viewers stay on your computer. *Order & backup* talks to Stremio's own servers only when you press Save or Restore. Watch parties only connect while you're in one, and are end-to-end encrypted.
+Watch stats stay on your computer, and so do your viewers unless you have two or more. *Order & backup* talks to Stremio's own servers only when you press Save or Restore. Watch parties only connect while you're in one, and are end-to-end encrypted.
 
 ### A giant black arrow covers the video and every click goes back
 

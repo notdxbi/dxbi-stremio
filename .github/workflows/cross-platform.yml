@@ -45,6 +45,11 @@ jobs:
       - name: Check configured metadata and banner language
         run: node tools/metadata-language-test.mjs
 
+      - name: Check viewer sync
+        run: |
+          node tools/viewer-merge-test.mjs
+          node tools/profile-sync/test.mjs
+
       # The one-liners from the README, exactly as users run them (downloads the latest release)
       - name: Published installer (Windows PowerShell 5.1)
         if: runner.os == 'Windows'
