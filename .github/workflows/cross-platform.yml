@@ -50,6 +50,9 @@ jobs:
           node tools/viewer-merge-test.mjs
           node tools/profile-sync/test.mjs
 
+      - name: Check watch party roles
+        run: node tools/party-roles-test.mjs
+
       # The one-liners from the README, exactly as users run them (downloads the latest release)
       - name: Published installer (Windows PowerShell 5.1)
         if: runner.os == 'Windows'

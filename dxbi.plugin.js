@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.24.0
+ * @version 2.25.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.24.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.25.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -5377,27 +5377,104 @@
     // ---------------------------------------------------------------------------
 
     const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-    const CODE_LENGTH = 10;
-
-    function newCode() {
-      const out = [];
-      while (out.length < CODE_LENGTH) {
-        for (const b of crypto.getRandomValues(new Uint8Array(16))) {
-          if (b < 248 && out.length < CODE_LENGTH) out.push(CODE_ALPHABET[b % 31]);
-        }
-      }
-      return out.join("");
-    }
+    const CODE_LENGTH = 10; // parties from before roles: anyone in them can control
+    const OWNED_CODE_LENGTH = 12;
 
     function normaliseCode(input) {
       const code = String(input || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-      if (code.length !== CODE_LENGTH || [...code].some((c) => !CODE_ALPHABET.includes(c))) return null;
+      if ((code.length !== CODE_LENGTH && code.length !== OWNED_CODE_LENGTH) || [...code].some((c) => !CODE_ALPHABET.includes(c))) return null;
       return code;
     }
 
     function prettyCode(code) {
+      if (code.length === OWNED_CODE_LENGTH) return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`;
       return `${code.slice(0, 5)}-${code.slice(5)}`;
     }
+
+    // ---------------------------------------------------------------------------
+    // Roles. The party code is the fingerprint of the host's public key, so nobody can claim to be
+    // the host, and every message is signed. The code still opens the party for everyone; what a
+    // signature adds is that all the other players ignore play, pause and seek from people without
+    // the right. A tampered app can only change its own screen.
+    // ---------------------------------------------------------------------------
+
+    const ECDSA = { name: "ECDSA", namedCurve: "P-256" };
+    const SIGNING = { name: "ECDSA", hash: "SHA-256" };
+    const toB64 = (bytes) => btoa(String.fromCharCode(...bytes));
+    const fromB64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+
+    async function sha256(bytes) {
+      return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    }
+
+    async function codeOf(publicRaw) {
+      const usable = [...(await sha256(publicRaw))].filter((b) => b < 248);
+      return usable.slice(0, OWNED_CODE_LENGTH).map((b) => CODE_ALPHABET[b % 31]).join("");
+    }
+
+    async function idOf(publicRaw) {
+      return hex((await sha256(publicRaw)).slice(0, 16));
+    }
+
+    async function identity(pair) {
+      const raw = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+      return { sign: pair.privateKey, raw, pub: toB64(raw), id: await idOf(raw) };
+    }
+
+    // Keys are kept per party, so you're still the same person when you come back, and no two
+    // parties can link you. The last few are kept.
+    function savedKeys() {
+      try { return JSON.parse(store.get("keys") || "[]"); } catch (_) { return []; }
+    }
+
+    async function keepKey(code, pair) {
+      const entry = { code, pub: await crypto.subtle.exportKey("jwk", pair.publicKey), key: await crypto.subtle.exportKey("jwk", pair.privateKey) };
+      store.set("keys", JSON.stringify([entry, ...savedKeys().filter((k) => k.code !== code)].slice(0, 12)));
+    }
+
+    function makePair() {
+      return crypto.subtle.generateKey(ECDSA, true, ["sign", "verify"]);
+    }
+
+    async function keyFor(code) {
+      const saved = savedKeys().find((k) => k.code === code);
+      if (saved) {
+        return identity({
+          publicKey: await crypto.subtle.importKey("jwk", saved.pub, ECDSA, true, ["verify"]),
+          privateKey: await crypto.subtle.importKey("jwk", saved.key, ECDSA, true, ["sign"]),
+        });
+      }
+      const pair = await makePair();
+      await keepKey(code, pair);
+      return identity(pair);
+    }
+
+    // A new party: the code comes from the host's key
+    async function ownedCode() {
+      const pair = await makePair();
+      const code = await codeOf(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)));
+      await keepKey(code, pair);
+      return code;
+    }
+
+    const partyRules = {
+      // Host, mods, or everyone if the host opened it up. With the host away the mods carry on; with
+      // nobody left in charge the party's stand-in host keeps it going.
+      mayControl({ id, owner, ownerHere, open, mods, online, host }) {
+        if (id === owner || open || mods.includes(id)) return true;
+        if (ownerHere) return false;
+        return !online.some((other) => mods.includes(other)) && id === host;
+      },
+      // The host removes anyone; a mod removes viewers only
+      mayRemove({ by, target, owner, mods }) {
+        if (target === owner || by === target) return false;
+        return by === owner || (mods.includes(by) && !mods.includes(target));
+      },
+      // Pretending to buffer would pause everybody, so a viewer gets a few waits
+      mayWait(times, now) {
+        return times.filter((t) => now - t < 300000).length < 3;
+      },
+    };
 
     async function deriveRoom(code) {
       const base = await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveBits"]);
@@ -5720,6 +5797,14 @@
       links: [],
       key: null,
       seq: 0,
+      owned: false,
+      self: null,
+      ownerId: null,
+      roster: { v: 0, open: false, mods: [], banned: [] },
+      removedHere: new Set(),
+      known: new Map(),
+      lastRoster: 0,
+      lastDenied: 0,
       seen: new Map(),
       peers: new Map(),
       state: null,
@@ -5760,6 +5845,21 @@
         this.connecting = true;
         ui.render();
         const room = await deriveRoom(code);
+        this.owned = code.length === OWNED_CODE_LENGTH;
+        this.self = null;
+        this.ownerId = null;
+        this.roster = { v: 0, open: false, mods: [], banned: [] };
+        this.removedHere = new Set();
+        this.known.clear();
+        if (this.owned) {
+          this.self = await keyFor(code);
+          this.me = this.self.id;
+          creator = (await codeOf(this.self.raw)) === code;
+          if (creator) {
+            this.ownerId = this.me;
+            try { this.roster = { ...this.roster, ...JSON.parse(store.get(`roster.${code}`) || "{}") }; } catch (_) { /* a new list */ }
+          }
+        }
         this.code = code;
         this.name = name;
         this.creator = creator;
@@ -5818,15 +5918,23 @@
       async send(msg) {
         if (!this.key) return;
         const key = this.key;
-        const bytes = await seal(key, { ...msg, from: this.me, name: this.name, joinedAt: this.joinedAt, creator: this.creator, n: ++this.seq });
+        let body = { ...msg, from: this.me, name: this.name, joinedAt: this.joinedAt, creator: this.creator, n: ++this.seq };
+        if (this.owned) {
+          const signed = JSON.stringify(body);
+          const sig = new Uint8Array(await crypto.subtle.sign(SIGNING, this.self.sign, enc.encode(signed)));
+          body = { signed, pub: this.self.pub, sig: toB64(sig) };
+        }
+        const bytes = await seal(key, body);
         if (this.key !== key) return;
         for (const link of this.links) link.publish(bytes);
       },
 
       async receive(bytes) {
         const key = this.key;
-        const msg = key && await unseal(key, bytes);
+        let msg = key && await unseal(key, bytes);
+        if (msg && this.owned) msg = await this.opened(msg);
         if (!msg || this.key !== key || typeof msg.from !== "string" || msg.from === this.me) return;
+        if (this.isRemoved(msg.from)) return;
         const id = `${msg.from}:${msg.n}`;
         if (this.seen.has(id)) return;
         this.seen.set(id, Date.now());
@@ -5834,6 +5942,112 @@
           for (const k of [...this.seen.keys()].slice(0, 300)) this.seen.delete(k);
         }
         this.handle(msg);
+      },
+
+      // A signed message: whose key it is, and whether that key is the one the code came from
+      async opened(msg) {
+        try {
+          if (typeof msg.signed !== "string" || typeof msg.pub !== "string" || typeof msg.sig !== "string" || msg.pub.length > 200) return null;
+          let who = this.known.get(msg.pub);
+          if (!who) {
+            const raw = fromB64(msg.pub);
+            who = {
+              key: await crypto.subtle.importKey("raw", raw, ECDSA, false, ["verify"]),
+              id: await idOf(raw),
+              owner: (await codeOf(raw)) === this.code,
+            };
+            if (this.known.size > 300) this.known.clear();
+            this.known.set(msg.pub, who);
+          }
+          if (!await crypto.subtle.verify(SIGNING, who.key, fromB64(msg.sig), enc.encode(msg.signed))) return null;
+          const body = JSON.parse(msg.signed);
+          if (body.from !== who.id) return null;
+          body.owner = who.owner;
+          if (who.owner) this.ownerId = who.id;
+          return body;
+        } catch (_) { return null; }
+      },
+
+      // --- roles ----------------------------------------------------------------
+
+      isRemoved(id) {
+        return this.owned && id !== this.ownerId && (this.roster.banned.includes(id) || this.removedHere.has(id));
+      },
+
+      mayControl(id) {
+        if (!this.owned) return true;
+        return partyRules.mayControl({
+          id,
+          owner: this.ownerId,
+          ownerHere: !!this.ownerId && this.members().some((m) => m.id === this.ownerId),
+          open: this.roster.open,
+          mods: this.roster.mods,
+          online: this.members().map((m) => m.id),
+          host: this.hostId(),
+        });
+      },
+
+      role(id) {
+        if (!this.owned) return id === this.hostId() ? "Host" : "";
+        if (id === this.ownerId) return "Host";
+        return this.roster.mods.includes(id) ? "Mod" : "";
+      },
+
+      mayRemove(id) {
+        return this.owned && partyRules.mayRemove({ by: this.me, target: id, owner: this.ownerId, mods: this.roster.mods });
+      },
+
+      // Only the host changes the list; the host's key signs it
+      changeRoster(change) {
+        if (!this.owned || !this.creator) return;
+        this.roster = { ...this.roster, ...change, v: this.roster.v + 1 };
+        store.set(`roster.${this.code}`, JSON.stringify(this.roster));
+        this.send({ type: "roster", roster: this.roster });
+        ui.render();
+      },
+
+      setMod(id, on) {
+        const mods = this.roster.mods.filter((x) => x !== id);
+        this.changeRoster({ mods: on ? [...mods, id] : mods });
+      },
+
+      setOpen(open) {
+        this.changeRoster({ open });
+        ui.toast(open ? "Everyone can control playback" : "Only you and your mods can control playback");
+      },
+
+      removePerson(id) {
+        if (!this.mayRemove(id)) return;
+        const p = this.peers.get(id);
+        this.removedHere.add(id);
+        if (this.creator) this.changeRoster({ banned: [...new Set([...this.roster.banned, id])].slice(-200), mods: this.roster.mods.filter((x) => x !== id) });
+        else this.send({ type: "remove", target: id });
+        this.peers.delete(id);
+        if (p) ui.toast(`${p.name} was removed`, "leave");
+        ui.render();
+      },
+
+      applyRoster(r) {
+        const list = (x) => (Array.isArray(x) ? x.filter((v) => typeof v === "string") : []);
+        if (!r || !Number.isFinite(r.v) || r.v <= this.roster.v) return;
+        const wasMod = this.roster.mods.includes(this.me);
+        this.roster = { v: r.v, open: r.open === true, mods: list(r.mods), banned: list(r.banned) };
+        const isMod = this.roster.mods.includes(this.me);
+        if (isMod !== wasMod) ui.toast(isMod ? "You're now a mod: you can control playback" : "You're no longer a mod");
+        for (const id of this.roster.banned) this.peers.delete(id);
+        if (this.roster.banned.includes(this.me)) this.wasRemoved();
+        ui.render();
+      },
+
+      wasRemoved() {
+        this.leave(true);
+        ui.toast("You were removed from the party", "leave");
+      },
+
+      denied() {
+        if (Date.now() - this.lastDenied < 6000) return;
+        this.lastDenied = Date.now();
+        ui.toast("Only the host and mods can control playback");
       },
 
       peer(msg) {
@@ -5846,7 +6060,8 @@
         p.name = String(msg.name || "Friend").slice(0, 24);
         p.lastSeen = Date.now();
         if (typeof msg.joinedAt === "number") p.joinedAt = msg.joinedAt;
-        if (typeof msg.creator === "boolean") p.creator = msg.creator;
+        if (this.owned) p.creator = msg.owner === true;
+        else if (typeof msg.creator === "boolean") p.creator = msg.creator;
         return { p, fresh };
       },
 
@@ -5868,7 +6083,23 @@
             ui.toast(`${p.name} joined`, "join");
             this.sendPresence(true);
             if (this.isHost() && this.state) this.send({ type: "state", state: this.state });
+            if (this.owned && this.creator) this.send({ type: "roster", roster: this.roster });
             ui.render();
+            break;
+          case "roster":
+            if (this.owned && msg.owner) this.applyRoster(msg.roster);
+            break;
+          case "remove":
+            if (this.owned && typeof msg.target === "string" &&
+                partyRules.mayRemove({ by: msg.from, target: msg.target, owner: this.ownerId, mods: this.roster.mods })) {
+              if (msg.target === this.me) { this.wasRemoved(); break; }
+              const gone = this.peers.get(msg.target);
+              this.removedHere.add(msg.target);
+              this.peers.delete(msg.target);
+              if (this.creator) this.changeRoster({ banned: [...new Set([...this.roster.banned, msg.target])].slice(-200) });
+              if (gone) ui.toast(`${gone.name} was removed by ${p.name}`, "leave");
+              ui.render();
+            }
             break;
           case "presence":
             if (fresh) ui.toast(`${p.name} is here`, "join");
@@ -5886,7 +6117,7 @@
             ui.render();
             break;
           case "state":
-            this.acceptState(msg.state, p);
+            if (this.mayControl(msg.from)) this.acceptState(msg.state, p);
             break;
           case "ping":
             if (msg.to === this.me) this.send({ type: "pong", to: msg.from, id: msg.id, t0: msg.t0, th: this.hostNow() });
@@ -5941,7 +6172,8 @@
         const creator = all.find((m) => m.creator);
         if (creator) return creator.id;
         all.sort((a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1));
-        return all[0].id;
+        const mod = this.owned && all.find((m) => this.roster.mods.includes(m.id));
+        return (mod || all[0]).id;
       },
 
       isHost() {
@@ -6092,6 +6324,10 @@
           this.stalledSince = 0;
         }
         this.sendPresence(false);
+        if (this.owned && this.creator && now - this.lastRoster > 20000) {
+          this.lastRoster = now;
+          this.send({ type: "roster", roster: this.roster });
+        }
 
         if (this.inMedia()) this.wasInMedia = this.state.media.videoId;
         if (this.isHost() && (this.creator || now - this.joinedAt > 4000)) this.hostDuties(now);
@@ -6121,8 +6357,12 @@
         // Wait for anyone who's buffering, then carry on together (only once friends are watching)
         const videoId = this.state.media.videoId;
         const watching = [...this.peers.values()].some((p) => p.status && p.status.videoId === videoId);
-        const stalled = watching ? this.members().filter((m) => m.status && m.status.stalled && m.status.videoId === videoId) : [];
+        const stalled = watching ? this.members().filter((m) => {
+          if (!m.status || !m.status.stalled || m.status.videoId !== videoId) return false;
+          return !this.owned || m.self || this.roster.open || this.mayControl(m.id) || partyRules.mayWait(m.waits || [], now);
+        }) : [];
         if (stalled.length && this.state.playing) {
+          for (const m of stalled) if (!m.self) m.waits = [...(m.waits || []), now].slice(-6);
           this.waitPause = { since: now, names: stalled.map((m) => m.name) };
           this.publishState({ playing: false, t: this.expected(), waitFor: this.waitPause.names }, "wait");
         } else if (this.waitPause && !this.state.playing && this.state.cause === "wait") {
@@ -6246,6 +6486,7 @@
         const self = party;
         if (Date.now() < self.ours.play) { self.ours.play = 0; return; }
         if (!self.canAct() || self.state.playing) return;
+        if (!self.mayControl(self.me)) return self.denied();
         self.publishState({ playing: true, t: local.video.currentTime }, "play");
       },
 
@@ -6254,6 +6495,7 @@
         const v = local.video;
         if (Date.now() < self.ours.pause) { self.ours.pause = 0; return; }
         if (!self.canAct() || !self.state.playing || !v || v.ended) return;
+        if (!self.mayControl(self.me)) return self.denied();
         self.publishState({ playing: false, t: v.currentTime }, "pause");
       },
 
@@ -6265,6 +6507,10 @@
         if (!self.canAct()) return;
         self.seekStarted = 0;
         if (Math.abs(v.currentTime - self.expected()) < 1.5) return;
+        if (!self.mayControl(self.me)) {
+          self.lastSeek = 0; // back to the party straight away
+          return self.denied();
+        }
         self.publishState({ playing: self.state.playing, t: v.currentTime }, "seek");
       },
 
@@ -6440,6 +6686,11 @@
     .dxp-avatar { width: 2rem; height: 2rem; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font: 800 .8rem Inter, system-ui, sans-serif !important; }
     .dxp-member-name { flex: 1; min-width: 0; font: 600 .86rem/1.25 Inter, system-ui, sans-serif !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dxp-member-name svg { width: .85rem; height: .85rem; margin-left: .3rem; vertical-align: -.08rem; color: #f5c518; }
+    .dxp-role { margin-left: .4rem; padding: .05rem .35rem; border-radius: .3rem; color: #fff; background: rgba(255,255,255,.14); font: 600 .62rem/1.3 Inter, system-ui, sans-serif !important; font-style: normal !important; vertical-align: .08rem; }
+    .dxp-mini { flex: none; padding: .25rem .5rem; border: 0; border-radius: .4rem; color: #fff; background: rgba(255,255,255,.1); font: 600 .68rem/1.2 Inter, system-ui, sans-serif !important; cursor: pointer; }
+    .dxp-mini:hover, .dxp-mini:focus-visible { background: rgba(255,255,255,.22); }
+    .dxp-mini.is-danger { color: #ff8a80; }
+    .dxp-control { margin-top: .5rem; }
     .dxp-member-name span { display: block; color: rgba(255,255,255,.45); font: 500 .72rem/1.3 Inter, system-ui, sans-serif !important; }
     .dxp-chat { display: flex; flex-direction: column; gap: .45rem; max-height: 13rem; min-height: 2rem; overflow-y: auto; padding-right: .2rem; }
     .dxp-chat:empty::before { content: "No messages yet"; color: rgba(255,255,255,.3); font: 500 .78rem Inter, system-ui, sans-serif !important; }
@@ -6655,7 +6906,7 @@
             <button class="dxp-btn is-primary is-wide" data-act="create">${PARTY_ICONS.party}Start a party</button>
             <div class="dxp-or">or join one</div>
             <div class="dxp-row">
-              <input class="dxp-input is-code dxp-join-code" maxlength="11" placeholder="XXXXX-XXXXX" spellcheck="false">
+              <input class="dxp-input is-code dxp-join-code" maxlength="14" placeholder="Party code" spellcheck="false">
               <button class="dxp-btn" data-act="join">Join</button>
             </div>
             ${last ? `<button class="dxp-btn is-ghost is-wide" data-act="rejoin-last">Rejoin last party · ${esc(prettyCode(last))}</button>` : ""}
@@ -6694,9 +6945,15 @@
             else line = st.title ? `Watching ${st.title}` : "Watching something else";
           }
           const initial = esc((m.name || "?").trim().charAt(0).toUpperCase() || "?");
+          const role = party.role(m.id);
+          const actions = m.self || !party.owned ? "" : [
+            party.creator ? `<button class="dxp-mini" data-act="${party.roster.mods.includes(m.id) ? "unmod" : "mod"}" data-id="${esc(m.id)}">${party.roster.mods.includes(m.id) ? "Remove mod" : "Make mod"}</button>` : "",
+            party.mayRemove(m.id) ? `<button class="dxp-mini is-danger" data-act="remove" data-id="${esc(m.id)}">Remove</button>` : "",
+          ].join("");
           return `<div class="dxp-member">
             <div class="dxp-avatar" style="background:${avatarColour(m.id)}">${initial}</div>
-            <div class="dxp-member-name">${esc(m.name || "Friend")}${m.self ? " (you)" : ""}${m.id === host ? PARTY_ICONS.crown : ""}<span>${esc(line)}</span></div>
+            <div class="dxp-member-name">${esc(m.name || "Friend")}${m.self ? " (you)" : ""}${m.id === host ? PARTY_ICONS.crown : ""}${role ? `<i class="dxp-role">${role}</i>` : ""}<span>${esc(line)}</span></div>
+            ${actions}
           </div>`;
         }).join("");
         return `
@@ -6713,6 +6970,9 @@
             <div>
               <div class="dxp-label">People</div>
               <div class="dxp-members">${memberHtml}</div>
+              ${!party.owned ? "" : party.creator
+                ? `<button class="dxp-btn is-ghost is-wide dxp-control" data-act="open">${party.roster.open ? "Everyone can control · change to host and mods" : "Host and mods control · let everyone control"}</button>`
+                : `<div class="dxp-note"><span>${party.mayControl(party.me) ? "You can control playback." : party.roster.open ? "Everyone can control playback." : "The host and mods control playback."}</span></div>`}
             </div>
             <div>
               <div class="dxp-label">Chat</div>
@@ -6753,7 +7013,7 @@
         if (act === "close") this.toggle(false);
         else if (act === "create") {
           const name = this.myName();
-          if (name) party.start(newCode(), name, true);
+          if (name) ownedCode().then((code) => party.start(code, name, true));
         } else if (act === "join" || act === "rejoin-last") {
           const name = this.myName();
           if (!name) return;
@@ -6772,6 +7032,9 @@
             () => this.toast("Couldn't copy — read it out instead")
           );
         } else if (act === "rejoin") party.rejoin();
+        else if (act === "mod" || act === "unmod") party.setMod(e.target.closest("[data-id]").dataset.id, act === "mod");
+        else if (act === "remove") party.removePerson(e.target.closest("[data-id]").dataset.id);
+        else if (act === "open") party.setOpen(!party.roster.open);
         else if (act === "leave") party.leave(false);
         else if (act === "say") this.sendDraft();
       },

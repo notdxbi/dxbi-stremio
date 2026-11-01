@@ -1,6 +1,6 @@
 name: Discord release post
 
-# Posts each new release in the dx.bi Discord's #announcements: version, what's new, downloads.
+# Posts each new release in the dx.bi Discord's #releases: version, what's new, downloads.
 # Uses the repository secret DISCORD_RELEASE_WEBHOOK (the channel's webhook URL), and pings the
 # release role given by the repository variable DISCORD_RELEASE_ROLE_ID (the role's ID; no ping if unset).
 # Run it by hand to preview the post for a release without sending it.
