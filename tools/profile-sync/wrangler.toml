@@ -9,7 +9,7 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "dxbi-sync"
-database_id = "SET-BY-DEPLOY"
+database_id = "d0368c98-128d-4e4e-a944-a9c9aa0f098f"
 
 # Each address can sync 60 times a minute, each account 30 times (a device syncs once a minute at most,
 # and a few times in a row at most when a lot changes)
