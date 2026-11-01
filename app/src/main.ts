@@ -55,6 +55,10 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('enable-quic');
 app.commandLine.appendSwitch('enable-async-dns');
 app.commandLine.appendSwitch('disable-rtc-smoothness-algorithm');
+// Chromium keeps 150 MB of video and 12 MB of audio per stream. A 4K film uses that in seconds, most of
+// it already watched: the player then rejects new parts and stalls with almost nothing loaded ahead.
+app.commandLine.appendSwitch('mse-video-buffer-size-limit-mb', '700');
+app.commandLine.appendSwitch('mse-audio-buffer-size-limit-mb', '48');
 
 gpuController.setup(userDataPath);
 

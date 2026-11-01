@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2.25.0
+
+- **Smoother 4K in the desktop app.** Chromium only held about 150 MB of a film, so high-bitrate 4K kept stalling with next to nothing loaded ahead. It now keeps much more. Seek previews also wait until 10 seconds are loaded, so they no longer compete with the film.
+- **A proper phone layout upright.** Movie and series pages are tighter, so episodes and streams are much closer to the top. The top bar stays readable, See All sits at the edge, Search keeps your profile on screen, and the empty band above the bottom bar is gone.
 - **Watch party roles.** The person who starts a party is the host, and only the host and mods can now play, pause and skip for everyone. Anyone else who tries goes straight back to the party. In the People list the host can make someone a mod, remove anyone, or choose *let everyone control* for a party of friends. Mods can remove viewers. If the host leaves, the mods carry on, and the host gets their role back on returning from the same device.
 - **Parties can't be taken over.** New party codes are longer because they prove who the host is, and every message is signed, so a changed copy of the app can't pretend to be the host or pause everyone. A viewer can also only hold the party up for buffering a few times. Everyone needs 2.25.0 for the new codes. Older codes still work, with everyone in control.
 

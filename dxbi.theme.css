@@ -4788,3 +4788,101 @@ body[data-dx-kids] #app [class*="vertical-nav-bar"] a[href="#/settings"] {
     flex: none;
     white-space: nowrap;
 }
+
+/* =====================================================================
+   Phones held upright: the layout is one column, so what it needs is less
+   desktop spacing, a top bar that stays readable and the list closer to hand
+   ===================================================================== */
+@media only screen and (max-width: 640px) and (orientation: portrait) {
+    /* Stremio leaves room for its taller bottom bar: a band of nothing above this one */
+    :root {
+        --vertical-nav-bar-size: 3.7rem !important;
+    }
+
+    /* "See All" sits at the screen's edge and is always there: phones have no hover */
+    html body #app [class*="board-row"] > [class*="header-container"],
+    html body #app [class*="meta-row"] > [class*="header-container"],
+    html body #app [class*="meta-row"]:has(> .dx-row-pages) > [class*="header-container"] {
+        padding-right: 0.8rem !important;
+    }
+    #app .dx-row-pages {
+        display: none !important;
+    }
+    #app [class*="board-row"] [class*="see-all-container"],
+    #app [class*="meta-row"] [class*="see-all-container"] {
+        margin-left: auto !important;
+        opacity: 1 !important;
+        transform: none !important;
+    }
+
+    /* Movie and series pages: the bar stays readable over what scrolls under it */
+    #app [class*="metadetails-container"] > nav[class*="nav-bar"] {
+        background: linear-gradient(to bottom, rgba(10, 10, 12, 0.95) 55%, rgba(10, 10, 12, 0)) !important;
+        z-index: 3;
+    }
+    #app [class*="metadetails-content"] {
+        padding-left: 0 !important;
+    }
+    #app [class*="metadetails-content"] > [class*="meta-preview-container"] {
+        width: 100% !important;
+        padding-top: 0 !important;
+        padding-bottom: 0.75rem !important;
+    }
+    #app [class*="metadetails-content"] [class*="meta-info-container"] {
+        padding: 0 1rem !important;
+    }
+    #app [class*="metadetails-content"] [class*="meta-info-container"] [class*="logo"] {
+        max-height: 5.5rem !important;
+        margin: 0 auto 0.75rem 0 !important;
+        object-position: left center;
+    }
+    /* Genres and cast: one line each that slides, so the page isn't mostly labels */
+    #app [class*="metadetails-content"] [class*="meta-links"] {
+        margin-top: 0.75rem !important;
+    }
+    #app [class*="metadetails-content"] [class*="meta-links"] [class*="links-container"] {
+        flex-wrap: nowrap !important;
+        max-height: none !important;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    #app [class*="metadetails-content"] [class*="meta-links"] [class*="links-container"]::-webkit-scrollbar {
+        display: none;
+    }
+    #app [class*="metadetails-content"] [class*="meta-links"] [class*="link-container"] {
+        flex: none !important;
+    }
+    #app [class*="metadetails-content"] [class*="description-container"] {
+        margin-top: 0.75rem !important;
+    }
+    #app [class*="metadetails-content"] > [class*="meta-preview-container"] > [class*="action-buttons-container"] {
+        gap: 0.6rem !important;
+        margin-top: 0.9rem !important;
+        padding: 0 1rem !important;
+    }
+    #app [class*="metadetails-content"] [class*="action-buttons-container"] > * {
+        margin: 0 !important;
+    }
+    #app [class*="metadetails-content"] [class*="videos-list"],
+    #app [class*="metadetails-content"] [class*="streams-list"] {
+        width: auto !important;
+        margin: 0 0.5rem 1rem !important;
+    }
+
+    /* Search: the box gives way so the profile stays on screen */
+    #app nav[class*="horizontal-nav-bar"] [class*="search-bar"] {
+        flex: 1 1 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        margin: 0 !important;
+    }
+    #app nav[class*="horizontal-nav-bar"] [class*="buttons-container"] {
+        flex: none !important;
+    }
+
+    /* Discover: Filters clear of the edge */
+    #app [class*="discover-content"] {
+        padding-right: 0.5rem !important;
+    }
+}
