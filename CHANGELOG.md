@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.26.0
 
 - **Just press Play.** Turn it on in Settings under Player, and Play or an episode click starts the best stream straight away. dx.bi remembers what you choose for each series or everywhere, and you can cap the quality. It never picks a stream that would start a new debrid download or a cinema recording. A note in the player says what it picked, with a Change button (#55).
 - **A clean stream list.** Each stream is now one simple row with its quality, type, provider, seeds, size and whether it's ready to play. The best match comes first, links out to rent or buy come last, and Stremio's old rows no longer flash up while a title opens.
