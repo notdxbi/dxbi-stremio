@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Just press Play.** Turn it on in Settings under Player, and Play or an episode click starts the best stream straight away. dx.bi remembers what you choose for each series or everywhere, and you can cap the quality. It never picks a stream that would start a new debrid download or a cinema recording. A note in the player says what it picked, with a Change button (#55).
+- **A clean stream list.** Each stream is now one simple row with its quality, source, size and whether it's ready to play. The best match comes first, and links out to rent or buy come last.
+- **Nightly check against Stremio.** A test now runs every night and opens an issue if a change to web.stremio.com breaks dx.bi.
+
 ## 2.25.0
 
 - **Smoother 4K in the desktop app.** Chromium only held about 150 MB of a film, so high-bitrate 4K kept stalling with next to nothing loaded ahead. It now keeps much more. Seek previews also wait until 10 seconds are loaded, so they no longer compete with the film.

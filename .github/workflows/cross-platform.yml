@@ -9,6 +9,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Every night: dx.bi depends on the live web.stremio.com, which can change without warning
+  schedule:
+    - cron: "17 5 * * *"
 
 env:
   SE_VERSION: v1.2.0
@@ -52,6 +55,8 @@ jobs:
 
       - name: Check watch party roles
         run: node tools/party-roles-test.mjs
+      - name: Just press Play picks the right stream
+        run: node tools/quick-play-test.mjs
 
       # The one-liners from the README, exactly as users run them (downloads the latest release)
       - name: Published installer (Windows PowerShell 5.1)
@@ -151,3 +156,24 @@ jobs:
           name: screenshots-${{ runner.os }}
           path: smoke-shots
           if-no-files-found: ignore
+
+  # A failed night means Stremio may have changed: open one issue, not one a night
+  report-break:
+    needs: smoke
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly check failed: web.stremio.com may have changed"
+          open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')
+          if [ "$open" = "0" ]; then
+            gh issue create --title "$title" --body "The nightly smoke test failed: $RUN_URL"
+          else
+            echo "Already reported"
+          fi
