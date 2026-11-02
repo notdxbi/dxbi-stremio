@@ -4,7 +4,9 @@ import { spawn, type ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
 import { getLogger } from '../utils/logger';
 import { IPC_CHANNELS } from '../constants';
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, shell } from 'electron';
+import { homedir } from 'os';
+import { join } from 'path';
 import { VALID_EXTERNAL_PLAYERS, type ExternalPlayer } from '../interfaces/ExternalPlayerTypes';
 
 const logger = getLogger("ExternalPlayerController");
@@ -25,6 +27,7 @@ const PLAYER_PATHS: Record<string, Record<string, string[]>> = {
     darwin: {
         vlc: ['/Applications/VLC.app/Contents/MacOS/VLC'],
         mpv: ['/usr/local/bin/mpv', '/opt/homebrew/bin/mpv'],
+        iina: ['/Applications/IINA.app', join(homedir(), 'Applications/IINA.app')],
     },
     linux: {
         vlc: ['/usr/bin/vlc'],
@@ -45,7 +48,7 @@ function isPlayableUrl(streamUrl: unknown): streamUrl is string {
     }
 }
 
-function findPlayerPath(player: 'vlc' | 'mpv'): string | null {
+function findPlayerPath(player: 'vlc' | 'mpv' | 'iina'): string | null {
     const paths = PLAYER_PATHS[process.platform]?.[player] ?? [];
     return paths.find(p => existsSync(p)) ?? null;
 }
@@ -131,7 +134,15 @@ function startPolling(player: ExternalPlayer, child: ChildProcess) {
 
 export const externalPlayerController = {
     initIPC: () => {
-        ipcMain.handle(IPC_CHANNELS.LAUNCH_EXTERNAL_PLAYER, (_, player: string, streamUrl: string, customPath?: string) => {
+        ipcMain.handle(IPC_CHANNELS.LAUNCH_EXTERNAL_PLAYER, async (_, player: string, streamUrl: string, customPath?: string) => {
+            // IINA on a Mac: its own link, the way Stremio's app opens it
+            if (player === 'iina') {
+                if (!isPlayableUrl(streamUrl)) return { success: false, error: "This stream link can't be opened in an external player." };
+                if (!findPlayerPath('iina')) return { success: false, error: 'IINA not found. Please install it.' };
+                await shell.openExternal(`iina://weblink?url=${encodeURIComponent(streamUrl)}`);
+                return { success: true };
+            }
+
             if (!VALID_EXTERNAL_PLAYERS.includes(player as ExternalPlayer) || player === 'disabled') {
                 logger.error(`Invalid external player: ${player}`);
                 return { success: false, error: `Invalid player: ${player}` };
@@ -186,6 +197,7 @@ export const externalPlayerController = {
         ipcMain.handle(IPC_CHANNELS.GET_EXTERNAL_PLAYER_PATHS, () => ({
             vlc: findPlayerPath('vlc'),
             mpv: findPlayerPath('mpv'),
+            iina: findPlayerPath('iina'),
         }));
     }
 };

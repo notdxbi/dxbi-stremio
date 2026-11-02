@@ -29,6 +29,16 @@ assert.equal(describeStream("[TB ⚡] Comet", "").instant, true);
 assert.equal(describeStream("Torrentio", "").pending, false);
 console.log("PASS cached, uncached and plain torrents are told apart");
 
+// Meteor's real description, and a season pack: the file's size, not the pack's
+const meteor = describeStream("[P2P] Meteor\n2160p", "📁 Show.S01E01.2160p.mkv\n📺 2160p | remux | hdr10 | h265\n💾 31.07 GiB / 295.96 GiB   👥 30 seeders   ⚙️ FGT");
+assert.equal(Math.round(meteor.size / 2 ** 30), 31);
+assert.equal(meteor.seeds, 30);
+assert.equal(meteor.site, "FGT");
+assert.equal(describeStream("Comet", "💾 700 MiB").size, 700 * 2 ** 20);
+assert.equal(describeStream("Comet", "💾 1,5 GB").size, 1.5e9);
+assert.equal(describeStream("Comet | TB", "Film.1080p.mkv").size, 0);
+console.log("PASS sizes in GiB, MiB and GB");
+
 assert.equal(pick([uncached, cam]), null, "nothing safe to start");
 assert.equal(pick([uncached, cached1080]), cached1080.label, "never starts a debrid download");
 assert.equal(pick([cam, cached1080]), cached1080.label, "never a cinema recording");

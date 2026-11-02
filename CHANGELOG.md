@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.26.1
+
+- **File sizes are back in the stream list.** Addons that write sizes in GiB, like Meteor, showed no size at all, and sorting by size skipped them too.
+- **Your subtitle language stays put.** dx.bi cleared the language in Stremio's settings every time it started. If you pick one now, it's kept on all your devices and the Subtitles option switches itself to match.
+- **Trakt lists show on Home.** Rows are now judged by what's in them, so films and shows from addons with their own catalog types no longer get hidden.
+- **IINA works as the external player on Mac.** If Stremio's external player isn't installed, dx.bi now says so instead of doing nothing.
+- **Viewers stay apart better across devices.** A title watched on one device could land in the first viewer's Continue Watching on another. Every play is now noted, all devices agree who gets unclaimed titles, and an open window checks for changes when you come back to it.
+- **Quicker response on more TVs.** Remote presses that arrive too late are now dropped on every TV, not just in Lite mode, and Lite mode also turns on for boxes with little memory for pages.
+- **Better reports.** Report a problem now includes whether viewer sync is working.
+
 ## 2.26.0
 
 - **Just press Play.** Turn it on in Settings under Player, and Play or an episode click starts the best stream straight away. dx.bi remembers what you choose for each series or everywhere, and you can cap the quality. It never picks a stream that would start a new debrid download or a cinema recording. A note in the player says what it picked, with a Change button (#55).

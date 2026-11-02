@@ -51,6 +51,7 @@ jobs:
       - name: Check viewer sync
         run: |
           node tools/viewer-merge-test.mjs
+          node tools/viewer-claim-test.mjs
           node tools/profile-sync/test.mjs
 
       - name: Check watch party roles
