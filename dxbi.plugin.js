@@ -1659,7 +1659,7 @@
   }
 
   // A series opens on its episodes. Stremio's Continue Watching cards go straight to the last episode's
-  // stream list instead. (Its play button is separate and still resumes.)
+  // stream list instead. (Its play and remove buttons keep Stremio's native behavior.)
   function seriesOpensOnEpisodes(card) {
     const link = card.querySelector('a[class*="meta-item-link"]');
     const m = link && /^#\/detail\/series\/([^/?]+)\/[^/?]/.exec(link.getAttribute("href") || "");
@@ -1671,7 +1671,7 @@
   // Stremio navigates from its own copy of the link, so the click has to be caught before it
   const onCardOpen = (e) => {
     const link = e.target.closest && e.target.closest("a[data-dx-episodes]");
-    if (!link || e.target.closest('[class*="play-icon"]')) return;
+    if (!link || e.target.closest('[class*="play-icon"], [class*="dismiss-icon-layer"]')) return;
     e.preventDefault();
     e.stopPropagation();
     navigate(link.getAttribute("href").slice(1));
