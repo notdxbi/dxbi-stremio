@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.26.0
+ * @version 2.26.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.26.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.26.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -314,7 +314,7 @@
       key: "subtitlesStart",
       type: "select",
       label: "Subtitles when a video starts",
-      description: "Off works like Netflix: turn them on from the subtitles menu when you want them. The other choice uses the subtitle language in Stremio's Settings → Player.",
+      description: "Off works like Netflix: turn them on from the subtitles menu when you want them. The other choice uses the subtitle language in Stremio's Settings → Player. Picking a language there switches this for you.",
       defaultValue: DEFAULTS.subtitlesStart,
       options: [
         { label: "Off", value: "off" },
@@ -458,7 +458,7 @@
   const lite = {
     get on() {
       if (!IN_TV || settings.liteMode === "off") return false;
-      return settings.liteMode === "on" || (navigator.deviceMemory || 8) <= 2;
+      return settings.liteMode === "on" || (navigator.deviceMemory || 8) <= 2 || (performance.memory?.jsHeapSizeLimit || Infinity) <= 512e6;
     },
   };
 
@@ -496,10 +496,11 @@
     applyAccent();
     applySubtitleStyle();
     API.onSettingsSaved((all) => {
+      const subtitlesBefore = settings.subtitlesStart;
       Object.assign(settings, normalise(all));
       persistSettings();
       builtInTheme.ensure();
-      subtitlesStart.apply().catch(() => { /* core busy */ });
+      subtitlesStart.apply(settings.subtitlesStart !== subtitlesBefore).catch(() => { /* core busy */ });
       applyAccent();
       applySubtitleStyle();
       hero.reset();
@@ -1536,12 +1537,22 @@
 
   // Home rows whose catalog isn't films or shows (Real-Debrid downloads, YouTube channels, "other")
   const VIDEO_TYPES = new Set(["movie", "series", "anime", "collections", "tv"]);
+  const OTHER_TYPES = new Set(["other", "channel", "events"]);
+  // Addons can give a catalog any type (Trakt lists, AIOMetadata's "all"), so what's in the row
+  // decides. An empty row stays: Stremio only loads a row once it's on screen, so hiding it
+  // would keep it empty for ever.
+  function isVideoRow(row, type) {
+    if (!type || VIDEO_TYPES.has(type.toLowerCase())) return true;
+    const cards = row.querySelectorAll('a[href*="/detail/"]');
+    if (!cards.length) return !OTHER_TYPES.has(type.toLowerCase());
+    return [...cards].some((a) => VIDEO_TYPES.has(decodeURIComponent(a.getAttribute("href").split("/detail/")[1].split("/")[0]).toLowerCase()));
+  }
   function filterRows() {
     if (currentRoute() !== "board") return;
     for (const row of document.querySelectorAll('[class*="board-content-"]:not([class*="board-content-container"]) > [class*="board-row"]')) {
       const href = row.querySelector('[class*="header-container"] a[href^="#/discover/"]')?.getAttribute("href");
       const type = href ? decodeURIComponent(href.split("/")[3] || "") : "";
-      const hide = (settings.videoRowsOnly && !!type && !VIDEO_TYPES.has(type.toLowerCase())) || homeLayout.hides(row);
+      const hide = (settings.videoRowsOnly && !isVideoRow(row, type)) || homeLayout.hides(row);
       if (row.classList.contains("dx-row-off") !== hide) row.classList.toggle("dx-row-off", hide);
     }
   }
@@ -2267,7 +2278,7 @@
       // and the selection kept going after the button was let go. Repeats pass at a steady pace.
       // On a slow box presses can sit in a queue and all land at once, long after the button was
       // pressed: a late press is dropped so the selection only moves when it's asked to
-      if (lite.on && performance.now() - e.timeStamp > 350) {
+      if (IN_TV && performance.now() - e.timeStamp > 350) {
         e.preventDefault();
         e.stopImmediatePropagation();
         return;
@@ -3472,6 +3483,7 @@
           video.addEventListener("pause", this.onPause);
           this.watchdog = setInterval(this.checkStall, 1000);
         }
+        subtitlesStart.apply().catch(() => { /* core busy */ });
         subtitlesStart.watch(video);
         miniPlayer.watch(video);
       }
@@ -3830,8 +3842,9 @@
     const hdr = dv || /\bhdr(?:10\+?)?\b/i.test(all);
 
     let size = 0;
-    const sm = /(\d+(?:[.,]\d+)?)\s*(TB|GB|MB)\b/i.exec(all);
-    if (sm) size = parseFloat(sm[1].replace(",", ".")) * { TB: 1e12, GB: 1e9, MB: 1e6 }[sm[2].toUpperCase()];
+    // (Meteor and others write GiB, not GB)
+    const sm = /(\d+(?:[.,]\d+)?)\s*(TiB|GiB|MiB|TB|GB|MB)\b/i.exec(all);
+    if (sm) size = parseFloat(sm[1].replace(",", ".")) * { TIB: 2 ** 40, GIB: 2 ** 30, MIB: 2 ** 20, TB: 1e12, GB: 1e9, MB: 1e6 }[sm[2].toUpperCase()];
 
     const seedMatch = /👤\s*(\d+)/u.exec(all) || /🌱\s*(\d+)/u.exec(all) || /\bseed(?:er)?s?\W{0,3}(\d+)/i.exec(all) || /(\d+)\s*seed/i.exec(all);
     const seeds = seedMatch ? parseInt(seedMatch[1], 10) : -1;
@@ -7779,16 +7792,26 @@
   // clears that language (remembering it, so switching back restores it) and undoes the loader's
   // automatic pick. Choosing subtitles from the menu still works as normal.
   const subtitlesStart = {
-    async apply() {
+    // changed: the viewer has just switched this option. A language that turns up after dx.bi cleared
+    // it, or one that isn't Stremio's English default, was picked by a person (on any of their devices,
+    // the account carries it): keep it and leave this option alone from then on.
+    async apply(changed = false) {
+      await store.ready;
       const { getState, dispatch } = core();
       if (!getState || !dispatch) return;
       const ctx = await getState("ctx").catch(() => null);
       const current = ctx && ctx.profile && ctx.profile.settings;
       if (!current) return;
       if (settings.subtitlesStart === "off" && current.subtitlesLanguage) {
+        if (!changed && (store.get("subtitlesLanguageBefore", null) || current.subtitlesLanguage !== "eng")) {
+          settings.subtitlesStart = "stremio";
+          persistSettings();
+          if (API) API.saveSetting("subtitlesStart", "stremio").catch(() => {});
+          return;
+        }
         store.set("subtitlesLanguageBefore", current.subtitlesLanguage);
         dispatch({ action: "Ctx", args: { action: "UpdateSettings", args: { ...current, subtitlesLanguage: null } } });
-      } else if (settings.subtitlesStart !== "off" && !current.subtitlesLanguage) {
+      } else if (changed && settings.subtitlesStart !== "off" && !current.subtitlesLanguage) {
         const before = store.get("subtitlesLanguageBefore", null);
         if (before) dispatch({ action: "Ctx", args: { action: "UpdateSettings", args: { ...current, subtitlesLanguage: before } } });
       }
@@ -8000,11 +8023,19 @@
       if (!api || !which) return null;
       if (!player.externalPaths) player.externalPaths = Promise.resolve(api.getExternalPlayerPaths?.()).catch(() => null);
       const paths = await player.externalPaths;
+      if (type === "iina" && paths && paths.iina) return "iina"; // (the app only, not Stremio Enhanced)
       return (paths && paths[which]) || this.customPath(which) ? which : null;
+    },
+
+    // Stremio has already said "opened in external player" by now: say so when it can't be
+    missing(type) {
+      const name = type === "vlc" ? "VLC" : type === "iina" ? "IINA" : "mpv";
+      window.StremioEnhancedAPI.showAlert?.("warning", `${name} wasn't found`, `Install ${name}, or change the external player in Stremio's Settings → Player.`, ["OK"]);
     },
 
     // Where the viewer told Enhanced the player is (Settings → External player), if anywhere
     customPath(which) {
+      if (which === "iina") return undefined;
       try { return localStorage.getItem(which === "vlc" ? "externalPlayerVlcPath" : "externalPlayerMpvPath") || undefined; } catch (_) { return undefined; }
     },
 
@@ -8028,6 +8059,7 @@
       const type = href.slice(0, href.indexOf(":"));
       externalDefault.installed(type).then((which) => {
         if (which) window.StremioEnhancedAPI.launchExternalPlayer(which, url, externalDefault.customPath(which)).catch(() => { /* Enhanced shows its own error */ });
+        else externalDefault.missing(type);
       });
     },
 
@@ -9286,6 +9318,7 @@
           return;
         }
         const answer = await r.json().catch(() => ({}));
+        this.lastOk = Date.now();
         this.failures = 0;
         this.retryAt = 0;
         const received = Array.isArray(answer.entries) ? answer.entries : [];
@@ -9404,12 +9437,23 @@
         } else if (Date.now() - this.lastTry > 15000) this.run();
       };
       document.addEventListener("visibilitychange", this.onVisible);
+      // Stremio fetches the library when the window gets focus, and a window left open is never
+      // hidden: without this a title watched on the TV arrives before the note of whose it is
+      this.onFocus = () => {
+        if (this.on() && Date.now() - this.lastTry > 15000) this.run();
+      };
+      window.addEventListener("focus", this.onFocus);
+      this.poll = setInterval(() => {
+        if (this.on() && !document.hidden) this.run();
+      }, 180000);
       setTimeout(() => this.run(), 3000);
     },
 
     stop() {
       clearTimeout(this.timer);
+      clearInterval(this.poll);
       if (this.onVisible) document.removeEventListener("visibilitychange", this.onVisible);
+      if (this.onFocus) window.removeEventListener("focus", this.onFocus);
     },
   };
 
@@ -9510,8 +9554,9 @@
     owners() {
       return store.get("libraryOwners", null) || {};
     },
+    // The same viewer on every device: the order of the list can differ from one to the next
     base() {
-      return viewers.list().list[0].id;
+      return viewers.list().list.map((v) => v.id).sort()[0];
     },
     // who has this title: its claimed owners, or the first viewer for an unclaimed one
     ownersOf(id) {
@@ -9537,16 +9582,19 @@
       return out;
     },
 
+    // Always written down, even for the viewer who gets unclaimed titles anyway: another device
+    // only knows whose this title is if it's on the list
     claim(id) {
-      if (!this.on() || this.mine(id)) return;
+      if (!this.on()) return;
       const owners = this.owners();
       const me = viewers.current().id;
       let next = owners[id];
+      if (next && next.includes(me)) return;
       if (next) next = [...next, me];
       else {
         // already in the first viewer's library: it stays there too
         const item = this.raw().get(id);
-        next = item && (!item.removed || item.temp) ? [this.base(), me] : [me];
+        next = item && (!item.removed || item.temp) ? [...new Set([this.base(), me])] : [me];
       }
       store.set("libraryOwners", { ...owners, [id]: next });
     },
@@ -10380,7 +10428,13 @@
       });
       await safe("viewers", () => {
         const v = viewers.list();
-        return { count: v.list.length, current: { kids: viewers.current().kids || 0 }, parentPin: parentPin.isSet(), hiddenTitles: restrict.hidden().length };
+        return {
+          count: v.list.length,
+          current: { kids: viewers.current().kids || 0, getsUnclaimed: viewers.current().id === viewerLibrary.base() },
+          parentPin: parentPin.isSet(),
+          hiddenTitles: restrict.hidden().length,
+          sync: { on: cloudSync.on(), signedIn: !!cloudSync.auth(), minutesAgo: cloudSync.lastOk ? Math.round((Date.now() - cloudSync.lastOk) / 60000) : null, failures: cloudSync.failures, waiting: cloudSync.dirty.size, titlesClaimed: Object.keys(viewerLibrary.owners()).length },
+        };
       });
       const { getState } = core();
       await safe("account", async () => {
