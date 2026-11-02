@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.26.1
+ * @version 2.26.2
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.26.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.26.2"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -108,7 +108,7 @@
     remainingTime: true,
     playerClock: true,
     crispPosters: true,
-    posterAccent: true,
+    posterAccent: false,
     myList: "all",
     externalPlayer: true,
     skipButtons: true,
@@ -490,6 +490,17 @@
       Object.keys(DEFAULTS).map((key) => API.getSetting(key).then((v) => [key, v]).catch(() => [key, null]))
     );
     Object.assign(settings, normalise(Object.fromEntries(values)));
+    // This came on by default for a few days, and the settings window saves every option it shows,
+    // so a saved "on" doesn't mean someone chose it. Once, it goes back to off.
+    try {
+      if (!localStorage.getItem("dxbi.posterAccentReset")) {
+        localStorage.setItem("dxbi.posterAccentReset", "1");
+        if (settings.posterAccent) {
+          settings.posterAccent = false;
+          API.saveSetting("posterAccent", false).catch(() => {});
+        }
+      }
+    } catch (_) { /* storage blocked: stays as saved */ }
     persistSettings();
     builtInTheme.ensure();
     // the saved values can differ from the cached copy applied at start (a TV has no cached copy)

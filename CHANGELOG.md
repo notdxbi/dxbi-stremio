@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.26.2
+
+- **Your accent colour stays by default.** Titles no longer recolour the page and player unless you turn on *Match each title's colours* in Settings under Look. If it was on, it goes back to off once with this update.
+
 ## 2.26.1
 
 - **File sizes are back in the stream list.** Addons that write sizes in GiB, like Meteor, showed no size at all, and sorting by size skipped them too.
