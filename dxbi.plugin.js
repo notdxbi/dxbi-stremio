@@ -9603,9 +9603,10 @@
       if (next && next.includes(me)) return;
       if (next) next = [...next, me];
       else {
-        // already in the first viewer's library: it stays there too
+        // Saved to the library already: the first viewer keeps it. Just watched and never saved says
+        // nothing about who watched it, and viewers are private, so it's the one playing it now.
         const item = this.raw().get(id);
-        next = item && (!item.removed || item.temp) ? [...new Set([this.base(), me])] : [me];
+        next = item && !item.removed ? [...new Set([this.base(), me])] : [me];
       }
       store.set("libraryOwners", { ...owners, [id]: next });
     },
@@ -9673,7 +9674,8 @@
         if (name === "AddToLibrary" && args && typeof args.id === "string") this.claim(args.id);
         else if (name === "RemoveFromLibrary" && typeof args === "string") {
           if (this.release(args)) { this.refresh(); return false; }
-        } else if ((name === "RewindLibraryItem" || name === "DismissNotificationItem") && typeof args === "string" && this.shared(args)) {
+        } else if ((name === "RewindLibraryItem" || name === "DismissNotificationItem") && typeof args === "string") {
+          // Always this viewer's alone: rewinding would wipe the place of whoever is really watching it
           this.dismiss(args);
           this.refresh();
           return false;

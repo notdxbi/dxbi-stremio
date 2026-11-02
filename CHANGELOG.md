@@ -3,6 +3,7 @@
 ## 2.26.2
 
 - **Your accent colour stays by default.** Titles no longer recolour the page and player unless you turn on *Match each title's colours* in Settings under Look. If it was on, it goes back to off once with this update.
+- **Viewers are more private.** A title that was watched but never saved to the library now goes to whoever plays it, instead of staying on the first viewer's Continue Watching too. Removing something from Continue Watching now only removes it for you, and no longer wipes another viewer's place.
 
 ## 2.26.1
 
