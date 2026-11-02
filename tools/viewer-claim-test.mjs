@@ -16,7 +16,7 @@ function device(list, current, library = {}) {
   const store = { get: (k, f) => (data.has(k) ? data.get(k) : f), set: (k, v) => data.set(k, v) };
   const viewers = { list: () => ({ list: list.map((id) => ({ id })) }), current: () => ({ id: current }), key: (s) => `${s}:${current}` };
   const localStorage = { getItem: (k) => (k === "library" ? JSON.stringify({ items: library }) : null) };
-  const lib = vm.runInNewContext(`${source.slice(start, end)}\nviewerLibrary`, { store, viewers, localStorage, JSON, Object, Map, Set, Array, Date, String, Promise, setTimeout, log() {}, core: () => ({}) });
+  const lib = vm.runInNewContext(`${source.slice(start, end)}\nviewerLibrary`, { store, viewers, localStorage, JSON, Object, Map, Set, Array, Date, String, Promise, setTimeout, log() {}, core: () => ({}), window: {}, preview: { library: {} }, libraryWatched: {}, episodes: { index: new Map() }, scheduleSync() {} });
   return { lib, store, set: (id) => { current = id; } };
 }
 
@@ -43,6 +43,21 @@ assert.deepEqual(JSON.parse(JSON.stringify(shared.store.get("libraryOwners"))).t
 shared.lib.claim("tt3");
 assert.deepEqual(JSON.parse(JSON.stringify(shared.store.get("libraryOwners"))).tt3, ["main", "vmum"], "playing it again changes nothing");
 console.log("PASS a shared title keeps both viewers");
+
+// Watched but never saved: it's whoever plays it, and it leaves the first viewer's Continue Watching
+const leaked = device(["main", "vmum"], "vmum", { tt5: { _id: "tt5", removed: true, temp: true } });
+assert.equal(leaked.lib.mine("tt5"), false);
+leaked.lib.claim("tt5");
+leaked.set("main");
+assert.equal(leaked.lib.mine("tt5"), false, "gone from the first viewer");
+console.log("PASS a title that isn't saved anywhere goes to the viewer playing it");
+
+// Removing from Continue Watching never reaches Stremio: that would wipe the other viewer's place
+const dismiss = device(["main", "vmum"], "main", { tt6: { _id: "tt6", removed: true, temp: true, state: { lastWatched: "2026-01-01T00:00:00Z" } } });
+const cut = dismiss.lib.intercept({ action: "Ctx", args: { action: "RewindLibraryItem", args: "tt6" } });
+assert.equal(cut, false, "swallowed");
+assert.equal(dismiss.lib.dismissed("tt6"), true);
+console.log("PASS removing from Continue Watching only affects this viewer");
 
 // One viewer: nothing is written, there's nothing to keep apart
 const alone = device(["main"], "main");
