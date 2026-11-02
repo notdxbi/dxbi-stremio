@@ -7,6 +7,7 @@ import { IPC_CHANNELS } from "../constants";
 import { getLogger } from "../utils/logger";
 import { isFullScreen, setFullScreen, useCustomFullScreen } from "./Maximize";
 import MpvSubtitleStyle from "./MpvSubtitleStyle";
+import TaskbarPreview from "./TaskbarPreview";
 
 // dx.bi plays video the way the official Stremio desktop app does: in mpv, behind the page.
 //
@@ -139,6 +140,7 @@ export default class MpvShell {
     private static observed = new Map<string, number>(); // property name → observe id
     private static queue: string[] = [];
     private static playing = false;
+    private static taskbarPreview: TaskbarPreview | null = null;
 
     // Settings → dx.bi → "Play videos with mpv" switched off: the browser player instead
     private static offFlag = () => join(app.getPath("userData"), "use_browser_player");
@@ -230,6 +232,7 @@ export default class MpvShell {
         if (HYPRLAND) useCustomFullScreen(mainWindow, (on) => { void this.hyprFullScreen(on); });
         keepInSwitcher(mainWindow);
         mainWindow.setSkipTaskbar(false);
+        this.taskbarPreview = TaskbarPreview.attach(mainWindow, () => this.previewFrame());
 
         const follow = () => this.followMainWindow();
         for (const event of ["move", "resize", "maximize", "unmaximize", "restore", "enter-full-screen", "leave-full-screen"] as const) {
@@ -425,6 +428,7 @@ export default class MpvShell {
             logger.warn(`mpv exited (${code})`);
             this.mpv = null;
             this.socket = null;
+            this.setPlaying(false);
         });
         this.connect(pipe, 0);
     }
@@ -487,6 +491,7 @@ export default class MpvShell {
             });
         } else if (msg.event === "file-loaded") {
             this.setPlaying(true);
+            this.taskbarPreview?.setPlaying(true);
         } else if (msg.error && msg.error !== "success" && msg.error !== "property unavailable" && msg.request_id) {
             logger.warn(`mpv request ${msg.request_id}: ${msg.error}`);
         }
@@ -503,6 +508,7 @@ export default class MpvShell {
 
     private static setPlaying(playing: boolean): void {
         this.playing = playing;
+        if (!playing) this.taskbarPreview?.setPlaying(false);
         if (HYPRLAND) this.hyprWatchPlayback(playing);
         if (!playing && this.pip) this.setPip(false);
         if (!this.videoWindow || !this.mainWindow) return;
@@ -536,7 +542,10 @@ export default class MpvShell {
         switch (method) {
             case "mpv-command": {
                 const args = Array.isArray(data) ? data : [data];
-                if (args[0] === "loadfile") this.setPlaying(true);
+                if (args[0] === "loadfile") {
+                    this.taskbarPreview?.setPlaying(false);
+                    this.setPlaying(true);
+                }
                 if (args[0] === "stop") this.setPlaying(false);
                 this.command(args);
                 break;
@@ -687,6 +696,19 @@ export default class MpvShell {
         this.drag = null;
     }
 
+    private static async previewFrame(): Promise<Electron.NativeImage | null> {
+        const file = join(app.getPath("temp"), `dxbi-taskbar-${process.pid}.jpg`);
+        try {
+            // A minimized mpv window can shrink its render surface to 64x64. Capture the
+            // source frame with subtitles so the taskbar keeps a useful picture in that state.
+            if (!await this.request(["screenshot-to-file", file, "subtitles"])) return null;
+            const image = nativeImage.createFromPath(file);
+            return image.isEmpty() ? null : image;
+        } finally {
+            try { unlinkSync(file); } catch { /* no frame, or already gone */ }
+        }
+    }
+
     // Black bars baked into the picture, as fractions of each side: from a small snapshot of the
     // frame mpv is showing (works with hardware decoding, unlike pixel reads in the page)
     private static async measureBars(): Promise<{ t: number; b: number; l: number; r: number } | null> {
@@ -773,6 +795,8 @@ export default class MpvShell {
     }
 
     private static shutdown(): void {
+        this.taskbarPreview?.dispose();
+        this.taskbarPreview = null;
         this.hyprWatchPlayback(false);
         try { this.socket?.write(JSON.stringify({ command: ["quit"] }) + "\n"); } catch { /* gone */ }
         const mpv = this.mpv;
