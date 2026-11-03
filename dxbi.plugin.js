@@ -13318,6 +13318,24 @@
     },
   };
 
+  // Stremio guesses untyped SRTs from a leading "1\n". Windows often leaves the MIME
+  // empty (or calls them text/plain), so BOMs and other first cue numbers get rejected.
+  // Supply the MIME from the extension and leave the bytes, import and selection to Stremio.
+  function onSubtitleDrop(e) {
+    if (currentRoute() !== "player") return;
+    const files = e.dataTransfer?.files;
+    const file = files?.[0];
+    const type = file && (/\.srt$/i.test(file.name) ? "application/x-subrip" : /\.vtt$/i.test(file.name) ? "text/vtt" : null);
+    if (!type || file.type === type) return;
+    try {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([file], file.name, { type, lastModified: file.lastModified }));
+      for (let i = 1; i < files.length; i++) transfer.items.add(files[i]);
+      // Keep the original drop: Stremio also uses it to dismiss its drag overlay.
+      Object.defineProperty(e, "dataTransfer", { value: transfer });
+    } catch (err) { log("subtitle drop", err); }
+  }
+
   // ---- Subtitle files: Stremio's server turns any addon subtitle into WebVTT
   function parseCues(text) {
     const time = (str) => {
@@ -15080,6 +15098,7 @@
     if (crisp.lean) document.addEventListener("focusin", onCardFocus);
     document.addEventListener("mouseover", onOver, { passive: true });
     document.addEventListener("click", onCardOpen, true);
+    window.addEventListener("drop", onSubtitleDrop, true);
     document.addEventListener("click", (e) => quickPlay.onClick(e), true);
     document.addEventListener("mouseout", onOut, { passive: true });
     window.addEventListener("hashchange", onHash);
@@ -15235,6 +15254,7 @@
       document.removeEventListener("focusin", onCardFocus);
       document.removeEventListener("mouseover", onOver);
       document.removeEventListener("click", onCardOpen, true);
+      window.removeEventListener("drop", onSubtitleDrop, true);
       document.removeEventListener("mouseout", onOut);
       window.removeEventListener("hashchange", onHash);
       window.removeEventListener("resize", onResize);

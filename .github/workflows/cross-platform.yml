@@ -60,6 +60,8 @@ jobs:
         run: node tools/quick-play-test.mjs
       - name: Times follow the device's clock
         run: node tools/device-clock-test.mjs
+      - name: Dropped subtitles keep their encoding and reach the player
+        run: node tools/subtitle-drop-test.mjs
 
       # The one-liners from the README, exactly as users run them (downloads the latest release)
       - name: Published installer (Windows PowerShell 5.1)
