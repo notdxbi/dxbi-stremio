@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.29.0
+
+- **mpv and VLC keep your place.** Play something in an external player from the desktop app and dx.bi now saves your place every second: it shows in Continue Watching, the next Play resumes there, and anything you watch past 70% is marked watched and synced, just like Stremio's own player. Skipping ahead doesn't count as watching. A small pop-up shows the progress while you watch (✕ shrinks it to a pill), the player's window is named after what's playing, and closing dx.bi while the player is still open saves your place first. Works with dx.bi's External player setting and Stremio's "Play in external player". Built by osayed0001 (#69).
+- **Discord status keeps up.** dx.bi sends Discord at most one status update every 4 seconds, which is all Discord accepts, so your status doesn't fall behind while watching (#71).
+
 ## 2.28.0
 
 - **dx.bi for Android phones.** A new app made for phones and tablets: native screens, a player made for touch with picture-in-picture, downloads, Chromecast and other players. It installs next to dx.bi TV (`dxbi-mobile.apk`). Built by osayed0001 (#67).
