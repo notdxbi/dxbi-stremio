@@ -11,10 +11,10 @@ const source = readFileSync(join(root, "dxbi.plugin.js"), "utf8");
 const start = source.indexOf("  const deviceClock = {");
 const end = source.indexOf("  function countdownText(");
 assert.ok(start > 0 && end > start, "deviceClock found");
-const body = source.slice(start, end).replace(/\n  deviceClock\.refresh\(\);\n  document\.addEventListener[^\n]*\n/, "\n");
+const body = source.slice(start, end);
 
 const make = (api) => vm.runInNewContext(`${body}; ({ deviceClock, whenText })`, {
-  IN_APP: true, window: { StremioEnhancedAPI: api }, Date, Math, Number, document: { hidden: false },
+  IN_APP: true, window: { StremioEnhancedAPI: api }, Date, Math, Number, document: { hidden: false, addEventListener() {} },
 });
 const at = Date.parse("2026-11-02T22:47:00Z");
 const fmt = { hour: "numeric", minute: "2-digit" };
