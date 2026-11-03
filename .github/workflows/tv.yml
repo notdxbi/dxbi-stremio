@@ -1,7 +1,8 @@
-name: TV app
+name: Android apps
 
-# Publishing a release builds dx.bi TV (Android TV) and attaches dxbi-tv.apk to that release.
-# Running it by hand just builds it (kept as a workflow artifact).
+# Publishing a release builds dx.bi TV (Android TV) and dx.bi for Android phones, and attaches
+# dxbi-tv.apk and dxbi-mobile.apk to that release.
+# Running it by hand just builds them (kept as a workflow artifact).
 #
 # Release builds are signed with dx.bi TV's key, kept in the repository's secrets:
 #   DXBI_TV_KEYSTORE_B64       the keystore, base64-encoded
@@ -49,7 +50,11 @@ jobs:
       # GitHub's Ubuntu runners come with the Android SDK (ANDROID_HOME); Gradle fetches what's missing
       - name: Build
         if: env.HAS_KEY == 'true'
-        run: ./gradlew assembleRelease --no-daemon && cp app/build/outputs/apk/release/app-release.apk dxbi-tv.apk
+        # two apps from the same code: dx.bi TV, and dx.bi for phones (build.gradle.kts, productFlavors)
+        run: |
+          ./gradlew assembleTvRelease assembleMobileRelease --no-daemon
+          cp app/build/outputs/apk/tv/release/app-tv-release.apk dxbi-tv.apk
+          cp app/build/outputs/apk/mobile/release/app-mobile-release.apk dxbi-mobile.apk
         env:
           DXBI_TV_KEYSTORE: ${{ runner.temp }}/dxbi-tv.jks
           DXBI_TV_KEYSTORE_PASSWORD: ${{ secrets.DXBI_TV_KEYSTORE_PASSWORD }}
@@ -59,12 +64,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: env.HAS_KEY == 'true'
         with:
-          name: dxbi-tv
-          path: tv/dxbi-tv.apk
+          name: dxbi-android
+          path: |
+            tv/dxbi-tv.apk
+            tv/dxbi-mobile.apk
           if-no-files-found: error
 
       - name: Attach to the release
         if: env.HAS_KEY == 'true' && github.event_name == 'release'
-        run: gh release upload "${{ github.event.release.tag_name }}" dxbi-tv.apk --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" dxbi-tv.apk dxbi-mobile.apk --clobber
         env:
           GH_TOKEN: ${{ github.token }}

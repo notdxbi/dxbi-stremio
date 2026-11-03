@@ -7243,6 +7243,43 @@
       findStream,
       streamHints,
       prettyCode,
+      // dx.bi's phone app: the party as data for its own screen, and what that screen can do
+      phone: {
+        state() {
+          const host = party.active ? party.hostId() : null;
+          const s = party.state;
+          const media = s && s.media;
+          return {
+            active: !!party.active,
+            connecting: !!party.connecting,
+            connected: party.active && party.links.some((l) => l.up),
+            code: party.active ? prettyCode(party.code) : null,
+            name: store.get("name") || "",
+            lastCode: store.get("lastCode") ? prettyCode(store.get("lastCode")) : null,
+            isHost: !!host && host === party.me,
+            media: media ? { title: media.title || "", poster: media.poster || null, playing: !!(s && s.playing), here: local.videoId() === media.videoId } : null,
+            members: party.active ? party.members().map((m) => {
+              const st = m.status || {};
+              const watching = st.where === "player" && media && st.videoId === media.videoId;
+              return { name: m.name || "Friend", self: !!m.self, host: m.id === host, line: watching ? (st.synced ? "Watching · in sync" : "Joining…") : st.where === "player" ? "Watching something else" : "Browsing" };
+            }) : [],
+            chat: party.chat.slice(-50).map((m) => ({ name: m.name, text: m.text, mine: !!m.mine })),
+          };
+        },
+        async start(name) {
+          store.set("name", name);
+          await party.start(await ownedCode(), name, true);
+        },
+        async join(code, name) {
+          const clean = normaliseCode(code);
+          if (!clean) throw new Error("That isn't a party code");
+          store.set("name", name);
+          await party.start(clean, name, false);
+        },
+        rejoin: () => party.rejoin(),
+        leave: () => party.leave(false),
+        say: (text) => party.say(text),
+      },
       closePanel() {
         if (!ui.open) return false;
         ui.toggle(false);
@@ -10413,6 +10450,7 @@
     sentAt: 0,
 
     where() {
+      // (the report relay knows these three: a phone's report says it's a phone in its device details)
       if (IN_TV) return "dx.bi TV";
       if (IN_APP) return "dx.bi app";
       return "Stremio Enhanced plugin";
@@ -10707,6 +10745,55 @@
       return s;
     },
 
+    // What Your stats shows (the panel here, and the phone app's own screen)
+    summary() {
+      if (!this.data) this.load();
+      const d = this.data;
+      const now = new Date();
+      const year = String(now.getFullYear());
+      const today = dayKey(now);
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      const tiles = [
+        ["Today", this.sumDays(today, today)],
+        ["This week", this.sumDays(dayKey(weekStart), today)],
+        ["This month", this.sumDays(`${year}-${String(now.getMonth() + 1).padStart(2, "0")}-01`, today)],
+        [year, this.sumDays(`${year}-01-01`, today)],
+      ];
+      // last 30 days
+      const bars = [];
+      for (let i = 29; i >= 0; i--) {
+        const day = new Date(now);
+        day.setDate(now.getDate() - i);
+        bars.push({ day, sec: d.days[dayKey(day)] || 0 });
+      }
+      const top = Object.entries(d.titles).map(([id, t]) => ({ id, ...t, ys: (t.y && t.y[year]) || 0 })).filter((t) => t.ys > 0).sort((a, b) => b.ys - a.ys).slice(0, 6);
+      const genres = Object.entries(d.genres).map(([g, y]) => [g, y[year] || 0]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      const hourPeak = Object.entries(d.hours).sort((a, b) => b[1] - a[1])[0];
+      const weekday = {};
+      for (const [k, v] of Object.entries(d.days)) {
+        if (!k.startsWith(year)) continue;
+        const wd = new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" });
+        weekday[wd] = (weekday[wd] || 0) + v;
+      }
+      const dayPeak = Object.entries(weekday).sort((a, b) => b[1] - a[1])[0];
+      const watched = stremioLibrary().filter((i) => i.state.lastWatched);
+      return {
+        year, tiles, streak: this.streaks(), bars, top, genres, hourPeak, dayPeak,
+        movies: watched.filter((i) => i.type === "movie").length,
+        series: watched.filter((i) => i.type === "series").length,
+        total: Object.values(d.days).reduce((s, v) => s + v, 0),
+      };
+    },
+
+    // Time watched in the app's own player (on a TV or phone the page's video isn't the one playing)
+    played(sec) {
+      if (!settings.watchStats || !(sec > 0)) return;
+      if (!this.data) this.load();
+      if (this.mediaHash !== location.hash) this.loadMedia();
+      this.add(sec);
+    },
+
     streaks() {
       const days = new Set(Object.keys(this.data.days).filter((k) => this.data.days[k] >= 60));
       let best = 0;
@@ -10819,50 +10906,13 @@
     },
 
     html() {
-      const d = stats.data;
-      const now = new Date();
-      const year = String(now.getFullYear());
-      const today = dayKey(now);
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-      const tiles = [
-        ["Today", stats.sumDays(today, today)],
-        ["This week", stats.sumDays(dayKey(weekStart), today)],
-        ["This month", stats.sumDays(`${year}-${String(now.getMonth() + 1).padStart(2, "0")}-01`, today)],
-        [year, stats.sumDays(`${year}-01-01`, today)],
-      ];
-      const streak = stats.streaks();
-
-      // last 30 days
-      const bars = [];
+      const { year, tiles, streak, bars, top, genres, hourPeak, dayPeak, movies, series, total } = stats.summary();
       let peak = 1;
-      for (let i = 29; i >= 0; i--) {
-        const day = new Date(now);
-        day.setDate(now.getDate() - i);
-        const sec = d.days[dayKey(day)] || 0;
-        peak = Math.max(peak, sec);
-        bars.push({ day, sec });
-      }
+      for (const b of bars) peak = Math.max(peak, b.sec);
       const barsHtml = bars.map((b) => `<i style="height:${Math.max(3, Math.round((b.sec / peak) * 100))}%" title="${b.day.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}: ${hoursText(b.sec)}"${b.sec ? "" : ' class="is-zero"'}></i>`).join("");
-
-      const top = Object.entries(d.titles).map(([id, t]) => ({ id, ...t, ys: (t.y && t.y[year]) || 0 })).filter((t) => t.ys > 0).sort((a, b) => b.ys - a.ys).slice(0, 6);
-      const genres = Object.entries(d.genres).map(([g, y]) => [g, y[year] || 0]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 6);
       const genreTotal = genres.reduce((s, [, v]) => s + v, 0) || 1;
-      const hourPeak = Object.entries(d.hours).sort((a, b) => b[1] - a[1])[0];
-      const weekday = {};
-      for (const [k, v] of Object.entries(d.days)) {
-        if (!k.startsWith(year)) continue;
-        const wd = new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" });
-        weekday[wd] = (weekday[wd] || 0) + v;
-      }
-      const dayPeak = Object.entries(weekday).sort((a, b) => b[1] - a[1])[0];
-      const lib = stremioLibrary();
-      const watched = lib.filter((i) => i.state.lastWatched);
-      const movies = watched.filter((i) => i.type === "movie").length;
-      const series = watched.filter((i) => i.type === "series").length;
       const viewer = viewers.current();
-      const total = Object.values(d.days).reduce((s, v) => s + v, 0);
-      const since = new Date(d.since || Date.now()).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+      const since = new Date(stats.data.since || Date.now()).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 
       return `
         <div class="dxe-head">
@@ -15156,6 +15206,8 @@
     log("ready");
   }
 
+  // The last streams the phone app was shown (api.phone.streams), for api.phone.play
+  let phoneStreams = null;
   const api = {
     settings,
     sync,
@@ -15169,6 +15221,229 @@
     episodes,
     calendarFill,
     report,
+    // the app's own player: seconds just spent watching (Watch stats)
+    statsPlayed: (sec) => stats.played(sec),
+    // dx.bi's phone app: what Home's own rows show, as data for its native screens (read only; the
+    // page's rows above are built from the same things)
+    phone: {
+      // Your stats, for the app's own screen (null when Watch stats is off)
+      stats() {
+        if (!settings.watchStats) return null;
+        stats.flush();
+        const x = stats.summary();
+        return {
+          year: x.year,
+          since: stats.data.since || Date.now(),
+          total: x.total,
+          tiles: x.tiles.map(([label, sec]) => ({ label: String(label), sec })),
+          streak: x.streak,
+          days: x.bars.map((b) => ({ day: dayKey(b.day), sec: b.sec })),
+          top: x.top.map((t) => ({ id: t.id, name: t.n || "Untitled", type: t.type, poster: t.p && /^https:/.test(t.p) ? t.p : null, sec: t.ys })),
+          genres: x.genres.map(([name, sec]) => ({ name, sec })),
+          hour: x.hourPeak ? Number(x.hourPeak[0]) : null,
+          day: x.dayPeak ? x.dayPeak[0] : null,
+          movies: x.movies,
+          series: x.series,
+        };
+      },
+      // The cast with their photos: TMDB's (with a TMDB key in dx.bi settings), and Wikipedia's for anyone
+      // TMDB has none of, or for everyone without a key. [names]: the title's cast and directors as Stremio
+      // lists them ({name, role}), used when TMDB has nothing
+      async cast(type, imdb, names) {
+        const fromTmdb = settings.tmdbKey.trim() && /^tt\d+$/.test(imdb || "") ? await this.castFromTmdb(type, imdb).catch(() => null) : null;
+        const list = (fromTmdb && fromTmdb.length ? fromTmdb : (Array.isArray(names) ? names : []).map((n) => ({ name: String(n.name || n), role: n.role || "" })))
+          .map((p) => ({ name: p.name, role: p.role || "", photo: p.photo || null }));
+        const missing = list.filter((p) => !p.photo).slice(0, 16);
+        const photos = await Promise.all(missing.map((p) => this.wikipediaPhoto(p.name)));
+        missing.forEach((p, i) => { p.photo = photos[i]; });
+        return list;
+      },
+      async castFromTmdb(type, imdb) {
+        const token = settings.tmdbKey.trim();
+        const key = `cast:${type}:${imdb}`;
+        const cached = readCached(key);
+        if (cached !== undefined) return cached;
+        const bearer = token.startsWith("eyJ");
+        const get = (path) => fetch(`https://api.themoviedb.org/3${path}${bearer ? "" : `${path.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(token)}`}`, {
+          headers: bearer ? { authorization: `Bearer ${token}` } : {},
+          signal: AbortSignal.timeout(10000),
+        }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        const kind = type === "movie" ? "movie" : "tv";
+        const found = await get(`/find/${encodeURIComponent(imdb)}?external_source=imdb_id`);
+        const first = found && found[`${kind}_results`] && found[`${kind}_results`][0];
+        if (!first) return null;
+        // (a series: everyone across its seasons, with their main character)
+        const credits = await get(kind === "tv" ? `/tv/${first.id}/aggregate_credits` : `/movie/${first.id}/credits`);
+        if (!credits) return null;
+        const photo = (p) => (p ? `https://image.tmdb.org/t/p/w185${p}` : null);
+        const crew = (credits.crew || []).filter((c) => c.job === "Director" || (c.jobs || []).some((j) => j.job === "Director"));
+        const result = [
+          ...crew.slice(0, 2).map((c) => ({ name: c.name, role: "Director", photo: photo(c.profile_path) })),
+          ...(credits.cast || []).slice(0, 20).map((c) => ({ name: c.name, role: c.character || (c.roles && c.roles[0] && c.roles[0].character) || "", photo: photo(c.profile_path) })),
+        ];
+        writeCached(key, result);
+        return result;
+      },
+      // A person's picture from Wikipedia: only from a page about someone in film or TV (a name can
+      // belong to anyone)
+      async wikipediaPhoto(name) {
+        const key = `person:${name}`;
+        const cached = readCached(key);
+        if (cached !== undefined) return cached;
+        const screen = /\b(actor|actress|director|filmmaker|comedian|screenwriter|producer|presenter|voice|television|film)\b/i;
+        let photo = null;
+        try {
+          const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name.replace(/ /g, "_"))}?redirect=true`, { signal: AbortSignal.timeout(8000) });
+          const j = r.ok ? await r.json() : null;
+          if (j && j.type === "standard" && screen.test(j.description || "") && j.thumbnail && /^https:/.test(j.thumbnail.source)) photo = j.thumbnail.source;
+        } catch (_) {
+          return null; // offline: try again another time
+        }
+        writeCached(key, photo);
+        return photo;
+      },
+      async billboard() {
+        if (!settings.billboard) return [];
+        const items = hero.items.length ? hero.items : await hero.load();
+        return items.map((m) => ({
+          id: m.id,
+          type: m.type,
+          name: m.name,
+          description: m.description || "",
+          background: hero.background(m),
+          logo: artworkUrl(m.logo) || (isImdb(m.id) && metadataSource.englishArtFits(m._configuredMeta || !m._stock) ? art.logo(m.id) : null),
+          year: m.releaseInfo ? String(m.releaseInfo) : "",
+          runtime: formatRuntime(m.runtime),
+          genres: (m.genres || m.genre || []).slice(0, 3),
+          imdb: m.imdbRating || null,
+        }));
+      },
+      myList() {
+        if (settings.myList === "off") return [];
+        return myList.groups().map(([name, list]) => ({
+          name,
+          items: list.map((i) => ({ id: i._id, type: i.type, name: i.name, poster: i.poster || (isImdb(i._id) ? `https://images.metahub.space/poster/small/${i._id}/img` : null) })),
+        }));
+      },
+      // null while it's still being worked out (ask again shortly)
+      forYou() {
+        if (!settings.forYou || viewers.current().kids) return { items: [] };
+        const seed = forYou.seed();
+        if (!seed) return { items: [] };
+        const sig = `${viewers.current().id}|${seed._id}`;
+        const data = forYou.saved(sig);
+        if (!data) {
+          if (forYou.loading !== sig) {
+            forYou.loading = sig;
+            forYou.load(seed, sig).catch(() => { forYou.loading = null; });
+          }
+          return null;
+        }
+        return { name: `Because you watched ${data.name}`, items: data.list.map((i) => ({ id: i._id, type: i.type, name: i.name, poster: i.poster || null })) };
+      },
+      // Airing this week: each show's next episode (or the one just out), soonest first
+      airing() {
+        if (!settings.airingRow) return [];
+        episodes.refresh();
+        const byShow = new Map();
+        for (const [id, e] of episodes.index) {
+          const eps = e.upcoming || [];
+          if (!eps.length) continue;
+          const key = String(e.name || id).toLowerCase().replace(/[^a-z0-9]+/g, "");
+          const prev = byShow.get(key);
+          if (!prev || eps[0].t < prev.ep.t) byShow.set(key, { id, e, ep: eps[0], more: eps.length - 1 });
+        }
+        return [...byShow.values()].sort((a, b) => a.ep.t - b.ep.t).slice(0, 12).map(({ id, e, ep, more }) => ({
+          id,
+          name: e.name || "",
+          background: e.background || (isImdb(id) ? art.backgroundMedium(id) : e.poster || null),
+          still: ep.t <= Date.now() ? ep.th || null : null,
+          season: ep.s,
+          episode: ep.e,
+          title: ep.n && !/^episode\s*\d+$/i.test(ep.n) ? ep.n : "",
+          more,
+          time: ep.t,
+          when: whenText(ep.t),
+          countdown: countdownText(ep.t),
+          out: ep.t <= Date.now(),
+        }));
+      },
+      // Customise Home, for this viewer: rows by `${addon id}/${type}/${catalog id}`
+      layout() {
+        const { order, hidden, names } = homeLayout.data();
+        return { order, hidden, names };
+      },
+      // A title's scores (MDBList with a key, else Wikidata), what critics said (Wikipedia) and audience
+      // reviews (TMDB, with a key): what the Reviews sheet shows
+      async reviews(type, id) {
+        if (!settings.reviews) return null;
+        const t = { type, id, key: `${type}:${id}` };
+        const data = reviews.data.get(t.key) || (await reviews.load(t));
+        const [wiki, tmdb] = await Promise.all([
+          data.article ? reviews.wikipedia(data.article).catch(() => null) : null,
+          settings.tmdbKey.trim() && (data.ids.imdb || data.ids.tmdb) ? reviews.tmdb(data.ids).catch((err) => ({ error: err.message })) : null,
+        ]);
+        return {
+          scores: (data.scores || []).map((s) => ({ source: s.source, name: s.name, note: s.note || "", value: String(s.value), votes: s.votes || 0, url: s.url || null })),
+          scoresFrom: data.fromMdblist ? "MDBList" : data.scores && data.scores.length ? "Wikidata" : null,
+          mdbError: data.mdbError || null,
+          critics: wiki && wiki.text && wiki.text.length ? { text: wiki.text, url: wiki.url } : null,
+          audience: tmdb ? { reviews: tmdb.reviews || [], total: tmdb.total || 0, url: tmdb.url || null, error: tmdb.error || null } : null,
+          missing: [!settings.tmdbKey.trim() && "tmdb", !settings.mdblistKey.trim() && "mdblist"].filter(Boolean),
+        };
+      },
+      // The streams for the title open in details, read the way the stream list reads them, and the one
+      // Just press Play would pick (what this viewer chose last, else the best that's ready to play)
+      async streams() {
+        const state = await core().getState("meta_details").catch(() => null);
+        const groups = state && Array.isArray(state.streams) ? state.streams : [];
+        const metaId = state && state.selected && state.selected.metaPath && state.selected.metaPath.id;
+        const items = groups.flatMap((g) => (g && g.content && g.content.type === "Ready" && Array.isArray(g.content.content)
+          ? g.content.content.map((st) => ({ st, addon: (g.addon && g.addon.manifest && g.addon.manifest.name) || "" })) : []))
+          .filter((x) => x.st && x.st.deepLinks && x.st.deepLinks.player && !x.st.ytId)
+          .map((x) => ({ ...x, torrent: !!x.st.infoHash && !x.st.url, hint: watchParty.streamHints(x.st), d: describeStream(String(x.st.name || ""), `${x.st.name || ""}\n${x.st.description || x.st.title || ""}`) }));
+        const server = await core().getState("streaming_server").catch(() => null);
+        const options = {
+          limit: streamChoice.limit(settings.quickPlayQuality),
+          fallback: settings.quickPlayFallback,
+          torrents: !!(server && server.settings && server.settings.type === "Ready") || (IN_TV && settings.tvTorrents),
+        };
+        const choice = items.length ? streamChoice.choose(items, metaId ? quickPlay.memory(metaId) : null, options) : null;
+        phoneStreams = { items, options };
+        return {
+          justPlay: settings.quickPlay,
+          settled: groups.length > 0 && !groups.some((g) => g && g.content && g.content.type === "Loading"),
+          videoId: (state && state.selected && state.selected.streamPath && state.selected.streamPath.id) || null,
+          pick: choice ? items.indexOf(choice.item) : -1,
+          how: choice ? choice.how : null,
+          items: items.map((x) => ({
+            play: x.st.deepLinks.player,
+            addon: x.addon,
+            // the file's own name: what tells two 1080p streams apart
+            filename: (x.st.behaviorHints && x.st.behaviorHints.filename) || String(x.st.description || x.st.title || "").split("\n").map((l) => l.trim()).find((l) => l && !/^[👤💾⚙🔎]/u.test(l)) || "",
+            label: quickPlay.label(x.d),
+            torrent: x.torrent,
+            ...x.d,
+          })),
+        };
+      },
+      // Playing one of those: like Just press Play, the next best are kept in case it won't play
+      play(index) {
+        const item = phoneStreams && phoneStreams.items[index];
+        if (!item) return null;
+        quickPlay.from = location.hash;
+        quickPlay.spares = streamChoice.spares(phoneStreams.items, item, phoneStreams.options);
+        quickPlay.play(item);
+        return item.st.deepLinks.player;
+      },
+      // Watch party (see watchParty.phone)
+      party: watchParty.phone,
+      // Who's watching? (choose one with viewers.select)
+      viewers() {
+        const v = viewers.list();
+        return { current: viewers.current().id, list: v.list.map((x) => ({ id: x.id, name: x.name || "", colour: x.colour || null, kids: !!x.kids })) };
+      },
+    },
     // dx.bi TV's player: intro, recap and credits times for an episode ([] when nobody has added them)
     async skipSegments(type, metaId, videoId) {
       if (!settings.skipButtons) return [];

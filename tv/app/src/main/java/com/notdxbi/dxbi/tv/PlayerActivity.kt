@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -28,6 +30,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -53,7 +56,10 @@ import java.util.concurrent.TimeUnit
 class PlayerActivity : AppCompatActivity() {
 
     private lateinit var playerView: PlayerView
-    private lateinit var controls: PlayerControls
+    private lateinit var controls: Controls
+    private var extras: PlayerHooks? = null
+    // the subtitles' size (Stremio's setting), put back after the phone app's small window's bigger one
+    private var subtitleSize = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION
     private lateinit var zoom: PictureZoom
     private var party = false
     private val partyTick = object : Runnable {
@@ -209,6 +215,8 @@ class PlayerActivity : AppCompatActivity() {
         skipButton.setOnClickListener { doSkip() }
 
         val stream = JSONObject(intent.getStringExtra(EXTRA_STREAM) ?: "{}")
+        // dx.bi for phones: its controls, gestures, small window and downloads (none in dx.bi TV)
+        extras = Phone.player(host, stream)
         segments = stream.optJSONArray("skips")?.let { list ->
             (0 until list.length()).mapNotNull { i ->
                 val o = list.optJSONObject(i) ?: return@mapNotNull null
@@ -245,9 +253,10 @@ class PlayerActivity : AppCompatActivity() {
             .build()
         // (an addon's own User-Agent replaces ours: Media3 would send both)
         val ownAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
-        val dataSource = OkHttpDataSource.Factory(http)
+        val online = OkHttpDataSource.Factory(http)
             .setUserAgent(if (ownAgent) null else "dxbi-tv/${BuildConfigVersion.name(this)}")
             .setDefaultRequestProperties(headers)
+        val dataSource = extras?.dataSource(online) ?: online
 
         // The TV's own decoders first, falling back to software ones when a format isn't supported
         val renderers = Renderers()
@@ -270,8 +279,10 @@ class PlayerActivity : AppCompatActivity() {
         nextArt = next?.optString("thumbnail").orEmpty()
         upNextSeconds = if (next == null) 0 else stream.optString("upNext", "10").toIntOrNull() ?: 0
         upNextCard = findViewById(R.id.up_next)
-        controls = PlayerControls(this, playerView, exo, sound, zoom, ::shiftSubtitles, accent, clock.takeIf { showClock }, next != null, ::seek, { PlaybackBus.listener?.onPartyLeave() }) { go -> finishWith(next = go) }
+        controls = extras?.controls(exo, sound, zoom, accent, next != null, showClock)
+            ?: PlayerControls(this, playerView, exo, sound, zoom, ::shiftSubtitles, accent, clock.takeIf { showClock }, next != null, ::seek, { PlaybackBus.listener?.onPartyLeave() }) { go -> finishWith(next = go) }
         PlaybackBus.player = this
+        extras?.started(exo, controls)
         fitControls()
         findViewById<View>(R.id.up_next_play).setOnClickListener { finishWith(next = true) }
         findViewById<View>(R.id.up_next_cancel).setOnClickListener {
@@ -296,6 +307,7 @@ class PlayerActivity : AppCompatActivity() {
                 val s = list.optJSONObject(i) ?: continue
                 val subUrl = s.optString("url").takeIf { it.isNotEmpty() } ?: continue
                 subtitles += MediaItem.SubtitleConfiguration.Builder(Uri.parse(subUrl))
+                    .setId(extras?.subtitleId(s.optString("source", "addon"), i))
                     .setMimeType(subtitleMime(subUrl))
                     .setLanguage(s.optString("lang").ifEmpty { null })
                     .setLabel(s.optString("label").ifEmpty { s.optString("lang") })
@@ -326,6 +338,9 @@ class PlayerActivity : AppCompatActivity() {
                 lastError = (if (torrent) TorrentEngine.failed() else null) ?: describe(error)
                 finishWith(error = lastError)
             }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) { extras?.changed() }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { extras?.changed() }
         })
         exo.prepare()
         exo.playWhenReady = true
@@ -492,27 +507,73 @@ class PlayerActivity : AppCompatActivity() {
     private fun report() {
         val exo = player ?: return
         val duration = exo.duration.takeIf { it != C.TIME_UNSET } ?: 0L
-        PlaybackBus.listener?.onProgress(exo.currentPosition, duration, !exo.isPlaying)
+        if (extras?.keep(exo.currentPosition, ended = false) != true) PlaybackBus.listener?.onProgress(exo.currentPosition, duration, !exo.isPlaying)
     }
 
-    private fun finishWith(ended: Boolean = false, error: String? = null, next: Boolean = false) {
+    /** Closes the player and says how it went ([positionMs]/[durationMs]: where another app left it, instead of this one) */
+    private fun finishWith(ended: Boolean = false, error: String? = null, next: Boolean = false, positionMs: Long? = null, durationMs: Long? = null) {
         if (closed) return
         closed = true
         handler.removeCallbacksAndMessages(null)
         if (::controls.isInitialized) controls.release()
         val exo = player
-        val duration = exo?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L
-        val position = if (ended) duration else exo?.currentPosition ?: 0L
-        PlaybackBus.closed(position, duration, ended, error, next)
+        val duration = durationMs?.takeIf { it > 0 } ?: exo?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L
+        val position = if (ended) duration else positionMs ?: exo?.currentPosition ?: 0L
+        if (extras?.keep(position, ended) != true) PlaybackBus.closed(position, duration, ended, error, next)
         if (torrent) TorrentEngine.close()
         finish()
     }
 
     override fun onPause() {
         super.onPause()
-        // Leaving the app (Home button) pauses, and the progress so far is kept
-        player?.pause()
+        // Leaving the app (Home button) pauses, unless it carries on in the phone app's small window;
+        // the progress so far is kept
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode) player?.pause()
         report()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        extras?.leaving()
+    }
+
+    /** The phone app's small window (dx.bi TV never opens one): just the picture in it, a little bigger subtitles */
+    override fun onPictureInPictureModeChanged(inPip: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(inPip, newConfig)
+        if (inPip) {
+            if (::controls.isInitialized) controls.hide()
+            skipButton.visibility = View.GONE
+            seekFlash.visibility = View.GONE
+            if (::upNextCard.isInitialized) upNextCard.visibility = View.GONE
+            playerView.subtitleView?.setFractionalTextSize(subtitleSize * 1.6f)
+        } else {
+            playerView.subtitleView?.setFractionalTextSize(subtitleSize)
+            // The small window was closed (not opened back up): the video's over
+            if (lifecycle.currentState == Lifecycle.State.CREATED) finishWith()
+        }
+    }
+
+    /** What the phone app's part of the player can ask of it */
+    private val host = object : PlayerHost {
+        override val activity get() = this@PlayerActivity
+        override val playerView get() = this@PlayerActivity.playerView
+        override val seekFlash get() = this@PlayerActivity.seekFlash
+        override fun seek(direction: Int) = this@PlayerActivity.seek(direction)
+        override fun shiftSubtitles(byMs: Long) = this@PlayerActivity.shiftSubtitles(byMs)
+        override fun leaveParty() { PlaybackBus.listener?.onPartyLeave() }
+        override fun finishWith(ended: Boolean, next: Boolean, positionMs: Long?, durationMs: Long?) =
+            this@PlayerActivity.finishWith(ended = ended, next = next, positionMs = positionMs, durationMs = durationMs)
+
+        override fun flash(text: String, forMs: Long) {
+            handler.removeCallbacks(hideFlash)
+            if (text.isEmpty()) {
+                seekFlash.visibility = View.GONE
+                return
+            }
+            seekFlash.text = text
+            seekFlash.visibility = View.VISIBLE
+            handler.postDelayed(hideFlash, forMs)
+        }
     }
 
     override fun onDestroy() {
@@ -521,6 +582,7 @@ class PlayerActivity : AppCompatActivity() {
         if (PlaybackBus.player === this) PlaybackBus.player = null
         if (::controls.isInitialized) controls.release()
         if (::zoom.isInitialized) zoom.release()
+        extras?.release()
         player?.release()
         player = null
         super.onDestroy()
@@ -557,7 +619,8 @@ class PlayerActivity : AppCompatActivity() {
         view.setApplyEmbeddedStyles(false)
         view.setApplyEmbeddedFontSizes(false)
         val size = style.optDouble("size", 100.0).coerceIn(50.0, 300.0) / 100
-        view.setFractionalTextSize((SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * size).toFloat())
+        subtitleSize = (SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * size).toFloat()
+        view.setFractionalTextSize(subtitleSize)
         // Stremio's offset is how far up from the bottom of the picture the lines sit
         val offset = style.optDouble("offset", 5.0).coerceIn(0.0, 40.0) / 100
         view.setBottomPaddingFraction(0f)
