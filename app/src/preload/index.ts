@@ -15,6 +15,8 @@ import { initializeUserSettings, reloadServer, applyUserTheme, loadEnabledPlugin
 import { addTitleBar, getTransparencyStatus } from "./ui/titleBar";
 import { checkSettings } from "./ui/settings/settingsInjector";
 import { checkExternalPlayer } from "./ui/externalPlayerInterceptor";
+import { externalPlayerTracker } from "./ui/externalPlayerTracker";
+import { type ExternalPlayerStatus } from "../interfaces/ExternalPlayerTypes";
 import { applyThemeAPI } from "./api/applyTheme";
 import { gpuRendererAPI } from "./api/gpuRenderer";
 import { externalPlayerAPI } from "./api/externalPlayer";
@@ -104,6 +106,7 @@ window.addEventListener("load", () => {
     window.addEventListener("hashchange", () => {
         if (isTransparencyEnabled) addTitleBar();
         checkSettings();
+        externalPlayerTracker.onNavigate();
         checkExternalPlayer();
         // mpv lists the embedded subtitle and audio tracks itself
         if (!nativePlayer) {
@@ -111,6 +114,10 @@ window.addEventListener("load", () => {
             AudioTracks.checkWatching();
         }
     });
+
+    // mpv or VLC: where it's at every second, and when it closes
+    ipcRenderer.on(IPC_CHANNELS.EXTERNAL_PLAYER_POSITION, (_, status: ExternalPlayerStatus) => externalPlayerTracker.onStatus(status));
+    ipcRenderer.on(IPC_CHANNELS.EXTERNAL_PLAYER_CLOSED, () => externalPlayerTracker.finish());
 
     // Auto update check
     if (!isMini && localStorage.getItem(STORAGE_KEYS.CHECK_UPDATES_ON_STARTUP) === "true") {
