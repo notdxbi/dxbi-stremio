@@ -79,6 +79,11 @@ class DiscordPresence {
     private static dropClient(): void {
         const rpc = this.rpc;
         this.rpc = null;
+        // a new connection starts with no activity: send the next one whatever it is
+        this.lastSent = null;
+        this.lastSentAt = 0;
+        this.pending = null;
+        if (this.pendingTimer) { clearTimeout(this.pendingTimer); this.pendingTimer = null; }
         if (!rpc) return;
         try { rpc.user?.clearActivity()?.catch?.(() => {}); } catch { /* not connected */ }
         rpc.destroy().catch(() => {});
@@ -153,10 +158,53 @@ class DiscordPresence {
         });
     }
 
+    // Discord takes about one activity update every 4 s (5 per 20 s) and queues or drops the rest.
+    // External players report their position every second, so updates are held back: one that only
+    // moves the playing timestamps by a few seconds is skipped, and anything else sent too soon waits
+    // and goes out as the latest one.
+    private static readonly MIN_GAP_MS = 4000;
+    private static lastSent: SetActivity | null = null;
+    private static lastSentAt = 0;
+    private static pending: SetActivity | null = null;
+    private static pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+    private static sameAsLast(next: SetActivity): boolean {
+        const last = this.lastSent;
+        if (!last) return false;
+        const { startTimestamp: s1, endTimestamp: e1, ...a } = last;
+        const { startTimestamp: s2, endTimestamp: e2, ...b } = next;
+        const near = (x: unknown, y: unknown) => (x == null && y == null) || (typeof x === 'number' && typeof y === 'number' && Math.abs(x - y) <= 3);
+        return JSON.stringify(a) === JSON.stringify(b) && near(s1, s2) && near(e1, e2);
+    }
+
     private static _updateActivity(newActivity: SetActivity): void {
         if (!this.rpc || !this.enabled) return;
         if (!this.ready) return;
+        if (this.sameAsLast(newActivity)) {
+            // (a newer, different one waiting is outdated by this)
+            this.pending = null;
+            return;
+        }
+        const wait = this.lastSentAt + this.MIN_GAP_MS - Date.now();
+        if (wait > 0) {
+            this.pending = newActivity;
+            if (!this.pendingTimer) {
+                this.pendingTimer = setTimeout(() => {
+                    this.pendingTimer = null;
+                    const next = this.pending;
+                    this.pending = null;
+                    if (next) this._updateActivity(next);
+                }, wait);
+            }
+            return;
+        }
+        this.lastSent = newActivity;
+        this.lastSentAt = Date.now();
+        this._sendActivity(newActivity);
+    }
 
+    private static _sendActivity(newActivity: SetActivity): void {
+        if (!this.rpc) return;
         // every status carries a link to dx.bi for whoever sees it
         this.rpc.user?.setActivity({ ...newActivity, buttons: DISCORD.BUTTONS.map((b) => ({ ...b })) }).catch((error) => {
             this.logger.error(`Failed to set Discord activity: ${(error as Error).message}`);
