@@ -1,0 +1,89 @@
+# dx.bi for iPhone. XcodeGen makes the Xcode project from this (`xcodegen` in ios/; the .xcodeproj
+# isn't kept in git). GitHub Actions builds it on a Mac: .github/workflows/ios.yml
+name: Dxbi
+options:
+  bundleIdPrefix: com.notdxbi
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    # where the app looks for its updates: the repository it was built from (the build sets it)
+    DXBI_UPDATE_REPO: notdxbi/dxbi-stremio
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    TARGETED_DEVICE_FAMILY: "1,2"
+packages:
+  # Streamyfin's build of MPVKit: mpv with an AVFoundation video output, which picture in picture needs
+  MPVKit:
+    url: https://github.com/streamyfin/MPVKit.git
+    exactVersion: 0.41.0-av5
+targets:
+  Dxbi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Dxbi
+      # The engine the app runs underneath: the same scripts the Android apps use
+      - path: ../dxbi.plugin.js
+        buildPhase: resources
+      - path: ../tv/app/src/main/assets/dxbi-tv.js
+        buildPhase: resources
+      - path: ../tv/app/src/mobile/assets/dxbi-engine.js
+        buildPhase: resources
+      - path: ../tv/app/src/mobile/res/font/bebas_neue.ttf
+        buildPhase: resources
+    dependencies:
+      - package: MPVKit
+        product: MPVKit-GPL
+    info:
+      path: Dxbi/Info.plist
+      properties:
+        CFBundleDisplayName: dx.bi
+        DxbiUpdateRepo: $(DXBI_UPDATE_REPO)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ""
+          UIImageRespectsSafeAreaInsets: false
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - audio
+        UIAppFonts:
+          - bebas_neue.ttf
+        UIUserInterfaceStyle: Dark
+        ITSAppUsesNonExemptEncryption: false
+        # A streaming server on the network (Stremio or dx.bi on a computer) plays torrents for the phone
+        NSLocalNetworkUsageDescription: dx.bi looks for a Stremio streaming server on your network to play torrents.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        # "Play in another app"
+        LSApplicationQueriesSchemes:
+          - infuse
+          - vlc-x-callback
+          - vlc
+          - outplayer
+          - senplayer
+        CFBundleURLTypes:
+          - CFBundleURLName: com.notdxbi.dxbi.stremio
+            CFBundleURLSchemes:
+              - stremio
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.notdxbi.dxbi.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGN_IDENTITY: ""
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES

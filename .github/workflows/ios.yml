@@ -1,0 +1,88 @@
+name: iPhone app
+
+# Builds dx.bi for iPhone (ios/) on a Mac and keeps dxbi.ipa as a workflow artifact; publishing a
+# release attaches it to the release. The IPA isn't signed: SideStore, AltStore or Sideloadly sign it
+# with your own Apple ID when they install it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ios/**
+      - dxbi.plugin.js
+      - tv/app/src/main/assets/dxbi-tv.js
+      - tv/app/src/mobile/assets/dxbi-engine.js
+      - .github/workflows/ios.yml
+  pull_request:
+    paths:
+      - ios/**
+      - tv/app/src/main/assets/dxbi-tv.js
+      - tv/app/src/mobile/assets/dxbi-engine.js
+      - .github/workflows/ios.yml
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Mac to build on (macos-15-intel when GitHub's Apple-chip Macs are all busy)"
+        default: macos-26
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: ${{ inputs.runner || 'macos-26' }}
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: |
+          brew install xcodegen
+          # the newest Xcode 26 on this Mac (the app needs iOS 26's SDK; older Macs default to an older Xcode)
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
+          xcodebuild -version
+
+      # MPVKit (the player) is a large download: kept between runs
+      - uses: actions/cache@v4
+        with:
+          path: ios/build/SourcePackages
+          key: spm-${{ hashFiles('ios/project.yml') }}
+
+      - name: Build
+        run: |
+          set -o pipefail
+          # the app has dx.bi's version (the plugin's), like the Android apps
+          version=$(grep -m1 -oE '@version[[:space:]]+[0-9.]+' ../dxbi.plugin.js | awk '{print $2}')
+          xcodegen generate
+          xcodebuild build \
+            -project Dxbi.xcodeproj -scheme Dxbi -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            DXBI_UPDATE_REPO="${{ github.repository }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            | xcbeautify --renderer github-actions
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Dxbi.app Payload/
+          zip -qry dxbi.ipa Payload
+          ls -lh dxbi.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dxbi-ios
+          path: ios/dxbi.ipa
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" dxbi.ipa --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,5 @@
+Dxbi.xcodeproj/
+build/
+Payload/
+*.ipa
+out/
