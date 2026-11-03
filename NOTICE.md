@@ -2,7 +2,7 @@
 
 Copyright (C) 2026 dx.bi
 
-dx.bi (the plugin, the theme, the desktop app and dx.bi TV) is free software: you can
+dx.bi (the plugin, the theme, the desktop app, dx.bi TV and the phone apps) is free software: you can
 redistribute it and/or modify it under the terms of the GNU General Public License as
 published by the Free Software Foundation, either version 3 of the License, or (at your
 option) any later version. See [LICENSE](LICENSE).
@@ -42,6 +42,17 @@ comes from or is endorsed by dx.bi, without permission. Give your fork its own n
 - The sharpening shader follows AMD FidelityFX CAS (MIT).
 - Fonts: Bebas Neue and Inter (SIL Open Font License). Country flags: Twemoji (CC-BY 4.0) via
   Twemoji Country Flags by TalkJS (MIT).
+- dx.bi for iPhone plays video with [mpv](https://mpv.io) and [FFmpeg](https://ffmpeg.org) (both used
+  under the GPL) through [MPVKit](https://github.com/mpvkit/MPVKit) (LGPL/GPL), in
+  [Streamyfin's build](https://github.com/streamyfin/MPVKit) with its AVFoundation video output (GPL-3.0).
+  Its picture-in-picture and lock screen controls follow the approach of
+  [Seanime Tenji](https://github.com/5rahim/seanime-tenji) (MPL-2.0); no code was copied from it.
+- dx.bi for Android uses [Haze](https://github.com/chrisbanes/haze) by Chris Banes and
+  [Coil](https://github.com/coil-kt/coil) (both Apache 2.0), and casts with Google's Cast SDK (Google's
+  terms; it's only started when something is cast).
+- Cast photos in the phone apps come from [TMDB](https://www.themoviedb.org) (with a TMDB key) or from
+  Wikipedia and [Wikimedia Commons](https://commons.wikimedia.org), each under its own licence; they're
+  shown, never bundled.
 - dx.bi TV plays torrents with [libtorrent](https://libtorrent.org) by Arvid Norberg (BSD licence)
   through [libtorrent4j](https://github.com/aldenml/libtorrent4j) by Alden Torres (MIT licence), and
   serves them to its player with [NanoHTTPD](https://github.com/NanoHttpd/nanohttpd) (BSD 3-Clause).

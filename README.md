@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/notdxbi/dxbi-stremio/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/notdxbi/dxbi-stremio?label=release&color=e50914&style=flat-square"></a>
-  <img alt="Windows · macOS · Linux · Android TV · Fire TV" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV%20·%20Fire%20TV-222?style=flat-square">
+  <img alt="Windows · macOS · Linux · Android TV · Fire TV · Android · iPhone" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV%20·%20Fire%20TV%20·%20Android%20·%20iPhone-222?style=flat-square">
   <a href="NOTICE.md"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-222?style=flat-square"></a>
   <a href="https://discord.gg/nnVBjqZ84F"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
   <a href="https://buymeacoffee.com/notdxbi"><img alt="Buy Me a Coffee" src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=black"></a>
@@ -48,6 +48,8 @@ Pick your device below. It takes about two minutes.
 | Mac with an Intel chip | [**Download for Mac (Intel)**](https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi-mac-x64.dmg) |
 | Linux | [**Download for Linux**](https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi-linux-x86_64.AppImage) |
 | Android TV, Google TV, Fire TV | [**See the TV steps**](#on-a-tv) |
+| Android phone or tablet | [**Download for Android**](https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi-mobile.apk) · [steps](#on-an-android-phone) |
+| iPhone | [**See the iPhone steps**](#on-an-iphone) |
 
 Not sure which Mac you have? Click the Apple menu  → *About This Mac*. "Chip: Apple M…" means an Apple chip; "Processor: Intel" means Intel.
 
@@ -132,9 +134,43 @@ Good to know:
 
 - If dx.bi says the TV needs an update, update *Android System WebView* from the Play Store (on Fire TV: *Settings → My Fire TV → About → Check for Updates*).
 
+### On an Android phone
+
+dx.bi for Android is its own app, made for phones and tablets: native screens with Home, Discover, Search, Addons and Profile tabs, a player worked by touch, downloads, Chromecast and picture-in-picture. It installs next to dx.bi TV and doesn't replace it.
+
+**1. Download it.** On the phone, open [**dxbi-mobile.apk**](https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi-mobile.apk).
+
+**2. Install it.** Open the download. The first time, Android asks whether your browser (or Files app) may install apps: choose **Settings**, turn it on, go back, and choose **Install**.
+
+**3. Sign in** with your Stremio account.
+
+Good to know:
+
+- In the player: tap the middle to pause, double-tap a side to skip 10 seconds, slide across to seek, slide up and down on the left for brightness and on the right for volume, pinch to fill the screen, and hold for 2× (slide while holding for faster or slower).
+- *Profile → Playback & subtitles → Play videos in* sends every video to another app (VLC, mpv, MX Player…) instead. Where you stopped there comes back to Stremio.
+- Downloads: hold a stream (⋮) and choose *Download*. Debrid and direct streams can be downloaded; they play from *Profile → Downloads*, offline too.
+- dx.bi for Android offers its own updates and installs them (Android may ask you to confirm).
+
+### On an iPhone
+
+dx.bi for iPhone (iOS 26 or later) has its own screens in Apple's style, Liquid Glass included, and a player that plays MKV, HEVC, Dolby and DTS sound with picture-in-picture and lock screen controls. Apple only allows App Store apps to install directly, so it's installed with a sideloading app and your own free Apple ID.
+
+**1. Get a sideloading app.** [SideStore](https://sidestore.io) (refreshes the app on the phone itself), [AltStore](https://altstore.io) or, from a computer, [Sideloadly](https://sideloadly.io). Set it up with your Apple ID as its site explains.
+
+**2. Download dx.bi.** On the phone, open [**dxbi.ipa**](https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi.ipa) and save it to Files (or download it on the computer for Sideloadly).
+
+**3. Install it** with the sideloading app (in SideStore or AltStore: *My Apps → +*, then choose dxbi.ipa). Then **sign in** with your Stremio account.
+
+Good to know:
+
+- With a free Apple ID, apps you sideload have to be refreshed every 7 days. SideStore and AltStore do it for you; with Sideloadly, install it again.
+- Torrents don't play on the iPhone itself: they need dx.bi or Stremio running on a computer on the same Wi-Fi (*Profile → Playback → Streaming server*). Debrid streams play straight away.
+- *Profile → Playback → Play videos in* hands videos to Infuse, VLC, Outplayer or SenPlayer instead. Those can't tell Stremio where you stopped, so the episode counts as watched once it's opened there.
+- When there's a new release, dx.bi says so and opens its page: install the new dxbi.ipa over the old one and your sign-in, settings and downloads stay.
+
 ### After installing
 
-dx.bi keeps itself up to date. On Windows and Linux it downloads new versions in the background and offers to restart; on a Mac it tells you and you download the new version; on a TV it offers the update when it starts.
+dx.bi keeps itself up to date. On Windows and Linux it downloads new versions in the background and offers to restart; on a Mac it tells you and you download the new version; on a TV it offers the update when it starts; on an Android phone it offers and installs it; on an iPhone it opens the new release.
 
 - **Already used Stremio Enhanced?** The first time the computer app opens, it offers to copy your sign-in, library, settings and plugins over. Stremio Enhanced itself isn't changed.
 
@@ -553,7 +589,7 @@ With the plugin, that comes from a preview build of Stremio Enhanced (the dx.bi 
 
 ### Does it work on my phone or TV?
 
-On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). The same APK also installs on Android phones and tablets, upright or sideways. Upright, it has a phone layout with the tabs in a bar at the bottom. iPhones, iPads, LG (webOS) and Samsung (Tizen) TVs aren't supported.
+On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). Android phones and tablets have their own app, [dx.bi for Android](#on-an-android-phone), and iPhones have [dx.bi for iPhone](#on-an-iphone) (iOS 26 or later). LG (webOS) and Samsung (Tizen) TVs aren't supported.
 
 ### A friend can't connect to a party
 
@@ -578,6 +614,7 @@ dx.bi is free and open source under the [GNU GPL, version 3 or later](LICENSE): 
 - The plugin authors whose work showed what Stremio users want — TheIntroDB, Sul-404 (Addon Manager), Fxy and MrBlu03.
 - [Anime4K](https://github.com/bloc97/Anime4K) by bloc97 — the shaders behind Picture enhancement, included unmodified under the MIT licence ([LICENSE-ANIME4K](LICENSE-ANIME4K)).
 - Cinemeta and MetaHub for metadata and artwork; [Kitsu](https://kitsu.app) and [AniList](https://anilist.co) for anime scores; [TheIntroDB](https://theintrodb.org) and [AniSkip](https://aniskip.com) for skip times; [animefillerlist.com](https://www.animefillerlist.com) for the filler guide; [Wikidata](https://www.wikidata.org) (CC0) and [Wikipedia](https://en.wikipedia.org) (CC BY-SA) for review scores and critics' summaries; [MDBList](https://mdblist.com) for extra scores. Audience reviews come from [TMDB](https://www.themoviedb.org): this product uses the TMDB API but is not endorsed or certified by TMDB.
+- The phone apps: [mpv](https://mpv.io) through [MPVKit](https://github.com/mpvkit/MPVKit), in [Streamyfin's build](https://github.com/streamyfin/MPVKit) with its AVFoundation video output, plays video on iPhone; [Seanime Tenji](https://github.com/5rahim/seanime-tenji) showed how picture-in-picture and lock screen controls work with it. On Android: [Haze](https://github.com/chrisbanes/haze) by Chris Banes for the frosted tab bar and [Coil](https://coil-kt.github.io/coil/) for pictures. Cast photos come from TMDB (with a key) or [Wikipedia](https://en.wikipedia.org) and [Wikimedia Commons](https://commons.wikimedia.org) (each photo under its own licence).
 - Fonts: [Bebas Neue](https://github.com/dharmatype/Bebas-Neue) and [Inter](https://rsms.me/inter/) (SIL Open Font License).
 - Country flags: [Twemoji](https://github.com/jdecked/twemoji) graphics (CC-BY 4.0) via the [Twemoji Country Flags](https://github.com/talkjs/country-flag-emoji-polyfill) font by TalkJS (MIT).
 - Built with the help of [Claude Code](https://www.anthropic.com/claude-code).
