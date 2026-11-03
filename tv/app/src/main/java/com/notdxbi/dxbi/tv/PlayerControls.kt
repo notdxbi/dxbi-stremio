@@ -20,6 +20,23 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
+/** What the player needs from its controls: the remote's ([PlayerControls]) or a phone's ([PhoneControls]) */
+interface Controls {
+    val visible: Boolean
+    val panelOpen: Boolean
+    fun show()
+    fun hide()
+    /** Pressing anything keeps them up a while longer */
+    fun poke()
+    fun release()
+    /** Closes an open menu (true if one was open) */
+    fun closePanel(): Boolean
+    /** The remote inside an open menu (true if it took the key) */
+    fun panelKey(code: Int): Boolean
+    fun party(on: Boolean, code: String, people: List<String>)
+    fun fit(widthDp: Int, upright: Boolean)
+}
+
 /**
  * dx.bi's player controls: the same layout as on a computer (back at the top, then the times and
  * seek bar, playback on the left, the title in the middle, options on the right), worked by remote.
@@ -38,7 +55,7 @@ class PlayerControls(
     private val seek: (Int) -> Unit,
     private val leaveParty: () -> Unit,
     private val leave: (Boolean) -> Unit,
-) {
+) : Controls {
     private val root: View = activity.findViewById(R.id.controls)
     private val panel: View = activity.findViewById(R.id.panel)
     private val panelTitle: TextView = activity.findViewById(R.id.panel_title)
@@ -63,8 +80,8 @@ class PlayerControls(
     private val buttons = listOf(R.id.ctl_play, R.id.ctl_rewind, R.id.ctl_forward, R.id.ctl_next, R.id.ctl_stats, R.id.ctl_picture, R.id.ctl_speed, R.id.ctl_subtitles, R.id.ctl_audio, R.id.ctl_party)
         .map { activity.findViewById<View>(it) }
 
-    val visible get() = root.visibility == View.VISIBLE
-    val panelOpen get() = panel.visibility == View.VISIBLE
+    override val visible get() = root.visibility == View.VISIBLE
+    override val panelOpen get() = panel.visibility == View.VISIBLE
 
     init {
         line.accent = accent
@@ -101,7 +118,7 @@ class PlayerControls(
     }
 
     /** Upright on a phone: the title moves above the buttons, and they share the width */
-    fun fit(widthDp: Int, upright: Boolean) {
+    override fun fit(widthDp: Int, upright: Boolean) {
         val shown = buttons.count { it.visibility != View.GONE }
         val size = dp(minOf(52, (widthDp - 16) / shown - 2))
         for (button in buttons) {
@@ -126,7 +143,7 @@ class PlayerControls(
         }
     }
 
-    fun show() {
+    override fun show() {
         if (!visible) {
             root.visibility = View.VISIBLE
             if (clock != null) clock.visibility = View.VISIBLE
@@ -139,12 +156,12 @@ class PlayerControls(
     }
 
     /** Pressing anything keeps them up a while longer */
-    fun poke() {
+    override fun poke() {
         handler.removeCallbacks(hide)
         handler.postDelayed(hide, HIDE_AFTER_MS)
     }
 
-    fun hide() {
+    override fun hide() {
         closePanel()
         root.visibility = View.GONE
         clock?.visibility = View.GONE
@@ -154,7 +171,7 @@ class PlayerControls(
         playerView.requestFocus()
     }
 
-    fun release() = handler.removeCallbacksAndMessages(null)
+    override fun release() = handler.removeCallbacksAndMessages(null)
 
     fun paint() {
         play.setImageResource(if (exo.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play)
@@ -175,7 +192,7 @@ class PlayerControls(
     }
 
     /** The remote stays inside an open menu: up and down move through it, sideways does nothing */
-    fun panelKey(code: Int): Boolean {
+    override fun panelKey(code: Int): Boolean {
         if (!panelOpen) return false
         val rows = (0 until panelRows.childCount).map { panelRows.getChildAt(it) }.filter { it.isFocusable }
         val at = rows.indexOf(panelRows.findFocus())
@@ -188,7 +205,7 @@ class PlayerControls(
         return true
     }
 
-    fun closePanel(): Boolean {
+    override fun closePanel(): Boolean {
         if (!panelOpen) return false
         panel.visibility = View.GONE
         stats = null
@@ -241,7 +258,7 @@ class PlayerControls(
     private var partyPeople = emptyList<String>()
 
     /** The Party button shows while this viewer is in a watch party */
-    fun party(on: Boolean, code: String, people: List<String>) {
+    override fun party(on: Boolean, code: String, people: List<String>) {
         partyCode = code
         partyPeople = people
         val button = activity.findViewById<View>(R.id.ctl_party)

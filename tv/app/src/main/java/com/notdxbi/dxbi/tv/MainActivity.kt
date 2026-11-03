@@ -74,8 +74,11 @@ class MainActivity : AppCompatActivity() {
         val root = FrameLayout(this)
         root.addView(web, webSize())
         setContentView(root)
-        // Only when dx.bi is opened, not when the screen is rebuilt (after a page crash, a turned phone)
-        if (savedInstanceState == null) intro = Intro(this, root).also { it.start() }
+        // dx.bi for phones: its own screens over the page (nothing in dx.bi TV: see PhoneHooks.kt)
+        Phone.attach(this, root, ::js)
+        // Only when dx.bi is opened, not when the screen is rebuilt (after a page crash, a turned phone).
+        // (not in the phone app: the film is made for a TV screen)
+        if (savedInstanceState == null && !BuildConfig.PHONE_UI) intro = Intro(this, root).also { it.start() }
         web.setBackgroundColor(getColor(R.color.background))
         web.isFocusable = true
         web.isFocusableInTouchMode = true
@@ -97,7 +100,7 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
         web.addJavascriptInterface(Bridge(this), "DxbiTV")
-        val startScript = assets.open("dxbi-tv.js").bufferedReader().use { it.readText() }.replace(Bridge.PLACEHOLDER, Bridge.TOKEN)
+        val startScript = (assets.open("dxbi-tv.js").bufferedReader().use { it.readText() } + Phone.pageScript(this)).replace(Bridge.PLACEHOLDER, Bridge.TOKEN)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(web, startScript, setOf(STREMIO_ORIGIN))
             injectedAtStart = true
@@ -116,6 +119,7 @@ class MainActivity : AppCompatActivity() {
             // The page's engine crashed, or Android took its memory back (TVs with 1.5–2 GB): without
             // this, Android closes dx.bi straight back to the home screen
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                Phone.pageGone()
                 recoverFromCrash(detail.didCrash())
                 return true
             }
@@ -241,6 +245,8 @@ class MainActivity : AppCompatActivity() {
 
     fun play(json: String) {
         PlaybackBus.started(json)
+        // (the phone app can send it to another app, a Chromecast or a download instead)
+        if (Phone.play(this, json)) return
         startActivity(Intent(this, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_STREAM, json))
     }
 
