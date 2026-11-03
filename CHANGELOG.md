@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.28.0
+
+- **dx.bi for Android phones.** A new app made for phones and tablets: native screens, a player made for touch with picture-in-picture, downloads, Chromecast and other players. It installs next to dx.bi TV (`dxbi-mobile.apk`). Built by osayed0001 (#67).
+- **dx.bi for iPhone.** dx.bi on iPhone (iOS 26 and later), in Apple's style with Liquid Glass, with a player that plays MKV, HEVC, Dolby and DTS, picture-in-picture, and downloads. Install it with SideStore, AltStore or Sideloadly (`dxbi.ipa`). Built by osayed0001 (#67).
+- **Dropped subtitle files work on Windows.** SRT and VTT files dropped onto the player could be ignored when Windows didn't say what kind of file they were, or when they started with a byte order mark or a cue other than 1 (EskimoDev, #66).
+
 ## 2.27.0
 
 - **Times match your device's clock.** The player clock, *Ends at* and episode air times now use the clock your computer or TV shows. Places that changed their clock rules, like British Columbia keeping summer time from November 2026, showed an hour out because the app's built-in time zone rules were older than your system's. Stremio Enhanced users still get the browser's time.
