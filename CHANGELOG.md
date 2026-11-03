@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.27.0
+
+- **Times match your device's clock.** The player clock, *Ends at* and episode air times now use the clock your computer or TV shows. Places that changed their clock rules, like British Columbia keeping summer time from November 2026, showed an hour out because the app's built-in time zone rules were older than your system's. Stremio Enhanced users still get the browser's time.
+- **Choose where the streaming cache goes.** The desktop app now has *Cache folder* in Settings → dx.bi → About, under Streaming. Pick a folder on a bigger drive and new streams are cached there, with no restart needed. It also shows where the cache is now (#64).
+- **Remove in Continue Watching works again.** It opened the series instead of removing the title (#61, fixed by EskimoDev in #63).
+- **Video in Windows taskbar previews.** With mpv playing, the taskbar thumbnail and Alt+Tab showed a blank window. They now show the video (EskimoDev, #62).
+
 ## 2.26.2
 
 - **Your accent colour stays by default.** Titles no longer recolour the page and player unless you turn on *Match each title's colours* in Settings under Look. If it was on, it goes back to off once with this update.

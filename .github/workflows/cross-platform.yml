@@ -58,6 +58,8 @@ jobs:
         run: node tools/party-roles-test.mjs
       - name: Just press Play picks the right stream
         run: node tools/quick-play-test.mjs
+      - name: Times follow the device's clock
+        run: node tools/device-clock-test.mjs
 
       # The one-liners from the README, exactly as users run them (downloads the latest release)
       - name: Published installer (Windows PowerShell 5.1)

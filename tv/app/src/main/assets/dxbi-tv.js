@@ -22,12 +22,15 @@
     findServers: () => bridge.findServers(TOKEN),
     torrentUrl: (json) => (bridge.torrentUrl ? bridge.torrentUrl(TOKEN, json) : ""),
     deviceInfo: () => { try { return JSON.parse(bridge.deviceInfo ? bridge.deviceInfo(TOKEN) : "{}"); } catch (_) { return {}; } },
+    utcOffset: () => { try { return bridge.utcOffset ? bridge.utcOffset(TOKEN) : null; } catch (_) { return null; } },
   };
 
   const PLUGIN = "dxbi.plugin.js";
   const tv = (window.__dxbiTv = {});
   // problem reports (the plugin's `report`) add these
   tv.deviceInfo = () => native.deviceInfo();
+  // the device clock's offset from UTC in minutes (the plugin's deviceClock)
+  tv.utcOffset = () => native.utcOffset();
   // the app plays the intro film itself (Intro.kt): the plugin's splash stays out of the way
   tv.nativeIntro = true;
 
