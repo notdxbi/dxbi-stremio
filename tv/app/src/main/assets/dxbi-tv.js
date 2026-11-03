@@ -231,6 +231,8 @@
   }
 
   function toast(text, ms = 4500) {
+    // Behind the phone app's own screens the page can't be seen: the app shows it
+    if (window.__dxbiEngine && bridge.toast) { bridge.toast(TOKEN, String(text)); return; }
     ensureStyle();
     document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
     const el = document.createElement("div");
@@ -389,6 +391,22 @@
     render();
   }
 
+  // dx.bi's phone app draws the same list itself: what's in it, and saving a change
+  tv.settings = () => {
+    const plugin = PLUGIN.replace(/\.plugin\.js$/, "");
+    const values = readSettings(plugin);
+    return (schemas[plugin] || []).filter((o) => !DESKTOP_ONLY.has(o.key) && o.key !== "focusColour").map((o) => ({
+      key: o.key,
+      type: o.type,
+      label: forDevice(o.label),
+      description: forDevice(o.description || ""),
+      group: o.group || "",
+      options: (o.options || []).map((x) => ({ value: x.value, label: x.label })),
+      value: values[o.key] === undefined ? o.defaultValue : values[o.key],
+    }));
+  };
+  tv.saveSetting = (key, value) => api.saveSetting(PLUGIN.replace(/\.plugin\.js$/, ""), key, value);
+
   function ensureSettingsEntry() {
     if (!/^#\/settings/.test(location.hash)) return;
     // also in Settings' own list (General, Interface… Shortcuts), where people look for it
@@ -495,7 +513,8 @@
       count[lang] = (count[lang] || 0) + 1;
       if (count[lang] > 3) continue;
       // "English", "English 2", "English 3"
-      out.push({ url: sub.url, lang, label: subtitleLabel(lang) + (count[lang] > 1 ? ` ${count[lang]}` : "") });
+      // (where it came from: the stream's own, or a subtitle addon's search by title, which may not fit this release)
+      out.push({ url: sub.url, lang, label: subtitleLabel(lang) + (count[lang] > 1 ? ` ${count[lang]}` : ""), source: sub.source || "addon" });
       if (out.length >= 45) break;
     }
     return out;
@@ -559,6 +578,13 @@
     // on in dx.bi settings (off by default: debrid, or a computer's streaming server, is the usual way);
     // otherwise the choice is offered for this stream
     let torrent = false;
+    // (an iPhone can't download torrents itself: without a streaming server they can't play)
+    if (!url && stream.infoHash && !bridge.torrentUrl) {
+      handoff = null;
+      if (location.hash === hash) history.back();
+      toast("This is a torrent, and it needs a streaming server: set one in Settings, or pick a debrid stream.", 7000);
+      return;
+    }
     if (!url && stream.infoHash) {
       let onTv = playHereOnce === hash || readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents === true;
       playHereOnce = null;
@@ -603,7 +629,10 @@
     const resumeMs = lib && lib.video_id === videoId && lib.timeOffset > 0 ? lib.timeOffset : 0;
     const headers = (stream.behaviorHints && stream.behaviorHints.proxyHeaders && stream.behaviorHints.proxyHeaders.request) || {};
     // the stream's own subtitle files first, then the subtitle addons'
-    const subtitles = await pickSubtitles([...(stream.subtitles || []), ...(state.subtitles || [])]);
+    const subtitles = await pickSubtitles([
+      ...(stream.subtitles || []).map((s) => ({ ...s, source: "stream" })),
+      ...(state.subtitles || []).map((s) => ({ ...s, source: "addon" })),
+    ]);
     const episode = video && video.season != null ? `S${video.season} E${video.episode}${video.title || video.name ? ` · ${video.title || video.name}` : ""}` : "";
 
     const profile = await profileSettings();
@@ -646,6 +675,8 @@
       headers,
       subtitles,
       background: meta.background || meta.poster || "",
+      // (the lock screen's picture)
+      poster: meta.poster || "",
     }));
   }
 
@@ -711,9 +742,16 @@
     native.control({ cmd: "party", on: !!info, code: info ? info.code : "", people: info ? info.people : [] });
   }, 1000);
 
-  // The native player reports where it is every few seconds, and once more when it closes
+  // The native player reports where it is every few seconds, and once more when it closes.
+  // The phone apps: Watch stats count the time between reports while it plays (a long gap, asleep
+  // or stalled, doesn't)
+  let playingSince = 0;
   tv.onProgress = (timeMs, durationMs, paused) => {
     if (!handoff || !/^#\/player\//.test(location.hash)) return;
+    const now = Date.now();
+    const dx = window.__dxbi;
+    if (window.__dxbiEngine && !paused && playingSince && now - playingSince < 15000 && dx && dx.statsPlayed) dx.statsPlayed((now - playingSince) / 1000);
+    playingSince = paused ? 0 : now;
     silenceWebPlayer();
     dispatch({ action: "Player", args: { action: "TimeChanged", args: { time: Math.max(0, Math.round(timeMs)), duration: Math.max(0, Math.round(durationMs)), device: "dxbi-tv" } } });
     dispatch({ action: "Player", args: { action: "PausedChanged", args: { paused: !!paused } } });
