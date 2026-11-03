@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron";
+import { ipcRenderer, webFrame } from "electron";
 import Helpers from "../../../utils/Helpers";
 import Updater from "../../../core/Updater";
 import logger from "../../../utils/logger";
@@ -170,6 +170,82 @@ export function setupMpvPlayerToggle(): void {
             const on = toggle.classList.contains(CLASSES.CHECKED);
             ipcRenderer.send(IPC_CHANNELS.MPV_SET_ENABLED, on);
             alertAPI.showAlert("info", "Video player changed", "Restart dx.bi to use the new player.", ["OK"]);
+        });
+    }).catch(() => {});
+}
+
+// Where the streaming server keeps torrent data. The server reads "cacheRoot" from its own settings
+// (server-settings.json, also through POST /settings) and puts the cache in <cacheRoot>/stremio-cache;
+// it looks the folder up for every new torrent, so a change applies without a restart. Stremio's
+// own settings only offer the cache size.
+const SERVER = "http://127.0.0.1:11470";
+
+async function serverValues(): Promise<{ cacheRoot?: string; appPath?: string } | null> {
+    try {
+        const r = await fetch(`${SERVER}/settings`, { signal: AbortSignal.timeout(4000) });
+        return r.ok ? ((await r.json()).values || {}) : null;
+    } catch { return null; }
+}
+
+export function setupCacheFolder(): void {
+    Helpers.waitForElm('#enableTransparentThemes').then(async () => {
+        if (document.getElementById("dxbiCacheFolder")) return;
+        const heading = [...document.querySelectorAll("h5")].find((h) => h.textContent?.trim() === "Window");
+        if (!heading) return;
+        const sep = process.platform === "win32" ? "\\" : "/";
+        const html = `
+<h5 style="margin: 1.6rem 0 0.9rem; font-size: 0.8em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8d8d96;">Streaming</h5>
+<div class="option-vFOAS" id="dxbiCacheFolder">
+    <div class="heading-dYMDt">
+        <div class="label-qI6Vh">Cache folder</div>
+    </div>
+    <div class="content-P2T0i" style="display:flex; gap:0.6rem;">
+        <div tabindex="0" title="Choose where the cache goes" class="button-DNmYL button-container-zVLH6 button" style="flex:1; min-width:0;" id="dxbiCacheChange">Choose</div>
+        <div tabindex="0" title="Put the cache back in its usual place" class="button-DNmYL button-container-zVLH6 button" style="flex:1; min-width:0;" id="dxbiCacheReset">Default</div>
+    </div>
+</div>
+<p style="color:rgb(204, 204, 204);">Videos you stream are cached in <b id="dxbiCachePath" style="word-break: break-all;">…</b>. Pick another folder, such as one on a bigger drive, and new streams are cached there (in a <i>stremio-cache</i> folder inside it). The cache size is in Settings → Streaming. Anything already cached stays in the old folder until you delete it.</p>
+<br/>`;
+        heading.insertAdjacentHTML("beforebegin", html);
+        const label = document.getElementById("dxbiCachePath");
+        const show = async () => {
+            const v = await serverValues();
+            if (!label) return;
+            label.textContent = v && v.cacheRoot ? `${v.cacheRoot}${sep}stremio-cache` : "the streaming server's folder (it isn't running right now)";
+            return v;
+        };
+        const save = async (cacheRoot: string) => {
+            try {
+                const r = await fetch(`${SERVER}/settings`, {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ cacheRoot }),
+                    signal: AbortSignal.timeout(5000),
+                });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                logger.info(`Streaming cache folder set to ${cacheRoot}`);
+                // Stremio keeps its own copy of the server's settings and sends all of it back when
+                // you change one (the cache size, say): have it read them again, or it'd undo this
+                await webFrame.executeJavaScript(`(() => {
+                    const core = window.core || (window.services && window.services.core);
+                    if (core && core.dispatch) core.dispatch({ action: "StreamingServer", args: { action: "Reload" } });
+                })()`).catch(() => { /* Stremio picks it up next time it loads them */ });
+            } catch (err) {
+                logger.warn(`Couldn't change the cache folder: ${err}`);
+                await alertAPI.showAlert("warning", "Cache folder not changed", "The streaming server didn't answer. Make sure it's running (Settings → Streaming), then try again.", ["OK"]);
+            }
+            await show();
+        };
+        void show();
+        document.getElementById("dxbiCacheChange")?.addEventListener("click", async () => {
+            const v = await serverValues();
+            const picked: string | null = await ipcRenderer.invoke(IPC_CHANNELS.PICK_FOLDER, "Choose a folder for the streaming cache", v?.cacheRoot || "");
+            if (picked) await save(picked);
+        });
+        document.getElementById("dxbiCacheReset")?.addEventListener("click", async () => {
+            const v = await serverValues();
+            if (v && v.appPath) await save(v.appPath);
+            else await alertAPI.showAlert("warning", "Cache folder not changed", "The streaming server didn't answer. Make sure it's running (Settings → Streaming), then try again.", ["OK"]);
         });
     }).catch(() => {});
 }

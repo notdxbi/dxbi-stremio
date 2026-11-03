@@ -20,6 +20,8 @@ import { setupWindowControls } from "./controllers/windowController";
 import { setupUpdater } from "./controllers/updaterController";
 import { setupWindowTransparency } from "./controllers/transparencyController";
 import { gpuController } from "./controllers/gpuController";
+import DeviceClock from "./core/DeviceClock";
+import FolderPicker from "./core/FolderPicker";
 import { externalPlayerController } from "./controllers/externalPlayerController";
 import { offerEnhancedImport, seedBuiltInPlugin } from "./core/BuiltIn";
 import MpvShell from "./core/MpvShell";
@@ -238,6 +240,8 @@ app.on("ready", async () => {
     setupAutoUpdate(() => mainWindow);
     setupWindowTransparency(transparencyFlagPath, transparencyEnabled);
     gpuController.initIPC(userDataPath);
+    DeviceClock.initIPC();
+    FolderPicker.initIPC();
     externalPlayerController.initIPC();
 
     // macOS: protocol URLs are sent via 'open-url'

@@ -106,6 +106,15 @@ class Bridge(private val activity: MainActivity) {
     }
 
     /** The device, for problem reports: model, Android, WebView, memory, the torrent engine's state */
+    /**
+     * Minutes ahead of UTC on the device's own clock. Android's time zone rules are updated with the
+     * system; the WebView's built-in ones can be older (British Columbia's 2026 change put the page
+     * an hour behind), so the plugin formats times with this offset.
+     */
+    @JavascriptInterface
+    fun utcOffset(token: String): Int =
+        if (!allowed(token)) 0 else java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000
+
     @JavascriptInterface
     fun deviceInfo(token: String): String {
         if (!allowed(token)) return "{}"

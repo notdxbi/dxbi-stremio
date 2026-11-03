@@ -91,6 +91,8 @@ export const IPC_CHANNELS = {
     UPDATE_CHECK_USER: 'update-check-userrequest',
     FULLSCREEN_CHANGED: 'fullscreen-changed',
     GET_GPU_RENDERER: 'get-gpu-renderer',
+    DEVICE_UTC_OFFSET: 'dxbi-device-utc-offset',
+    PICK_FOLDER: 'dxbi-pick-folder',
     SET_GPU_RENDERER: 'set-gpu-renderer',
     SHOW_ALERT: 'show-alert',
     LAUNCH_EXTERNAL_PLAYER: 'launch-external-player',

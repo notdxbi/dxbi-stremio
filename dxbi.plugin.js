@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.26.2
+ * @version 2.27.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.26.2"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.27.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -10666,7 +10666,7 @@
       const date = new Date();
       const day = dayKey(date);
       d.days[day] = (d.days[day] || 0) + sec;
-      const hour = date.getHours();
+      const hour = deviceClock.wall(date).h;
       d.hours[hour] = (d.hours[hour] || 0) + sec;
       const m = this.media;
       if (m) {
@@ -11314,14 +11314,64 @@
     },
   };
 
+  // ---------------------------------------------------------------------------
+  // Device clock: times on screen follow the clock the device itself shows. Chromium's built-in
+  // time zone rules go stale when a place changes its own (British Columbia kept summer time from
+  // November 2026 and dx.bi showed an hour behind the Mac's clock), so the app and the TV app pass
+  // the system's own offset from UTC. Stremio Enhanced has no way to ask: browser time there.
+  // ---------------------------------------------------------------------------
+
+  const deviceClock = {
+    offset: null, // minutes ahead of UTC, from the system
+    checked: 0,
+    pending: null,
+
+    refresh() {
+      if (this.pending) return this.pending;
+      this.checked = Date.now();
+      this.pending = (async () => {
+        let v = null;
+        try {
+          if (window.__dxbiTv && typeof window.__dxbiTv.utcOffset === "function") v = window.__dxbiTv.utcOffset();
+          else if (IN_APP && window.StremioEnhancedAPI && typeof window.StremioEnhancedAPI.deviceUtcOffset === "function") v = await window.StremioEnhancedAPI.deviceUtcOffset();
+        } catch (_) { /* older app: browser time */ }
+        this.offset = typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 18 * 60 ? v : null;
+        this.pending = null;
+      })();
+      return this.pending;
+    },
+
+    // The device's offset for this moment, when it disagrees with the browser's; else null
+    shift(date) {
+      if (Date.now() - this.checked > 60000) this.refresh(); // clocks change at DST and when you travel
+      const browser = -date.getTimezoneOffset();
+      return this.offset === null || this.offset === browser ? null : this.offset;
+    },
+
+    // A date whose UTC fields read as the device's wall clock
+    wall(date) {
+      const off = this.shift(date);
+      const d = new Date(date.getTime() + (off === null ? -date.getTimezoneOffset() : off) * 60000);
+      return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate(), h: d.getUTCHours(), day: d.getUTCDay(), utc: d };
+    },
+
+    time(date, opts) {
+      const off = this.shift(date);
+      if (off === null) return date.toLocaleTimeString(undefined, opts);
+      return new Date(date.getTime() + off * 60000).toLocaleTimeString(undefined, { ...opts, timeZone: "UTC" });
+    },
+  };
+  deviceClock.refresh();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) deviceClock.refresh(); });
+
   function whenText(t) {
     const d = new Date(t);
-    const now = new Date();
-    const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
-    const dayName = days === 0 ? "Today" : days === 1 ? "Tomorrow" : days === -1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long" });
+    const a = deviceClock.wall(d), b = deviceClock.wall(new Date(Date.now()));
+    const days = Math.round((Date.UTC(a.y, a.m, a.d) - Date.UTC(b.y, b.m, b.d)) / 86400000);
+    const dayName = days === 0 ? "Today" : days === 1 ? "Tomorrow" : days === -1 ? "Yesterday" : a.utc.toLocaleDateString(undefined, { weekday: "long", timeZone: "UTC" });
     // dates without a real time come through as midnight UTC: show the day only
     const hasTime = !(d.getUTCHours() === 0 && d.getUTCMinutes() === 0);
-    return hasTime ? `${dayName} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}` : dayName;
+    return hasTime ? `${dayName} ${deviceClock.time(d, { hour: "2-digit", minute: "2-digit" })}` : dayName;
   }
 
   function countdownText(t) {
@@ -11401,7 +11451,7 @@
   function endsAtText(minutesLeft) {
     if (!(minutesLeft > 0)) return "";
     const end = new Date(Date.now() + minutesLeft * 60000);
-    return `Ends at ${end.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+    return `Ends at ${deviceClock.time(end, { hour: "numeric", minute: "2-digit" })}`;
   }
 
   const endsAt = {
@@ -12173,7 +12223,7 @@
 
     tick() {
       if (!this.el || !this.el.isConnected || document.hidden) return;
-      const time = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      const time = (d) => deviceClock.time(d, { hour: "numeric", minute: "2-digit" });
       const v = document.querySelector('[class*="player-container"] video');
       const left = v && Number.isFinite(v.duration) && v.duration > 0 ? (v.duration - v.currentTime) / (v.playbackRate || 1) : 0;
       const text = time(new Date()) + (left > 0 ? ` · Ends at ${time(new Date(Date.now() + left * 1000))}` : "");
