@@ -160,13 +160,18 @@ function serveClip() {
 }
 
 const stream = { url: `http://127.0.0.1:${CLIP_PORT}/clip.mp4`, name: "dx.bi test", title: "external player" };
-const playerHash = `#/player/${encodeURIComponent(zlib.deflateSync(Buffer.from(JSON.stringify(stream))).toString("base64"))}/${encodeURIComponent(`http://127.0.0.1:${CLIP_PORT}/manifest.json`)}/${encodeURIComponent("https://v3-cinemeta.strem.io/manifest.json")}/movie/${MOVIE}/${MOVIE}`;
+const playerHashFor = (type, metaId, videoId) => `#/player/${encodeURIComponent(zlib.deflateSync(Buffer.from(JSON.stringify(stream))).toString("base64"))}/${encodeURIComponent(`http://127.0.0.1:${CLIP_PORT}/manifest.json`)}/${encodeURIComponent("https://v3-cinemeta.strem.io/manifest.json")}/${type}/${metaId}/${encodeURIComponent(videoId)}`;
+const playerHash = playerHashFor("movie", MOVIE, MOVIE);
+// A series episode (Breaking Bad S1 E1), and the one after it
+const SERIES = "tt0903747";
+const EPISODE = `${SERIES}:1:1`;
+const NEXT_EPISODE = `${SERIES}:1:2`;
 
 // Press Play: dx.bi hands the stream to mpv. Returns mpv's socket
-async function play(before) {
+async function play(before, hash = playerHash) {
   await evaluate(`location.hash = "#/"; true`);
   await sleep(500);
-  await evaluate(`location.hash = ${JSON.stringify(playerHash)}; true`);
+  await evaluate(`location.hash = ${JSON.stringify(hash)}; true`);
   const socket = await waitFor("mpv to open", () => mpvSockets().find((s) => !before.includes(s)), 30000);
   await waitFor("mpv to play", async () => (await mpv(socket, ["get_property", "time-pos"]).catch(() => null)) > 0.5, 30000);
   return socket;
@@ -282,6 +287,32 @@ async function main() {
     return c && Math.abs((c.progress / 100) * CLIP_SECONDS - closedAt2) < 2.5 ? c : null;
   }, 10000).catch(() => null);
   check(cw2, `Continue Watching has it at ${closedAt2.toFixed(1)} s`, `Continue Watching didn't move to ${closedAt2.toFixed(1)} s`);
+
+  // 5. A series episode played to the end after skipping most of it (the opening, a recap…): Stremio
+  // moves Continue Watching on, and the episode gets its watched tag too
+  console.log("\nA series episode, skipped through to the end");
+  socket = await play([], playerHashFor("series", SERIES, EPISODE));
+  await sleep(2000);
+  await mpv(socket, ["set_property", "time-pos", 48]);
+  await waitFor("the episode to end", () => !mpvSockets().includes(socket), 60000).catch((e) => fail(e.message));
+  await waitFor("the pop-up to go", () => evaluate(`!document.getElementById("dxbi-ext-progress")`), 10000).catch((e) => fail(e.message));
+  await evaluate(`location.hash = "#/detail/series/${SERIES}/${encodeURIComponent(EPISODE)}"; true`);
+  const details = await waitFor("the series page", async () => {
+    const md = await coreState("meta_details");
+    const meta = md?.metaItem?.content?.type === "Ready" && md.metaItem.content.content;
+    return meta && md.libraryItem ? { md, meta } : null;
+  }, 20000).catch(async (e) => {
+    fail(e.message);
+    const md = await coreState("meta_details").catch(() => null);
+    console.log("  meta_details: " + JSON.stringify(md, (k, v) => (k === "videos" ? `[${v.length} videos]` : v)).slice(0, 1500));
+    return null;
+  });
+  if (details) {
+    const state = details.md.libraryItem.state;
+    const video = (details.meta.videos || []).find((v) => v.id === EPISODE);
+    check(video?.watched === true, "the episode has its watched tag", `the episode isn't tagged watched (library: ${JSON.stringify({ ...state, watched: state.watched ? "…" : state.watched })})`);
+    check(state.video_id === NEXT_EPISODE, "Continue Watching moved to the next episode", `Continue Watching is on ${state.video_id}`);
+  }
 }
 
 let exitCode = 0;
