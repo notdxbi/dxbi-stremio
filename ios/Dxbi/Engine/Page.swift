@@ -124,6 +124,13 @@ final class Page: NSObject {
             toast: (t, text) => post({ op: "toast", text }),
             engine: (t, json) => post({ op: "engine", json }),
             findServers: () => post({ op: "findServers" }),
+            // Whether the streaming server answers (the page itself isn't allowed to reach an http:// one)
+            serverUp: (t, url) => new Promise((resolve) => {
+              const id = (ios.asked = (ios.asked || 0) + 1);
+              (ios.answers = ios.answers || {})[id] = resolve;
+              post({ op: "serverUp", id, url });
+              setTimeout(() => { if (ios.answers[id]) { delete ios.answers[id]; resolve(false); } }, 8000);
+            }),
             deviceInfo: () => \(Json.quote(Json.encode(device))),
             // minutes ahead of UTC on the phone's own clock (the plugin's deviceClock: times as the phone shows them)
             utcOffset: () => ios.utcOffset,
@@ -201,6 +208,16 @@ final class Page: NSObject {
         settings.set(Json.encode(all), forKey: "plugin-settings")
     }
 
+    /** Stremio's streaming server at [address] answers (its settings, as Stremio asks for them) */
+    nonisolated static func serverAnswers(_ address: String) async -> Bool {
+        guard let base = URL(string: address.hasSuffix("/") ? address : address + "/"),
+              base.scheme == "http" || base.scheme == "https" else { return false }
+        var request = URLRequest(url: base.appending(path: "settings"), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        request.httpMethod = "GET"
+        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0) < 500
+    }
+
     fileprivate func received(_ message: WKScriptMessage) {
         // Only Stremio's own page, not a trailer or anything else it embeds
         guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == "web.stremio.com",
@@ -212,6 +229,12 @@ final class Page: NSObject {
         case "saveSetting": saveSetting(plugin: body.string("plugin"), key: body.string("key"), valueJson: body.string("value"))
         case "openExternal": if let url = URL(string: body.string("url")) { UIApplication.shared.open(url) }
         case "toast": onToast?(body.string("text"))
+        case "serverUp":
+            let id = body.int("id")
+            Task { @MainActor in
+                let up = await Self.serverAnswers(body.string("url"))
+                js("(function (a) { const f = a && a[\(id)]; if (f) { delete a[\(id)]; f(\(up)); } })(window.__dxbiIos && window.__dxbiIos.answers)")
+            }
         case "findServers":
             // (not looked for yet on iPhone: Settings → Streaming server takes an address)
             js("window.__dxbiTv && window.__dxbiTv.serversFound && window.__dxbiTv.serversFound([])")
