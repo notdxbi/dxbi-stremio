@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.31.1
+
+- **Downloads play straight from your computer.** On the desktop app, *Play downloaded* sent many files through the streaming server's converter, the same way an online stream is converted, so skipping through buffered while VLC played the same file smoothly. Stremio only plays a file directly when it's H.264, HEVC, VP8 or VP9 with no subtitle tracks inside, so AV1 releases and almost anything with built-in subtitles (most anime and Blu-ray releases) were converted on the fly. Downloads now play directly from the disk whenever this PC can decode them, and skipping is instant. Files it can't decode (DTS or AC3 sound, for example) are still converted.
+- **Subtitles inside a downloaded video are kept.** They're copied out beside the video when a download finishes (and for downloads you already have, the next time dx.bi starts), so every language still shows in the subtitle menu, even offline.
+
 ## 2.31.0
 
 - **Downloads, like Netflix.** Save films and episodes to watch without internet, in the dx.bi desktop app and the Android phone app. Films get a Download button, every episode gets a ⬇ button, and a season downloads with one press of *Download season*. You choose the quality each time (Best, 4K, 1080p, 720p or Smallest file), or once in Downloads → Settings, or choose the source yourself: on a computer, press ⬇ on any stream in the list; on a phone, use *Choose the source myself*. dx.bi checks each link first and skips debrid streams that aren't actually ready. Subtitles in your language and the artwork are saved too, and downloads play in dx.bi's own player with your progress kept, even with no connection at all.

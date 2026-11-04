@@ -108,7 +108,7 @@ for (const name of ["spawn", "spawnSync", "execFile", "execFileSync", "exec", "e
     }
 
     // Get the best available ffmpeg path (prefer system, fallback to downloaded)
-    private static getFFmpegPath(): string {
+    public static getFFmpegPath(): string {
         // First, try system ffmpeg
         const systemFFmpeg = this.getSystemBinaryPath("ffmpeg");
         if (systemFFmpeg) {
@@ -123,7 +123,7 @@ for (const name of ["spawn", "spawnSync", "execFile", "execFileSync", "exec", "e
     }
 
     // Get the best available ffprobe path (prefer system, fallback to downloaded)
-    private static getFFprobePath(): string {
+    public static getFFprobePath(): string {
         // First, try system ffprobe
         const systemFFprobe = this.getSystemBinaryPath("ffprobe");
         if (systemFFprobe) {

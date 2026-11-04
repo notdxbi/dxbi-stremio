@@ -5,7 +5,10 @@ import { randomBytes } from "crypto";
 import { createReadStream, existsSync, promises as fsp, readFileSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, extname, join } from "path";
 import { homedir } from "os";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { IPC_CHANNELS } from "../constants";
+import StreamingServer from "../utils/StreamingServer";
 import { getLogger } from "../utils/logger";
 
 const logger = getLogger("Downloads");
@@ -22,7 +25,7 @@ const logger = getLogger("Downloads");
 
 type State = "queued" | "downloading" | "paused" | "done" | "failed";
 
-interface Subtitle { lang: string; url?: string; file?: string }
+interface Subtitle { lang: string; url?: string; file?: string; embedded?: boolean }
 
 interface Entry {
     id: string;
@@ -56,6 +59,8 @@ interface Entry {
     addedAt: number;
     doneAt: number;
     watchedAt: number;
+    /** the video's own subtitle tracks have been copied out beside it */
+    embedded?: boolean;
 }
 
 interface Settings {
@@ -125,6 +130,10 @@ class DownloadsImpl {
         }
         this.startServer();
         this.initIPC();
+        // (downloads from before subtitles were copied out of the video: done now, one at a time)
+        setTimeout(async () => {
+            for (const e of this.entries) if (e.state === "done" && !e.embedded) await this.extractEmbedded(e);
+        }, 8000);
         this.sweep();
         setInterval(() => this.sweep(), 30 * 60 * 1000);
         setTimeout(() => this.pump(), 4000);
@@ -189,7 +198,7 @@ class DownloadsImpl {
             link: e.link,
             play: e.state === "done" ? {
                 url: `${base}/${encodeURIComponent(e.id)}/video${extname(e.file) || ".mkv"}`,
-                subtitles: e.subtitles.map((s, i) => s.file ? { lang: s.lang, url: `${base}/${encodeURIComponent(e.id)}/sub/${i}` } : null).filter(Boolean),
+                subtitles: e.subtitles.map((s, i) => s.file ? { lang: s.lang, url: `${base}/${encodeURIComponent(e.id)}/sub/${i}`, embedded: !!s.embedded } : null).filter(Boolean),
             } : null,
         }));
     }
@@ -353,6 +362,7 @@ class DownloadsImpl {
             }
             if (!control.signal.aborted) {
                 await this.saveSubtitles(e);
+                await this.extractEmbedded(e);
                 e.state = "done";
                 e.error = "";
                 e.doneAt = Date.now();
@@ -517,6 +527,45 @@ class DownloadsImpl {
                 await fsp.writeFile(name + ext, text);
                 s.file = name + ext;
             } catch { /* a subtitle that won't load isn't worth failing the video for */ }
+        }
+    }
+
+    /**
+     * The subtitles inside the video, copied out as files beside it (Film.eng.embedded.srt). The
+     * file then plays straight from the disk (a browser can't show subtitles inside a video, so
+     * Stremio would otherwise convert the whole film on the fly: slow to skip through), and the
+     * subtitles still show in Stremio's menu. Picture subtitles (Blu-ray PGS, DVD) can't be copied
+     * out as text and are left in the video.
+     */
+    private async extractEmbedded(e: Entry): Promise<void> {
+        if (!e.file || !existsSync(e.file)) return;
+        const run = promisify(execFile);
+        try {
+            const { stdout } = await run(StreamingServer.getFFprobePath(), ["-v", "error", "-select_streams", "s", "-show_entries", "stream=index,codec_name:stream_tags=language,title", "-of", "json", e.file], { windowsHide: true, timeout: 60000, maxBuffer: 4e6 });
+            const tracks: any[] = (JSON.parse(stdout).streams || []).filter((t: any) => /^(subrip|srt|ass|ssa|webvtt|mov_text|text)$/.test(t.codec_name || "")).slice(0, 16);
+            const stem = e.file.slice(0, e.file.length - extname(e.file).length);
+            const used = new Set(e.subtitles.map((x) => x.file || ""));
+            for (const [n, t] of tracks.entries()) {
+                const ass = /^(ass|ssa)$/.test(t.codec_name);
+                const lang = safeName(String((t.tags && t.tags.language) || "und")).toLowerCase().slice(0, 12);
+                let out = `${stem}.${lang}.embedded${ass ? ".ass" : ".srt"}`;
+                for (let k = 2; used.has(out) || existsSync(out); k++) out = `${stem}.${lang}.embedded-${k}${ass ? ".ass" : ".srt"}`;
+                try {
+                    await run(StreamingServer.getFFmpegPath(), ["-v", "error", "-y", "-i", e.file, "-map", `0:${t.index}`, "-c:s", ass ? "copy" : "srt", out], { windowsHide: true, timeout: 120000 });
+                    if (existsSync(out) && statSync(out).size > 0) {
+                        used.add(out);
+                        e.subtitles.push({ lang, file: out, embedded: true });
+                    }
+                } catch (err) {
+                    logger.warn(`${e.id}: subtitle track ${n} wasn't copied out: ${err}`);
+                }
+            }
+            e.embedded = true;
+            if (tracks.length) logger.info(`${e.id}: copied out ${tracks.length} subtitle track(s)`);
+            this.changed();
+        } catch (err) {
+            // (no ffprobe yet: the streaming server's first start fetches it; tried again next launch)
+            logger.warn(`${e.id}: couldn't read its subtitle tracks: ${err}`);
         }
     }
 
