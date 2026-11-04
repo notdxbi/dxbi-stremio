@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.31.0
+ * @version 2.31.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.31.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.31.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -15248,6 +15248,7 @@
       const api = this.api;
       if (!api || this.started) return;
       this.started = true;
+      this.hookProbe();
       api.list().then((list) => { this.list = list || []; scheduleSync(); }).catch(() => { /* app too old */ });
       api.settings().then((p) => { this.prefs = p; }).catch(() => { /* app too old */ });
       api.onChange((list) => {
@@ -15550,6 +15551,72 @@
     },
 
     // ---- Playing a download --------------------------------------------------------------------
+
+    // Stremio only plays a file straight from its address when the video is H.264, HEVC, VP8 or VP9
+    // and it has no subtitle tracks inside and one audio track; anything else goes through the
+    // streaming server's converter, which restarts at every skip (slow, and it buffers). A download
+    // is on this computer, so it plays straight from the disk whenever this PC's player can decode
+    // it (its subtitles were copied out beside it): dx.bi answers Stremio's question about the file
+    // for it. Anything this PC can't decode (DTS or AC3 sound, say) is still converted.
+    hookProbe() {
+      if (!IN_APP || IN_TV || window.__dxbiProbeHook) return;
+      window.__dxbiProbeHook = true;
+      const real = window.fetch;
+      window.fetch = async function (input, init) {
+        const url = typeof input === "string" ? input : (input && input.url) || "";
+        if (!/\/hlsv2\/probe\?/.test(url)) return real.apply(this, arguments);
+        let media = "";
+        try { media = new URL(url, location.href).searchParams.get("mediaURL") || ""; } catch (_) { /* not ours */ }
+        if (!downloads.list.some((x) => x.play && x.play.url === media)) return real.apply(this, arguments);
+        const res = await real.apply(this, arguments);
+        try {
+          const probe = await res.clone().json();
+          const direct = await downloads.direct(probe);
+          if (direct) {
+            log("playing the download straight from the disk", probe.streams.filter((x) => x.track !== "subtitle").map((x) => x.codec).join(" + "));
+            return new Response(JSON.stringify(direct), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          log("the download needs converting", probe.streams.filter((x) => x.track !== "subtitle").map((x) => x.codec).join(" + "));
+        } catch (_) { /* Stremio decides as usual */ }
+        return res;
+      };
+    },
+
+    // Can this PC's player decode the file itself? Then Stremio's answer for it, saying yes
+    async direct(probe) {
+      if (!probe || !probe.format || !Array.isArray(probe.streams)) return null;
+      if (!/matroska|webm|mp4|mov/.test(probe.format.name || "")) return null;
+      const video = probe.streams.filter((x) => x.track === "video");
+      const audio = probe.streams.filter((x) => x.track === "audio");
+      const ms = (type) => !!(window.MediaSource && MediaSource.isTypeSupported(type));
+      const el = document.createElement("video");
+      const can = (type) => el.canPlayType(type) !== "";
+      const videoOk = async (codec) => {
+        if (codec === "h264") return true;
+        if (codec === "vp8" || codec === "vp9") return true;
+        if (codec === "av1") return ms('video/webm; codecs="av01.0.08M.10"') || ms('video/mp4; codecs="av01.0.08M.10"');
+        if (codec === "hevc" || codec === "h265") return convert.canDecodeHevc();
+        return false;
+      };
+      const audioOk = (codec) => ({
+        aac: true, mp3: true, opus: true, vorbis: true,
+        flac: can("audio/flac"),
+        ac3: can('audio/mp4; codecs="ac-3"'),
+        eac3: can('audio/mp4; codecs="ec-3"'),
+      })[codec] === true;
+      if (!video.length || video.some((v) => v.isDoVi)) return null;
+      for (const v of video) if (!(await videoOk(v.codec))) return null;
+      // (the browser plays the file's first sound track)
+      if (audio.length && !audioOk(audio[0].codec)) return null;
+      return {
+        ...probe,
+        format: { ...probe.format, name: /mp4|mov/.test(probe.format.name) ? "mov,mp4,m4a,3gp,3g2,mj2" : "matroska,webm" },
+        streams: [
+          ...video.map((v) => ({ ...v, codec: "h264" })),
+          ...audio.slice(0, 1).map((a) => ({ ...a, codec: "aac", channels: Math.min(a.channels || 2, 2) })),
+        ],
+      };
+    },
 
     async encode(stream) {
       const bytes = new TextEncoder().encode(JSON.stringify(stream));
