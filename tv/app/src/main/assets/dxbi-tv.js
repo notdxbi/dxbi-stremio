@@ -825,13 +825,24 @@
       // watched, as Mark as watched does. Stremio only marks a video it saw 70% of playing, so one
       // with its intro skipped, or closed in the credits, moved Continue Watching on without it
       const finished = ended || (durationMs > 0 && timeMs >= durationMs * 0.9) || (handoff.creditsAt > 0 && timeMs >= handoff.creditsAt * 1000);
-      if (window.__dxbiEngine && finished) await markFinished(handoff.videoId);
-      // (and its page moves on to the next episode)
-      if (window.__dxbiEngine && window.__dxbiEngine.afterPlaying && !next) window.__dxbiEngine.afterPlaying(handoff.videoId, finished);
+      const phone = !!window.__dxbiEngine;
+      const videoId = handoff.videoId;
+      if (phone && finished) {
+        // Stremio moves Continue Watching on to the next episode as the player closes, when it's
+        // past 90%: closed in the credits before that, it's told it got there
+        if (durationMs > 0 && timeMs < durationMs * 0.9) tv.onProgress(Math.ceil(durationMs * 0.95), durationMs, true);
+        await markFinished(videoId);
+      }
       handoff = null;
       const link = next && await nextLinkFor(await playerState());
+      console.info("[dx.bi TV] player closed", JSON.stringify({ videoId, timeMs, durationMs, ended, next, finished, link: link || null }));
       if (link) location.replace(link);
       else history.back();
+      // The phone apps: its series page picks the next episode (or the one it closed on), once the
+      // page has left the player (a page it goes back to may load the old one first)
+      if (phone && window.__dxbiEngine.afterPlaying && !(link && /^#\/player\//.test(link))) {
+        setTimeout(() => window.__dxbiEngine.afterPlaying(videoId, finished), 1200);
+      }
     } else {
       handoff = null;
     }

@@ -406,6 +406,7 @@
         const now = Date.now();
         const out = (v) => !v.released || Date.parse(v.released) <= now;
         const target = finished ? videos.slice(i + 1).find((v) => v.season > 0 && out(v)) : videos[i];
+        console.info("[dx.bi engine] after playing", videoId, finished, "→", target && target.id, "(picked:", sel.streamPath && sel.streamPath.id, ")");
         if (!target || (sel.streamPath && sel.streamPath.id === target.id)) return;
         const streamPath = { resource: "stream", type: sel.metaPath.type, id: target.id, extra: [] };
         await ops.load({ field: "meta_details", model: "MetaDetails", args: { metaPath: sel.metaPath, streamPath, guessStream: false } });
