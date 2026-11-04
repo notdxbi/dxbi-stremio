@@ -48,7 +48,7 @@ jobs:
                   description: (if ($notes | length) > 3800 then $notes[0:3800] + "…" else $notes end),
                   fields: [{
                     name: "Download",
-                    value: ("[Windows](\($base)/dxbi-Setup-x64.exe) · [Mac (Apple chip)](\($base)/dxbi-mac-arm64.dmg) · [Mac (Intel)](\($base)/dxbi-mac-x64.dmg) · [Linux](\($base)/dxbi-linux-x86_64.AppImage) · [TV](\($base)/dxbi-tv.apk)\nThe app updates itself on Windows and Linux.")
+                    value: ("[Windows](\($base)/dxbi-Setup-x64.exe) · [Mac (Apple chip)](\($base)/dxbi-mac-arm64.dmg) · [Mac (Intel)](\($base)/dxbi-mac-x64.dmg) · [Linux](\($base)/dxbi-linux-x86_64.AppImage) · [TV](\($base)/dxbi-tv.apk) · [iPhone](\($base)/dxbi.ipa) · [Android](\($base)/dxbi-mobile.apk)\nThe app updates itself on Windows and Linux.")
                   }],
                   footer: { text: "Full notes on GitHub" }
                 }]
