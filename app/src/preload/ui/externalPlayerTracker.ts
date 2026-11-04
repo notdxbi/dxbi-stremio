@@ -46,11 +46,17 @@ const FIND_STREAM = (encodedUrl: string) => `(async () => {
         libraryItem = player.libraryItem;
         if (player.seriesInfo) { season = player.seriesInfo.season; episode = player.seriesInfo.episode; }
     } else {
+        // a title's page: its streams come grouped by addon, and the page says which meta and video
         const md = await core.getState("meta_details");
-        const group = md && (md.streams || []).find((g) => (ready(g.content) || []).some(matches));
-        const metaItem = md && (md.metaItems || []).find((m) => ready(m.content));
-        if (group && metaItem) {
-            selected = { stream: ready(group.content).find(matches), streamRequest: group.request, metaRequest: metaItem.request, subtitlesPath: null };
+        const group = md && md.selected && md.selected.streamPath && (md.streams || []).find((g) => (ready(g.content) || []).some(matches));
+        const metaItem = md && md.metaItem;
+        if (group && metaItem && ready(metaItem.content)) {
+            selected = {
+                stream: ready(group.content).find(matches),
+                streamRequest: { base: group.addon.transportUrl, path: md.selected.streamPath },
+                metaRequest: { base: metaItem.addon.transportUrl, path: md.selected.metaPath },
+                subtitlesPath: null,
+            };
             meta = ready(metaItem.content);
             libraryItem = md.libraryItem;
         }
@@ -66,7 +72,8 @@ const FIND_STREAM = (encodedUrl: string) => `(async () => {
     let start = state && lastVideo === videoId && state.timeOffset > 0 ? state.timeOffset / 1000 : 0;
     if (start && state.duration > 0 && state.timeOffset > state.duration * 0.95) start = 0;
 
-    window.__dxbiExternal = { selected: selected, videoId: videoId, active: false };
+    // the episode itself, to mark it watched when it's finished (a film has none: the title is marked)
+    window.__dxbiExternal = { selected: selected, videoId: videoId, metaId: meta.id, video: video || null, active: false };
     return {
         videoId: videoId,
         name: meta.name || "",
@@ -113,13 +120,22 @@ const STILL_OURS = `(async () => {
 
 // Stremio marks a video watched past this much of it watched (WATCHED_THRESHOLD_COEF in stremio-core)
 const WATCHED_AT = 0.7;
+// Stopped past this much of it, Stremio counts it done and Continue Watching moves to the next
+// episode (CREDITS_THRESHOLD_COEF), even when skipping meant less than 70% was watched
+const FINISHED_AT = 0.9;
+const finished = (st: ExternalPlayerStatus | null) => !!st && st.duration > 0 && st.position >= st.duration * FINISHED_AT;
 
-// Unloading saves the library item and syncs it to the Stremio account
-const UNLOAD = `(() => {
+// Unloading saves the library item and syncs it to the Stremio account. Finished (closed past the
+// end credits): marked watched too, as right-click → Mark as watched does
+// (a film the 70% rule already marked isn't marked again: that would count it watched twice)
+const UNLOAD = (finished: boolean, countedWatched: boolean) => `(() => {
     const ext = window.__dxbiExternal;
     delete window.__dxbiExternal;
-    if (ext && ext.active) core.dispatch({ action: "Unload" }, "player");
-    return !!(ext && ext.active);
+    if (!ext || !ext.active) return false;
+    if (${finished} && ext.video) core.dispatch({ action: "Player", args: { action: "MarkVideoAsWatched", args: [ext.video, true] } }, "player");
+    core.dispatch({ action: "Unload" }, "player");
+    if (${finished && !countedWatched} && !ext.video) core.dispatch({ action: "Ctx", args: { action: "LibraryItemMarkAsWatched", args: { id: ext.metaId, is_watched: true } } });
+    return true;
 })()`;
 
 const ms = (seconds: number) => Math.max(0, Math.round(seconds * 1000));
@@ -194,7 +210,7 @@ export const externalPlayerTracker = {
                 externalPlayerProgress.hide();
             }).catch(() => { /* next time */ });
         }
-        externalPlayerProgress.update(s.last, s.watched);
+        externalPlayerProgress.update(s.last, s.watched || finished(s.last));
     },
 
     // Another title's player is opening: save this one first, before Stremio loads the new one
@@ -210,10 +226,11 @@ export const externalPlayerTracker = {
             Helpers._eval(REPORT('TimeChanged', ms(s.last.position), ms(s.last.duration)));
             Helpers._eval(PAUSED(true));
         }
-        Helpers._eval(UNLOAD).then((saved) => {
-            if (saved && s) logger.info(`Saved progress for ${s.name} at ${Math.round(s.last?.position ?? 0)}s`);
+        const done = finished(s?.last ?? null);
+        Helpers._eval(UNLOAD(done, !!s?.watched)).then((saved) => {
+            if (saved && s) logger.info(`Saved progress for ${s.name} at ${Math.round(s.last?.position ?? 0)}s${done ? ' (finished: marked watched)' : ''}`);
         }).catch(() => { /* nothing loaded */ });
         externalPlayerProgress.hide();
-        if (announce && s?.last) externalPlayerProgress.saved(s, s.last.position, s.watched);
+        if (announce && s?.last) externalPlayerProgress.saved(s, s.last.position, s.watched || done);
     },
 };
