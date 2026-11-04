@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
@@ -116,6 +117,11 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     var choices by remember(type, id) { mutableStateOf<StreamChoices?>(null) }
     // what Play was pressed for, while dx.bi's pick for it is worked out (Just press Play)
     var waitingFor by remember { mutableStateOf<String?>(null) }
+    // the streams are open to pick one to download ("Choose the source myself")
+    var downloadMode by remember { mutableStateOf(false) }
+    val downloader = rememberDownloader(stremio)
+    val saved by com.notdxbi.dxbi.tv.Downloads.items.collectAsState()
+    fun savedOf(videoId: String) = saved.firstOrNull { it.metaId == id && it.videoId == videoId }
 
     LaunchedEffect(type, id) { stremio.open(type, id) }
     // scores and reviews (with the TMDB and MDBList keys from dx.bi settings), fetched alongside
@@ -147,7 +153,9 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     // (Android 13 and later ask before an app shows notifications: downloads show their progress in one)
     val notifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
 
-    fun play(option: StreamOption, target: Phone.Target = Phone.Target.Player) {
+    fun play(option: StreamOption, target0: Phone.Target = Phone.Target.Player) {
+        val target = if (downloadMode && target0 == Phone.Target.Player) Phone.Target.Download else target0
+        downloadMode = false
         waitingFor = null
         sheet = false
         if (target == Phone.Target.Download && android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -159,9 +167,19 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     fun start(videoId: String?) {
         val target = videoId ?: details?.videoId ?: id
         if (type == "series" && videoId != null && videoId != details?.videoId) stremio.open(type, id, videoId)
+        downloadMode = false
         waitingFor = target
         if (wide) paneStreams = true else sheet = true
     }
+
+    // the stream list for one episode (or the film), where a tap downloads instead of playing
+    downloader.onChoose = { videoId ->
+        if (type == "series" && videoId != details?.videoId) stremio.open(type, id, videoId)
+        waitingFor = null
+        downloadMode = true
+        if (wide) paneStreams = true else sheet = true
+    }
+    fun downloadVideos(videoIds: List<String>, detail: String) = downloader.request(type, id, videoIds, title.name, detail)
 
     // Just press Play: dx.bi's pick plays as soon as it's sure (the stream chosen last time at once,
     // anything else once every addon has answered, or after 6 seconds)
@@ -201,7 +219,11 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                 }
             }
         }
-        item { Header(title, details, onPlay = { start(details?.let { nextVideo(it)?.id }) }) }
+        item {
+            Header(title, details, onPlay = { start(details?.let { nextVideo(it)?.id }) }) {
+                if (type != "series") FilmDownload(savedOf(id), downloader.busy) { downloadVideos(listOf(id), "Film") }
+            }
+        }
         reviews?.scores?.takeIf { it.isNotEmpty() }?.let { scores -> item { ScoreBadges(scores) } }
         item {
             // (the buttons share the width: five don't fit side by side at a fixed spacing)
@@ -240,9 +262,10 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
         if (withEpisodes && details != null && type == "series" && details.videos.isNotEmpty()) {
             val seasons = details.seasons
             val shown = season ?: nextVideo(details)?.season ?: seasons.firstOrNull()
-            item { SeasonPicker(seasons, shown) { season = it } }
+            item { SeasonBar(seasons, shown, details.videos, ::savedOf, downloader.busy, { season = it }) { ids -> downloadVideos(ids, "${seasonName(shown)} · ${ids.size} episode${if (ids.size == 1) "" else "s"}") } }
             items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
-                Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) }) { start(v.id) }
+                Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) },
+                    download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), "S${v.season} E${v.episode} · ${v.title}") } }) { start(v.id) }
             }
         }
         if (details != null && details.cast.isNotEmpty()) item {
@@ -272,10 +295,11 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                         val seasons = details?.seasons.orEmpty()
                         val shown = season ?: details?.let { nextVideo(it)?.season } ?: seasons.firstOrNull()
                         if (details != null && details.videos.isNotEmpty()) {
-                            SeasonPicker(seasons, shown) { season = it }
+                            SeasonBar(seasons, shown, details.videos, ::savedOf, downloader.busy, { season = it }) { ids -> downloadVideos(ids, "${seasonName(shown)} · ${ids.size} episode${if (ids.size == 1) "" else "s"}") }
                             LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
                                 items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
-                                    Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) }) { start(v.id) }
+                                    Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) },
+                                        download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), "S${v.season} E${v.episode} · ${v.title}") } }) { start(v.id) }
                                 }
                             }
                         } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
@@ -288,7 +312,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                             Spacer(Modifier.width(8.dp))
                             Text("Episodes", color = Dx.Text, style = MaterialTheme.typography.labelLarge)
                         }
-                        StreamPicker(current, if (type == "series") episodeLine else "Streams", null, onPlay = { play(it) }, modifier = Modifier.fillMaxSize(), onPlayIn = ::play)
+                        StreamPicker(current, if (type == "series") episodeLine else "Streams", if (downloadMode) "Tap a stream to download it" else null, onPlay = { play(it) }, modifier = Modifier.fillMaxSize(), onPlayIn = ::play, downloading = downloadMode)
                     }
                 }
             }
@@ -303,13 +327,14 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
 
     if (sheet && !wide) {
         val state = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-        ModalBottomSheet(onDismissRequest = { sheet = false; waitingFor = null }, sheetState = state, containerColor = Dx.Background) {
+        ModalBottomSheet(onDismissRequest = { sheet = false; waitingFor = null; downloadMode = false }, sheetState = state, containerColor = Dx.Background) {
             StreamPicker(
                 current,
-                title.name,
-                episodeLine,
+                if (downloadMode) "Download: tap a stream" else title.name,
+                if (downloadMode) listOfNotNull(title.name, episodeLine).joinToString(" · ") else episodeLine,
                 onPlay = { play(it) },
                 onPlayIn = ::play,
+                downloading = downloadMode,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 680.dp),
                 bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
             )
@@ -318,7 +343,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
 }
 
 @Composable
-private fun Header(t: Title, d: Details?, onPlay: () -> Unit) {
+private fun Header(t: Title, d: Details?, onPlay: () -> Unit, below: @Composable () -> Unit = {}) {
     Column(Modifier.padding(horizontal = Gutter)) {
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -353,6 +378,7 @@ private fun Header(t: Title, d: Details?, onPlay: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
             )
         }
+        below()
         if (resumeMovie && d != null && d.durationMs > 0) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -414,10 +440,80 @@ private fun seasonName(s: Int?) = when (s) {
     else -> "Season $s"
 }
 
+/** The season picker, with Download season beside it (the episodes out so far that aren't saved yet) */
+@Composable
+private fun SeasonBar(
+    seasons: List<Int>, shown: Int?, videos: List<Video>, saved: (String) -> com.notdxbi.dxbi.tv.Downloads.Item?, busy: String?,
+    onPick: (Int) -> Unit, onDownload: (List<String>) -> Unit,
+) {
+    val out = videos.filter { it.season == shown && !it.upcoming }
+    val missing = out.filter { v -> saved(v.id)?.let { it.failed } ?: true }.map { it.id }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SeasonPicker(seasons, shown, onPick)
+        Spacer(Modifier.weight(1f))
+        if (out.isNotEmpty()) Row(
+            Modifier.padding(end = Gutter).clip(RoundedCornerShape(50)).border(1.dp, Dx.Line, RoundedCornerShape(50))
+                .clickable(enabled = missing.isNotEmpty() && busy == null) { onDownload(missing) }.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(if (missing.isEmpty()) Icons.Filled.Check else Icons.Filled.Download, contentDescription = null, tint = Dx.Text, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                when {
+                    busy != null -> busy
+                    missing.isEmpty() -> "Season downloaded"
+                    missing.size < out.size -> "Download the other ${missing.size}"
+                    else -> "Download season"
+                },
+                color = Dx.Text, style = MaterialTheme.typography.labelMedium, maxLines = 1,
+            )
+        }
+    }
+}
+
+/** A film's Download button, under Play: how far it's got, or ✓ once it's saved */
+@Composable
+private fun FilmDownload(item: com.notdxbi.dxbi.tv.Downloads.Item?, busy: String?, onDownload: () -> Unit) {
+    val context = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
+    Spacer(Modifier.height(8.dp))
+    Box {
+        Row(
+            Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(6.dp)).background(Dx.Raised)
+                .clickable(enabled = busy == null) { if (item == null) onDownload() else menu = true },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(if (item?.done == true) Icons.Filled.Check else Icons.Filled.Download, contentDescription = null, tint = Dx.Text)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                when {
+                    busy != null -> busy
+                    item == null -> "Download"
+                    item.done -> "Downloaded"
+                    item.failed -> "Download failed: tap for options"
+                    item.paused -> "Paused · ${item.percent.toInt()}%"
+                    else -> "Downloading ${item.percent.toInt()}%"
+                },
+                color = Dx.Text, style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        if (item != null) DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            if (item.done) DropdownMenuItem(text = { Text("Play downloaded") }, onClick = { menu = false; com.notdxbi.dxbi.tv.Downloads.play(context, item) })
+            if (item.failed) DropdownMenuItem(text = { Text("Try again") }, onClick = { menu = false; com.notdxbi.dxbi.tv.Downloads.retry(context, item) })
+            if (!item.done && !item.failed) DropdownMenuItem(text = { Text(if (item.paused) "Resume" else "Pause") }, onClick = {
+                menu = false
+                if (item.paused) com.notdxbi.dxbi.tv.Downloads.resume(context, item) else com.notdxbi.dxbi.tv.Downloads.pause(context, item)
+            })
+            DropdownMenuItem(text = { Text(if (item.done) "Delete download" else "Cancel download") }, onClick = { menu = false; com.notdxbi.dxbi.tv.Downloads.remove(context, item) })
+        }
+    }
+}
+
 /** An episode: tap to play it; hold for watched, unwatched, or watched up to here */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatched: (watched: Boolean, upTo: Boolean) -> Unit, onPlay: () -> Unit) {
+private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatched: (watched: Boolean, upTo: Boolean) -> Unit, download: @Composable () -> Unit = {}, onPlay: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().combinedClickable(enabled = !v.upcoming, onLongClick = { menu = true }, onClick = onPlay).padding(horizontal = Gutter, vertical = 10.dp)) {
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -444,6 +540,8 @@ private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatche
                 }
                 note?.let { Text(it, color = if (resumeHere) Dx.Accent else Dx.Muted, style = MaterialTheme.typography.bodySmall) }
             }
+            Spacer(Modifier.width(8.dp))
+            download()
         }
         v.overview?.let {
             Spacer(Modifier.height(8.dp))

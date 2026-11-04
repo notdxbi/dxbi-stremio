@@ -510,7 +510,7 @@ class PlayerActivity : AppCompatActivity() {
     private fun report() {
         val exo = player ?: return
         val duration = exo.duration.takeIf { it != C.TIME_UNSET } ?: 0L
-        if (extras?.keep(exo.currentPosition, ended = false) != true) PlaybackBus.listener?.onProgress(exo.currentPosition, duration, !exo.isPlaying)
+        if (extras?.keep(exo.currentPosition, duration, ended = false) != true) PlaybackBus.listener?.onProgress(exo.currentPosition, duration, !exo.isPlaying)
     }
 
     /** Closes the player and says how it went ([positionMs]/[durationMs]: where another app left it, instead of this one) */
@@ -522,7 +522,7 @@ class PlayerActivity : AppCompatActivity() {
         val exo = player
         val duration = durationMs?.takeIf { it > 0 } ?: exo?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L
         val position = if (ended) duration else positionMs ?: exo?.currentPosition ?: 0L
-        if (extras?.keep(position, ended) != true) PlaybackBus.closed(position, duration, ended, error, next)
+        if (extras?.keep(position, duration, ended) != true) PlaybackBus.closed(position, duration, ended, error, next)
         if (torrent) TorrentEngine.close()
         finish()
     }

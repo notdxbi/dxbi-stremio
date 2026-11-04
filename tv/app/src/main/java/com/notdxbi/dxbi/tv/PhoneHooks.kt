@@ -37,6 +37,6 @@ interface PlayerHooks {
     /** Leaving the app (Home) */
     fun leaving()
     /** Where the video got to; true when it keeps that itself (a download), rather than the page */
-    fun keep(positionMs: Long, ended: Boolean): Boolean
+    fun keep(positionMs: Long, durationMs: Long, ended: Boolean): Boolean
     fun release()
 }

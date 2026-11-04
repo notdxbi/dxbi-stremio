@@ -97,9 +97,9 @@ class PhonePlayer(private val host: PlayerHost, private val stream: JSONObject) 
     }
 
     // A download wasn't handed over by the page: its place is kept here instead
-    override fun keep(positionMs: Long, ended: Boolean): Boolean {
+    override fun keep(positionMs: Long, durationMs: Long, ended: Boolean): Boolean {
         val id = offlineId ?: return false
-        Downloads.leftAt(id, positionMs, ended)
+        Downloads.leftAt(id, positionMs, durationMs, ended)
         return true
     }
 

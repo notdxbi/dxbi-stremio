@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.30.0
+ * @version 2.31.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.30.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.31.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -7332,6 +7332,7 @@
       : [updateRoute, brandTitle, () => player.ensure(), () => playerClock.ensure(), () => { convert.ensure().catch(() => { /* player state not ready */ }); }, () => convert.confirmHevc(), () => externalDefault.ensure(), () => placeholder.ensure(), () => playbackHelp.ensure(), () => scrub.ensure(), () => enhance.ensure(), () => watchParty.ensure(), () => skip.ensure(), () => tune.ensure(), () => streamInfo.ensure(), () => addonTools.ensure(), communitySync];
     steps.push(() => { titleColour.ensure().catch(() => { /* next sync */ }); });
     if (currentRoute() === "detail") steps.push(() => streamTools.ensure(), () => streamRows.ensure(), () => quickPlay.ensure());
+    if (!IN_TV) steps.push(() => downloads.ensure());
     steps.push(() => { quickPlay.note().catch(() => { /* next sync */ }); });
     steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { endsAt.ensure().catch(() => { /* next sync */ }); }, () => { calendarFill.ensure().catch(() => { /* next sync */ }); }, () => { restrict.guard().catch(() => { /* next sync */ }); });
     if (currentRoute() !== "player") {
@@ -10986,6 +10987,7 @@
       const items = [];
       if (settings.watchStats) items.push(make("Your stats", ICONS.chart, () => statsPanel.open()));
       if (settings.whoIsWatching) items.push(make("Who's watching?", ICONS.people, () => whoIsWatching.open()));
+      if (downloads.api) items.push(make("Downloads", DL_ICONS.down, () => downloads.open()));
       items.push(make("Customise Home", ICONS.sliders, () => homeLayout.open()));
       items.push(make("Report a problem", ICONS.bug, () => report.open()));
       template.before(...items);
@@ -15206,11 +15208,916 @@
     log("ready");
   }
 
+  // ---------------------------------------------------------------------------
+  // Downloads: films and episodes saved to watch offline, like Netflix. dx.bi picks the stream
+  // (in the quality asked for, or the one chosen from the list) straight from the addons; the dx.bi
+  // app saves it (app/src/core/Downloads.ts) and dx.bi for phones saves it there (Downloads.kt).
+  // ---------------------------------------------------------------------------
+  const DL_QUALITIES = [
+    ["best", "Best quality", "The sharpest stream that's ready. Biggest files (a 4K film can be 20 GB or more)."],
+    ["2160", "4K", "Up to 4K."],
+    ["1080", "1080p", "Sharp on any screen. Usually 1–4 GB for a film."],
+    ["720", "720p", "Smaller files, fine on a laptop or phone. Usually around 1 GB."],
+    ["small", "Smallest file", "The smallest 720p or better: saves the most space."],
+  ];
+  const DL_ICONS = {
+    down: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>',
+    done: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="7" y="6" width="3.6" height="12" rx="1"/><rect x="13.4" y="6" width="3.6" height="12" rx="1"/></svg>',
+    fail: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 6.5v7M12 17.5v.01"/></svg>',
+    folder: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v9.3a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg>',
+  };
+
+  const downloads = {
+    list: [],
+    started: false,
+    el: null,
+    tab: "list",
+    prefs: null,
+    playing: null,
+    picking: null,
+    sig: "",
+
+    // The dx.bi app saves files; Stremio Enhanced and the web can't
+    get api() {
+      const app = IN_APP && window.StremioEnhancedAPI;
+      return app && app.downloads && !miniPlayer.info ? app.downloads : null;
+    },
+
+    start() {
+      const api = this.api;
+      if (!api || this.started) return;
+      this.started = true;
+      api.list().then((list) => { this.list = list || []; scheduleSync(); }).catch(() => { /* app too old */ });
+      api.settings().then((p) => { this.prefs = p; }).catch(() => { /* app too old */ });
+      api.onChange((list) => {
+        this.list = list || [];
+        this.refreshPage();
+        this.ensure();
+      });
+      // the buttons sit inside links: they must not open the episode or play the stream
+      window.addEventListener("click", (e) => this.onClick(e), true);
+    },
+
+    entry(metaId, videoId) {
+      return this.list.find((x) => x.metaId === metaId && x.videoId === (videoId || metaId)) || null;
+    },
+
+    percent: (x) => (x.size > 0 ? Math.min(100, Math.floor((x.received / x.size) * 100)) : 0),
+
+    // ---- Picking a stream, straight from the addons (no page needs to be open for it) --------------
+
+    async addonsFor(resource, type, id) {
+      const ctx = await core().getState("ctx").catch(() => null);
+      const addons = (ctx && ctx.profile && Array.isArray(ctx.profile.addons) ? ctx.profile.addons : []).filter((a) => a && a.manifest && typeof a.transportUrl === "string");
+      return addons.filter((a) => {
+        const m = a.manifest;
+        const res = (m.resources || []).find((r) => (typeof r === "string" ? r : r && r.name) === resource);
+        if (!res) return false;
+        const types = (typeof res === "object" && res.types) || m.types || [];
+        if (!types.includes(type)) return false;
+        const prefixes = (typeof res === "object" && res.idPrefixes) || m.idPrefixes;
+        return !Array.isArray(prefixes) || !prefixes.length || prefixes.some((p) => String(id).startsWith(p));
+      });
+    },
+
+    async fetchJson(url, ms = 20000) {
+      const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+
+    async streams(type, videoId) {
+      const addons = await this.addonsFor("stream", type, videoId);
+      const lists = await Promise.all(addons.map(async (addon) => {
+        const url = metadataSource.url(addon, "stream", type, videoId);
+        if (!url) return [];
+        const data = await this.fetchJson(url).catch(() => null);
+        return (data && Array.isArray(data.streams) ? data.streams : []).map((st) => ({ st, addon }));
+      }));
+      return lists.flat().filter(({ st }) => st && !st.ytId && !st.externalUrl && (st.url || st.infoHash)).map(({ st, addon }) => ({
+        st,
+        addon,
+        torrent: !!st.infoHash && !st.url,
+        hint: watchParty.streamHints(st),
+        d: describeStream(String(st.name || ""), `${st.name || ""}\n${st.description || st.title || ""}`),
+      })).filter((x) => !streamRows.isLink(x.d));
+    },
+
+    async torrentsOk() {
+      const server = await core().getState("streaming_server").catch(() => null);
+      return !!(server && server.settings && server.settings.type === "Ready");
+    },
+
+    pick(items, quality, torrents) {
+      const usable = items.filter((x) => x.d.source !== "CAM" && !x.d.pending && (torrents || !x.torrent) && /^https?:/.test(x.st.url || "https:"));
+      if (!usable.length) return null;
+      if (quality === "small") {
+        const ready = usable.filter((x) => !x.torrent);
+        let pool = ready.length ? ready : usable;
+        const sharp = pool.filter((x) => x.d.res >= 720);
+        if (sharp.length) pool = sharp;
+        const sized = pool.filter((x) => x.d.size > 0);
+        if (sized.length) return sized.sort((a, b) => a.d.size - b.d.size || streamChoice.rank(b.d) - streamChoice.rank(a.d))[0];
+        return pool.sort((a, b) => a.d.res - b.d.res)[0];
+      }
+      const choice = streamChoice.choose(usable, null, { limit: streamChoice.limit(quality === "best" ? 0 : quality), fallback: "best", torrents });
+      return choice && choice.item;
+    },
+
+    // The viewer's subtitle language from Stremio's settings, and English: up to three files
+    async subtitlesFor(type, videoId, own) {
+      const ctx = await core().getState("ctx").catch(() => null);
+      const want = [String((ctx && ctx.profile && ctx.profile.settings && ctx.profile.settings.subtitlesLanguage) || "eng"), "eng"].filter((v, i, a) => v && a.indexOf(v) === i);
+      const found = [...(own || [])];
+      const addons = await this.addonsFor("subtitles", type, videoId);
+      const lists = await Promise.all(addons.map(async (addon) => {
+        const url = metadataSource.url(addon, "subtitles", type, videoId);
+        const data = url ? await this.fetchJson(url, 12000).catch(() => null) : null;
+        return data && Array.isArray(data.subtitles) ? data.subtitles : [];
+      }));
+      found.push(...lists.flat());
+      const out = [];
+      for (const lang of want) {
+        const same = found.filter((s) => s && /^https?:/.test(s.url || "") && String(s.lang || "").toLowerCase().startsWith(lang.slice(0, 2)));
+        out.push(...same.slice(0, lang === want[0] ? 2 : 1).map((s) => ({ lang: String(s.lang || lang), url: s.url })));
+      }
+      return out.slice(0, 3);
+    },
+
+    // The title: the page's own copy when it's open, else from the addons
+    async meta(type, metaId) {
+      const s = await core().getState("meta_details").catch(() => null);
+      const content = s && s.metaItem && s.metaItem.content;
+      if (content && content.type === "Ready" && content.content && content.content.id === metaId) {
+        return { meta: content.content, transport: (s.metaItem.addon && s.metaItem.addon.transportUrl) || "" };
+      }
+      for (const addon of await this.addonsFor("meta", type, metaId)) {
+        const url = metadataSource.url(addon, "meta", type, metaId);
+        const data = url ? await this.fetchJson(url, 15000).catch(() => null) : null;
+        if (data && data.meta) return { meta: data.meta, transport: addon.transportUrl };
+      }
+      return { meta: { id: metaId, type, name: "" }, transport: "" };
+    },
+
+    label: (d) => [QUALITY_LABEL[d.res], d.dv ? "Dolby Vision" : d.hdr ? "HDR" : "", streamRows.SOURCES[d.source]].filter(Boolean).join(" · "),
+
+    // Is the link the video itself? A debrid service that doesn't have it ready answers with a short
+    // clip saying so (Torrentio: /videos/downloading_v3.mp4), even for streams marked as cached.
+    // "" when it looks fine (or can't be checked from here), else why not.
+    async check(st) {
+      if (!st || !st.url) return "";
+      const notReady = "Your debrid service doesn't have this one ready (it's fetching it now). Try again in a few minutes, or pick another stream.";
+      try {
+        const headers = { Range: "bytes=0-0", ...((st.behaviorHints && st.behaviorHints.proxyHeaders && st.behaviorHints.proxyHeaders.request) || {}) };
+        const r = await fetch(st.url, { headers, signal: AbortSignal.timeout(15000) });
+        try { r.body && r.body.cancel(); } catch (_) { /* nothing to drop */ }
+        if (/\/videos\/[a-z_]+_v\d+\.mp4(\?|$)/i.test(r.url)) return notReady;
+        if (r.status === 401 || r.status === 403 || r.status === 404 || r.status === 410) return "That link doesn't work any more. Pick another stream.";
+        const total = Number((/\/(\d+)\s*$/.exec(r.headers.get("content-range") || "") || [])[1]) || (r.status === 200 ? Number(r.headers.get("content-length")) : 0);
+        if (total > 0 && total < 20e6) return notReady;
+      } catch (_) { /* (another site's link the page isn't allowed to read: the download will tell) */ }
+      return "";
+    },
+
+    // Everything the app (or the phone) needs to save one stream: { spec } or { error }
+    async spec(type, metaId, videoId, quality, chosen) {
+      const { meta, transport } = await this.meta(type, metaId);
+      const torrents = !IN_TV && (await this.torrentsOk());
+      let item = chosen || null;
+      if (item) {
+        const problem = await this.check(item.st);
+        if (problem) return { error: problem };
+      } else {
+        // the pick, or the next best when its link turns out not to be ready (up to three tries)
+        let items = await this.streams(type, videoId);
+        if (!items.length) return { error: "None of your addons has a stream for it." };
+        let problem = "";
+        for (let tries = 0; tries < 3 && !item; tries++) {
+          const next = this.pick(items, quality, torrents);
+          if (!next) break;
+          problem = await this.check(next.st);
+          if (problem) items = items.filter((x) => x !== next);
+          else item = next;
+        }
+        if (!item) return { error: problem || (torrents ? "No stream is ready to download yet (the ones there need your debrid service to fetch them first)." : "No debrid or direct stream for it: torrents need dx.bi's streaming server.") };
+      }
+      const st = item.st;
+      if (!st.url && !(st.infoHash && torrents)) return { error: IN_TV ? "Torrents can't be downloaded on a phone. Pick a debrid or direct stream." : "Torrents need dx.bi's streaming server, which isn't running." };
+      const video = (meta.videos || []).find((v) => v.id === videoId);
+      const episode = video && video.season != null ? `S${video.season} E${video.episode}${video.title || video.name ? ` · ${video.title || video.name}` : ""}` : "";
+      const subtitles = await this.subtitlesFor(type, videoId, st.subtitles).catch(() => []);
+      const server = await core().getState("streaming_server").catch(() => null);
+      const serverUrl = (server && server.selected && server.selected.transportUrl) || "http://127.0.0.1:11470";
+      return {
+        spec: {
+          type, metaId, videoId,
+          name: meta.name || "",
+          episode,
+          season: video && video.season != null ? video.season : null,
+          number: video && video.episode != null ? video.episode : null,
+          year: String(meta.releaseInfo || meta.year || "").slice(0, 4),
+          poster: meta.poster || "",
+          background: (video && video.thumbnail) || meta.background || meta.poster || "",
+          quality: this.label(item.d),
+          provider: item.d.provider || (item.addon && item.addon.manifest && item.addon.manifest.name) || "",
+          filename: (st.behaviorHints && st.behaviorHints.filename) || item.hint.filename || "",
+          url: st.url || "",
+          headers: (st.behaviorHints && st.behaviorHints.proxyHeaders && st.behaviorHints.proxyHeaders.request) || {},
+          torrent: st.url ? null : { infoHash: st.infoHash, fileIdx: Number.isInteger(st.fileIdx) ? st.fileIdx : null, sources: st.sources || [], server: serverUrl.replace(/\/$/, "") },
+          subtitles,
+          link: { streamTransportUrl: (item.addon && item.addon.transportUrl) || "", metaTransportUrl: transport },
+          size: item.d.size || 0,
+        },
+      };
+    },
+
+    // ---- Adding --------------------------------------------------------------------------------
+
+    async add(type, metaId, videoIds, quality) {
+      const api = this.api;
+      if (!api) return;
+      const todo = videoIds.filter((v) => { const x = this.entry(metaId, v); return !x || x.state === "failed"; });
+      if (!todo.length) { this.toast("Already downloaded"); return; }
+      let added = 0;
+      const problems = [];
+      for (let i = 0; i < todo.length; i++) {
+        if (todo.length > 1) this.toast(`Finding streams… ${i + 1} of ${todo.length}`, 0);
+        else this.toast("Finding the stream…", 0);
+        const r = await this.spec(type, metaId, todo[i], quality).catch((err) => ({ error: String((err && err.message) || err) }));
+        if (r.spec) {
+          const res = await api.add(r.spec).catch(() => ({ ok: false, error: "The app didn't take it." }));
+          if (res && res.ok) added++;
+          else problems.push(res && res.error);
+        } else problems.push(r.error);
+      }
+      if (added && !problems.length) this.toast(added === 1 ? "Downloading. See Downloads in your profile menu." : `Downloading ${added} episodes`);
+      else if (added) this.toast(`Downloading ${added} of ${todo.length}. ${problems.length} had no ready stream.`, 6000);
+      else this.toast(problems[0] || "Couldn't download that.", 6000);
+    },
+
+    // A stream picked from the list ("Choose the source myself", or its ⬇ button)
+    async addStream(st) {
+      const api = this.api;
+      const path = quickPlay.videoOf(location.hash) || (() => {
+        const p = parseDetailHref(location.hash);
+        return p && p.type === "movie" ? { type: p.type, id: p.id, videoId: p.id } : null;
+      })();
+      if (!api || !path) return;
+      const s = await core().getState("meta_details").catch(() => null);
+      const groups = s && Array.isArray(s.streams) ? s.streams : [];
+      let addon = null;
+      for (const g of groups) if (g && g.content && Array.isArray(g.content.content) && g.content.content.includes(st)) addon = g.addon;
+      const item = { st, addon, torrent: !!st.infoHash && !st.url, hint: watchParty.streamHints(st), d: describeStream(String(st.name || ""), `${st.name || ""}\n${st.description || st.title || ""}`) };
+      this.toast("Getting it ready…", 0);
+      const r = await this.spec(path.type, path.id, path.videoId, "best", item).catch((err) => ({ error: String((err && err.message) || err) }));
+      const res = r.spec ? await api.add(r.spec).catch(() => null) : null;
+      this.picking = null;
+      this.toast(res && res.ok ? "Downloading. See Downloads in your profile menu." : (res && res.error) || r.error || "Couldn't download that.", res && res.ok ? 3500 : 6000);
+    },
+
+    // Asks which quality, unless the settings say to always use one. resolve(quality | "choose" | null)
+    chooseQuality(title, detail, canChoose) {
+      const saved = this.prefs && this.prefs.quality;
+      if (saved && saved !== "ask") return Promise.resolve(saved);
+      return new Promise((resolve) => {
+        ensureExtrasStyle();
+        this.ensureStyle();
+        const el = document.createElement("div");
+        el.className = "dxe-modal";
+        el.innerHTML = `<div class="dxe-sheet dxd-choose" role="dialog" aria-label="Download">
+          <div class="dxe-head"><b>Download ${esc(title)}<small>${esc(detail)}</small></b><button class="dxe-btn" data-act="cancel">Cancel</button></div>
+          <div class="dxd-qs">${DL_QUALITIES.map(([v, label, note], i) => `<button class="dxd-q${i === 2 ? " is-on" : ""}" data-q="${v}"><b>${esc(label)}</b><span>${esc(note)}</span></button>`).join("")}
+            ${canChoose ? '<button class="dxd-q is-src" data-q="choose"><b>Choose the source myself</b><span>Opens the stream list: press ⬇ on the one you want.</span></button>' : ""}
+          </div>
+          <div class="dxe-foot"><label class="dxd-always"><input type="checkbox"> Always use this quality (change it in Downloads → Settings)</label></div>
+        </div>`;
+        const done = (value) => {
+          el.remove();
+          resolve(value);
+        };
+        for (const type of ["keydown", "keyup", "keypress"]) el.addEventListener(type, (e) => {
+          e.stopPropagation();
+          if (e.type === "keydown" && e.key === "Escape") done(null);
+        });
+        el.addEventListener("click", (e) => {
+          if (e.target === el || e.target.closest("[data-act=cancel]")) return done(null);
+          const q = e.target.closest("[data-q]");
+          if (!q) return;
+          const value = q.dataset.q;
+          if (value !== "choose" && el.querySelector(".dxd-always input").checked) this.savePrefs({ quality: value });
+          done(value);
+        });
+        document.body.append(el);
+        el.querySelector(".dxd-q.is-on")?.focus();
+      });
+    },
+
+    async download(type, metaId, videoIds, title, detail) {
+      const quality = await this.chooseQuality(title, detail, videoIds.length === 1);
+      if (!quality) return;
+      if (quality === "choose") {
+        this.picking = videoIds[0];
+        const path = type === "movie" ? `/detail/movie/${encodeURIComponent(metaId)}/${encodeURIComponent(metaId)}` : `/detail/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}/${encodeURIComponent(videoIds[0])}`;
+        navigate(path);
+        scheduleSync();
+        return;
+      }
+      this.add(type, metaId, videoIds, quality);
+    },
+
+    savePrefs(changes) {
+      const api = this.api;
+      if (!api) return Promise.resolve();
+      return api.settings(changes).then((p) => { this.prefs = p; this.refreshPage(true); }).catch(() => { /* app too old */ });
+    },
+
+    toast(text, ms = 3500) {
+      if (!text) return;
+      ensureExtrasStyle();
+      this.ensureStyle();
+      let t = document.querySelector(".dxd-toast");
+      if (!t) {
+        t = document.createElement("div");
+        t.className = "dxd-toast";
+        t.addEventListener("click", () => { t.classList.remove("is-on"); this.open(); });
+        document.body.append(t);
+      }
+      t.textContent = text;
+      t.classList.add("is-on");
+      clearTimeout(t._hide);
+      if (ms) t._hide = setTimeout(() => t.classList.remove("is-on"), ms);
+    },
+
+    // ---- Playing a download --------------------------------------------------------------------
+
+    async encode(stream) {
+      const bytes = new TextEncoder().encode(JSON.stringify(stream));
+      const packed = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate"))).arrayBuffer();
+      let bin = "";
+      for (const b of new Uint8Array(packed)) bin += String.fromCharCode(b);
+      return btoa(bin);
+    },
+
+    async play(x) {
+      if (!x || !x.play) return;
+      const stream = {
+        url: x.play.url,
+        name: "dx.bi",
+        title: `Downloaded · ${x.quality || "on this computer"}`,
+        subtitles: (x.play.subtitles || []).map((s, i) => ({ id: `dxbi-dl-${i}`, url: s.url, lang: s.lang })),
+        behaviorHints: { filename: x.filename || undefined, bingeGroup: `dxbi-download-${x.metaId}` },
+      };
+      const parts = [await this.encode(stream)];
+      if (x.link && x.link.streamTransportUrl && x.link.metaTransportUrl) parts.push(x.link.streamTransportUrl, x.link.metaTransportUrl, x.type, x.metaId, x.videoId);
+      const hash = `#/player/${parts.map((p) => encodeURIComponent(p)).join("/")}`;
+      this.close();
+      this.playing = { id: x.id, hash, told: false };
+      this.watchPlaying();
+      navigate(hash);
+    },
+
+    // Plain playback runs no page passes: a timer notices when a download has been watched to the end
+    watchPlaying() {
+      clearInterval(this.playTimer);
+      this.playTimer = setInterval(() => {
+        const p = this.playing;
+        if (!p) { clearInterval(this.playTimer); return; }
+        if (currentRoute() !== "player") {
+          if (Date.now() - (p.left || (p.left = Date.now())) > 4000) { this.playing = null; clearInterval(this.playTimer); }
+          return;
+        }
+        p.left = 0;
+        const v = document.querySelector('[class*="player-container"] video');
+        if (!v || p.told || !(v.duration > 60)) return;
+        if (v.ended || v.currentTime / v.duration >= 0.92) {
+          p.told = true;
+          this.api && this.api.action("finished", p.id).catch(() => { /* app closing */ });
+        }
+      }, 2000);
+    },
+
+    // ---- Buttons on the title page ---------------------------------------------------------------
+
+    ensure() {
+      if (!this.api) return;
+      this.start();
+      if (this.pop && this.pop._hash !== location.hash) this.closePop();
+      if (currentRoute() !== "detail") {
+        this.picking = null;
+        return;
+      }
+      const at = parseDetailHref(location.hash);
+      if (!at) return;
+      this.ensureStyle();
+      // (episodes are matched to Stremio's data: the rows themselves carry no address)
+      // (a request made while Stremio was still starting can stay unanswered: asked again after 4 s)
+      if ((!this.meta0 || this.meta0.id !== at.id) && Date.now() - (this.metaBusy || 0) > 4000) {
+        this.metaBusy = Date.now();
+        core().getState("meta_details").then((st) => {
+          const c = st && st.metaItem && st.metaItem.content;
+          if (c && c.type === "Ready" && c.content && c.content.id === at.id) { this.meta0 = c.content; scheduleSync(); }
+        }).catch(() => { /* next pass */ }).finally(() => { this.metaBusy = 0; });
+      }
+      this.episodeButtons(at);
+      this.seasonButton(at);
+      this.movieButton(at);
+      this.streamButtons();
+    },
+
+    stateIcon(x) {
+      if (!x) return { cls: "", html: DL_ICONS.down, tip: "Download" };
+      if (x.state === "done") return { cls: "is-done", html: DL_ICONS.done, tip: "Downloaded" };
+      if (x.state === "failed") return { cls: "is-failed", html: DL_ICONS.fail, tip: `Didn't download: ${x.error}` };
+      if (x.state === "paused") return { cls: "is-paused", html: DL_ICONS.pause, tip: "Paused" };
+      const p = this.percent(x);
+      return { cls: "is-busy", html: `<i style="--p:${p}"></i><em>${x.state === "queued" ? "" : p}</em>`, tip: x.state === "queued" ? "Waiting to download" : `Downloading ${p}%` };
+    },
+
+    paint(btn, x) {
+      const s = this.stateIcon(x);
+      const key = `${s.cls}|${s.html}`;
+      if (btn._key === key) return;
+      btn._key = key;
+      btn.className = `${btn.className.split(" ").filter((c) => !/^is-/.test(c)).join(" ")} ${s.cls}`.trim();
+      btn.innerHTML = s.html;
+      btn.title = s.tip;
+      btn.setAttribute("aria-label", s.tip);
+    },
+
+    episodeButtons(at) {
+      if (at.type === "movie") return;
+      for (const a of document.querySelectorAll('[class*="videos-list"] [class*="video-container"]')) {
+        const path = { videoId: this.videoIdOf(a, at) };
+        if (!path.videoId) continue;
+        let btn = a.querySelector(":scope > .dxd-ep");
+        if (!btn) {
+          btn = document.createElement("button");
+          btn.className = "dxd-ep";
+          btn.type = "button";
+          a.append(btn);
+        }
+        btn.dataset.video = path.videoId;
+        this.paint(btn, this.entry(at.id, path.videoId));
+      }
+    },
+
+    seasonButton(at) {
+      const bar = document.querySelector('[class*="metadetails-content"] [class*="seasons-bar"]') || document.querySelector('[class*="seasons-bar"]');
+      let btn = document.querySelector(".dxd-season");
+      if (at.type === "movie" || !bar) { if (btn) btn.remove(); return; }
+      if (!btn || btn.previousElementSibling !== bar) {
+        if (btn) btn.remove();
+        btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dxd-season";
+        bar.after(btn);
+      }
+      const ids = this.seasonVideos();
+      const have = ids.filter((v) => { const x = this.entry(at.id, v); return x && x.state !== "failed"; }).length;
+      const text = !ids.length ? "" : have === ids.length ? `${DL_ICONS.done}<span>Season downloaded</span>` : `${DL_ICONS.down}<span>Download ${have ? `the other ${ids.length - have}` : `season (${ids.length})`}</span>`;
+      btn.hidden = !ids.length;
+      if (btn._html !== text) { btn._html = text; btn.innerHTML = text; }
+    },
+
+    shownSeason() {
+      const bar = document.querySelector('[class*="seasons-bar"]');
+      const m = bar && /(\d+)/.exec(bar.textContent || "");
+      if (m) return parseInt(m[1], 10);
+      return bar && /special/i.test(bar.textContent || "") ? 0 : null;
+    },
+
+    // An episode row's video id: by its number ("3. Title") in the season shown
+    videoIdOf(row, at) {
+      const href = quickPlay.videoOf(row.getAttribute("href") || "");
+      if (href) return href.videoId;
+      const meta = this.meta0;
+      if (!meta || meta.id !== at.id) return null;
+      const titleEl = row.querySelector('[class*="title-container"]');
+      const num = /^\s*(\d+)\./.exec((titleEl && titleEl.textContent) || "");
+      if (!num) return null;
+      const episode = parseInt(num[1], 10);
+      const season = this.shownSeason();
+      const same = (meta.videos || []).filter((v) => v.episode === episode && (season === null || v.season === season));
+      const video = same.find((v) => (v.title || v.name) === row.getAttribute("title")) || same[0];
+      return video ? video.id : null;
+    },
+
+    // The episodes out so far in the season shown
+    seasonVideos() {
+      const meta = this.meta0;
+      const at = parseDetailHref(location.hash);
+      if (!meta || !at || meta.id !== at.id) return [];
+      const season = this.shownSeason();
+      const now = Date.now();
+      return (meta.videos || []).filter((v) => v.season === season && (!v.released || Date.parse(v.released) <= now))
+        .sort((a, b) => a.episode - b.episode).map((v) => v.id);
+    },
+
+    movieButton(at) {
+      const row = document.querySelector('[class*="metadetails-content"] [class*="action-buttons-container"]');
+      let btn = document.querySelector(".dxd-movie");
+      if (at.type !== "movie" || !row) { if (btn) btn.remove(); return; }
+      if (!btn || btn.parentElement !== row) {
+        if (btn) btn.remove();
+        btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dxd-movie";
+        row.append(btn);
+      }
+      const x = this.entry(at.id, at.id);
+      const s = this.stateIcon(x);
+      const label = !x ? "Download" : x.state === "done" ? "Downloaded" : x.state === "failed" ? "Download failed" : x.state === "paused" ? "Paused" : x.state === "queued" ? "Waiting…" : `Downloading ${this.percent(x)}%`;
+      const html = `<span class="dxd-ic ${s.cls}">${s.html}</span><span>${label}</span>`;
+      if (btn._html !== html) { btn._html = html; btn.innerHTML = html; }
+    },
+
+    // The ⬇ on each stream in the list: download exactly this one
+    streamButtons() {
+      const list = document.querySelector('[class*="metadetails-content"] [class*="streams-list-container"]');
+      const banner = document.querySelector(".dxd-picking");
+      if (!list) { if (banner) banner.remove(); return; }
+      const path = quickPlay.videoOf(location.hash);
+      const picking = this.picking && path && this.picking === path.videoId;
+      list.classList.toggle("dxd-is-picking", !!picking);
+      if (picking && !banner) {
+        const b = document.createElement("div");
+        b.className = "dxd-picking";
+        b.innerHTML = `${DL_ICONS.down}<span>Choose a stream to download: press ⬇ on its right.</span><button class="dxe-btn" data-dxd="unpick">Cancel</button>`;
+        list.prepend(b);
+      } else if (!picking && banner) banner.remove();
+      for (const a of list.querySelectorAll('[class*="streams-container"] > [class*="stream-container"]')) {
+        if (a.querySelector(":scope > .dxd-stream")) continue;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dxd-stream";
+        btn.title = "Download this stream";
+        btn.setAttribute("aria-label", "Download this stream");
+        btn.innerHTML = DL_ICONS.down;
+        a.append(btn);
+      }
+    },
+
+    // Which stream of Stremio's list a row is: rows link to the stream's player address
+    async streamFor(row) {
+      const href = row.getAttribute("href") || "";
+      const s = await core().getState("meta_details").catch(() => null);
+      for (const g of (s && Array.isArray(s.streams) ? s.streams : [])) {
+        for (const st of (g && g.content && Array.isArray(g.content.content) ? g.content.content : [])) {
+          if (st && st.deepLinks && st.deepLinks.player && (href === st.deepLinks.player || href.endsWith(st.deepLinks.player))) return st;
+        }
+      }
+      return null;
+    },
+
+    onClick(e) {
+      const t = e.target && e.target.closest ? e.target : null;
+      if (!t) return;
+      const hit = t.closest(".dxd-ep, .dxd-season, .dxd-movie, .dxd-stream, [data-dxd=unpick], .dxd-pop");
+      if (!hit) { this.closePop(); return; }
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (hit.matches(".dxd-pop")) return this.onPop(e);
+      const at = parseDetailHref(location.hash);
+      if (hit.matches("[data-dxd=unpick]")) { this.picking = null; scheduleSync(); return; }
+      if (hit.matches(".dxd-stream")) {
+        const row = hit.closest('[class*="stream-container"]');
+        this.streamFor(row).then((st) => (st ? this.addStream(st) : this.toast("Couldn't read that stream. Try again in a moment.")));
+        return;
+      }
+      if (!at) return;
+      const title = (this.meta0 && this.meta0.id === at.id && this.meta0.name) || this.titleName();
+      if (hit.matches(".dxd-season")) {
+        const ids = this.seasonVideos();
+        const season = (/(\d+)/.exec((document.querySelector('[class*="seasons-bar"]') || {}).textContent || "") || [])[1];
+        this.download(at.type, at.id, ids, `${title}${season ? ` · Season ${season}` : ""}`, `${ids.length} episode${ids.length === 1 ? "" : "s"}`);
+        return;
+      }
+      const videoId = hit.matches(".dxd-movie") ? at.id : hit.dataset.video;
+      const x = this.entry(at.id, videoId);
+      if (x) return this.openPop(hit, x);
+      const ep = hit.closest('[class*="video-container"]');
+      const epName = ep ? (ep.querySelector('[class*="title-container"]') || ep).textContent.trim().split("\n")[0] : "";
+      this.download(at.type, at.id, [videoId], title, epName || (at.type === "movie" ? "Film" : ""));
+    },
+
+    titleName() {
+      const logo = document.querySelector('[class*="metadetails-content"] [class*="logo"]');
+      return (logo && (logo.getAttribute("alt") || logo.getAttribute("title"))) || document.title.replace(/\s*[-–|]\s*(Stremio|dx\.bi).*$/i, "") || "this";
+    },
+
+    // ---- The little menu on a button that's already downloading or downloaded ---------------------
+
+    openPop(btn, x) {
+      this.closePop();
+      ensureExtrasStyle();
+      const pop = document.createElement("div");
+      pop.className = "dxd-pop";
+      const acts = x.state === "done"
+        ? [["play", "Play downloaded"], ["remove", "Delete download"]]
+        : x.state === "failed"
+          ? [["retry", "Try again"], ["remove", "Remove"]]
+          : [[x.state === "paused" ? "resume" : "pause", x.state === "paused" ? "Resume" : "Pause"], ["remove", "Cancel download"]];
+      acts.push(["page", "See all downloads"]);
+      pop.innerHTML = (x.state === "failed" ? `<p>${esc(x.error)}</p>` : "") + acts.map(([a, l]) => `<button data-a="${a}">${esc(l)}</button>`).join("");
+      pop.dataset.id = x.id;
+      pop._hash = location.hash;
+      document.body.append(pop);
+      const r = btn.getBoundingClientRect();
+      pop.style.top = `${Math.min(innerHeight - pop.offsetHeight - 8, r.bottom + 6)}px`;
+      pop.style.left = `${Math.max(8, Math.min(innerWidth - pop.offsetWidth - 8, r.right - pop.offsetWidth))}px`;
+      this.pop = pop;
+    },
+
+    closePop() {
+      if (this.pop) this.pop.remove();
+      this.pop = null;
+    },
+
+    onPop(e) {
+      const b = e.target.closest("[data-a]");
+      const id = this.pop && this.pop.dataset.id;
+      this.closePop();
+      if (!b || !id) return;
+      this.act(b.dataset.a, id);
+    },
+
+    act(a, id) {
+      const api = this.api;
+      const x = this.list.find((y) => y.id === id);
+      if (!api) return;
+      if (a === "play") return this.play(x);
+      if (a === "page") return this.open();
+      if (a === "folder") return api.action("openFolder", id);
+      api.action(a, id).then(() => api.list()).then((list) => { this.list = list || []; this.refreshPage(); scheduleSync(); }).catch(() => { /* app closing */ });
+    },
+
+    // ---- The Downloads page ----------------------------------------------------------------------
+
+    open(tab) {
+      if (!this.api) return;
+      this.start();
+      ensureExtrasStyle();
+      this.ensureStyle();
+      this.close();
+      if (tab) this.tab = tab;
+      const el = document.createElement("div");
+      el.className = "dxe-modal";
+      el.innerHTML = '<div class="dxe-sheet is-wide dxd-page" role="dialog" aria-label="Downloads"></div>';
+      for (const type of ["keydown", "keyup", "keypress"]) el.addEventListener(type, (e) => {
+        e.stopPropagation();
+        if (e.type === "keydown" && e.key === "Escape") this.close();
+      });
+      el.addEventListener("click", (e) => this.onPageClick(e, el));
+      el.addEventListener("change", (e) => {
+        const s = e.target.closest("select[data-pref]");
+        if (s) this.savePrefs({ [s.dataset.pref]: s.dataset.pref === "parallel" ? Number(s.value) : s.value });
+      });
+      document.body.append(el);
+      this.el = el;
+      this.sig = "";
+      this.api.settings().then((p) => { this.prefs = p; this.refreshPage(true); }).catch(() => { /* app too old */ });
+      this.refreshPage(true);
+    },
+
+    close() {
+      if (this.el) this.el.remove();
+      this.el = null;
+    },
+
+    onPageClick(e, el) {
+      if (e.target === el || e.target.closest("[data-act=close]")) return this.close();
+      const tab = e.target.closest("[data-tab]");
+      if (tab) { this.tab = tab.dataset.tab; this.refreshPage(true); return; }
+      const b = e.target.closest("[data-a]");
+      if (!b) return;
+      const a = b.dataset.a;
+      const api = this.api;
+      if (a === "pickFolder") { api.pickFolder().then((p) => { this.prefs = p; this.refreshPage(true); }).catch(() => { /* cancelled */ }); return; }
+      if (a === "resetFolder") { this.savePrefs({ folder: this.prefs.defaultFolder }); return; }
+      if (a === "openFolder") { api.action("openFolder"); return; }
+      if (a === "removeWatched") { api.action("removeWatched"); return; }
+      // (deleting asks once: the button turns into "Delete?")
+      if (a === "remove" && !b.classList.contains("is-sure")) {
+        b.classList.add("is-sure");
+        b.textContent = "Sure?";
+        setTimeout(() => { if (b.isConnected) { b.classList.remove("is-sure"); b.textContent = "Delete"; } }, 4000);
+        return;
+      }
+      this.act(a, b.dataset.id);
+    },
+
+    size(bytes) {
+      if (!(bytes > 0)) return "";
+      return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+    },
+
+    eta(x) {
+      if (!(x.speed > 0) || !(x.size > 0)) return "";
+      const sec = (x.size - x.received) / x.speed;
+      if (sec < 60) return "under a minute left";
+      if (sec < 3600) return `${Math.round(sec / 60)} min left`;
+      return `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min left`;
+    },
+
+    status(x) {
+      if (x.state === "done") return `${this.size(x.size)}${x.watchedAt ? " · Watched" : ""}`;
+      if (x.state === "failed") return x.error || "Didn't download";
+      if (x.state === "paused") return `Paused · ${this.percent(x)}%${x.size ? ` of ${this.size(x.size)}` : ""}`;
+      if (x.state === "queued") return x.received ? `Waiting · ${this.percent(x)}%` : "Waiting to start";
+      const bits = [`${this.percent(x)}%`, x.size ? `${this.size(x.received)} of ${this.size(x.size)}` : this.size(x.received), x.speed ? `${this.size(x.speed)}/s` : "", this.eta(x)];
+      return x.error && /trying again/.test(x.error) ? x.error : bits.filter(Boolean).join(" · ");
+    },
+
+    refreshPage(full) {
+      const sheet = this.el && this.el.querySelector(".dxd-page");
+      if (!sheet) return;
+      const sig = `${this.tab}|${this.list.map((x) => `${x.id}:${x.state}:${!!x.watchedAt}:${x.poster}`).join(",")}`;
+      if (!full && sig === this.sig) {
+        // only the numbers moved: change them in place (keeps hover and scroll)
+        for (const x of this.list) {
+          const row = sheet.querySelector(`[data-row="${CSS.escape(x.id)}"]`);
+          if (!row) continue;
+          row.querySelector(".dxd-st").textContent = this.status(x);
+          const bar = row.querySelector(".dxd-bar i");
+          if (bar) bar.style.width = `${this.percent(x)}%`;
+        }
+        this.paintTotals(sheet);
+        return;
+      }
+      this.sig = sig;
+      const scroll = sheet.querySelector(".dxd-body")?.scrollTop || 0;
+      const count = this.list.length;
+      sheet.innerHTML = `
+        <div class="dxe-head"><b>Downloads<small>Films and episodes saved on this computer, to watch without internet</small></b><button class="dxe-btn" data-act="close">Close</button></div>
+        <div class="dxd-tabs"><button data-tab="list" class="${this.tab === "list" ? "is-on" : ""}">Downloads${count ? ` (${count})` : ""}</button><button data-tab="settings" class="${this.tab === "settings" ? "is-on" : ""}">Settings</button></div>
+        <div class="dxd-body">${this.tab === "settings" ? this.settingsHtml() : this.listHtml()}</div>`;
+      sheet.querySelector(".dxd-body").scrollTop = scroll;
+      this.paintTotals(sheet);
+    },
+
+    paintTotals(sheet) {
+      const el = sheet.querySelector(".dxd-total");
+      if (!el) return;
+      const used = this.list.reduce((s, x) => s + (x.state === "done" ? x.size : x.received || 0), 0);
+      const free = this.prefs && this.prefs.free > 0 ? ` · ${this.size(this.prefs.free)} free` : "";
+      el.textContent = `${this.size(used) || "Nothing"} saved${free}`;
+    },
+
+    listHtml() {
+      if (!this.list.length) {
+        return `<div class="dxd-empty">${DL_ICONS.down}<b>No downloads yet</b><p>On a film, press Download. On a series, press ⬇ on an episode, or Download season. You choose the quality each time (or once, in Settings), or press ⬇ on any stream in the list to download exactly that one.</p></div>`;
+      }
+      const watched = this.list.filter((x) => x.watchedAt && x.state === "done").length;
+      const groups = new Map();
+      for (const x of [...this.list].sort((a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.number ?? 0) - (b.number ?? 0) || a.addedAt - b.addedAt)) {
+        if (!groups.has(x.metaId)) groups.set(x.metaId, []);
+        groups.get(x.metaId).push(x);
+      }
+      const row = (x) => {
+        const busy = x.state === "downloading" || x.state === "queued";
+        const btns = [
+          x.state === "done" ? `<button class="dxe-btn is-primary" data-a="play" data-id="${esc(x.id)}">${ICONS.playSmall}Play</button>` : "",
+          busy ? `<button class="dxe-btn" data-a="pause" data-id="${esc(x.id)}">Pause</button>` : "",
+          x.state === "paused" ? `<button class="dxe-btn" data-a="resume" data-id="${esc(x.id)}">Resume</button>` : "",
+          x.state === "failed" ? `<button class="dxe-btn" data-a="retry" data-id="${esc(x.id)}">Try again</button>` : "",
+          x.state === "done" && x.watchedAt ? `<button class="dxe-btn" data-a="unwatched" data-id="${esc(x.id)}" title="Keep it: not watched yet">Not watched</button>` : "",
+          x.state === "done" ? `<button class="dxe-btn dxd-icon" data-a="folder" data-id="${esc(x.id)}" title="Show the file">${DL_ICONS.folder}</button>` : "",
+          `<button class="dxe-btn dxd-del" data-a="remove" data-id="${esc(x.id)}">Delete</button>`,
+        ].join("");
+        return `<div class="dxd-row is-${x.state}" data-row="${esc(x.id)}">
+          <div class="dxd-thumb">${x.background ? `<img src="${esc(x.background)}" alt="" loading="lazy" onerror="this.remove()">` : ""}${x.state === "done" ? "" : `<span class="dxd-bar"><i style="width:${this.percent(x)}%"></i></span>`}</div>
+          <div class="dxd-info"><b>${esc(x.episode || x.name || "Untitled")}</b><small>${esc([x.quality, x.provider, x.torrent ? "Torrent" : ""].filter(Boolean).join(" · "))}</small><span class="dxd-st${x.state === "failed" ? " is-bad" : ""}">${esc(this.status(x))}</span></div>
+          <div class="dxd-btns">${btns}</div></div>`;
+      };
+      return `<div class="dxd-bar-top"><span class="dxd-total"></span><span class="dxe-spacer"></span>
+          ${watched ? `<button class="dxe-btn" data-a="removeWatched">Delete watched (${watched})</button>` : ""}
+          <button class="dxe-btn" data-a="openFolder">${DL_ICONS.folder}Open folder</button></div>
+        ${[...groups.values()].map((items) => {
+          const first = items[0];
+          const name = `${first.name || "Untitled"}${first.year && !String(first.name).includes(first.year) ? ` (${first.year})` : ""}`;
+          return `<section class="dxd-group"><header>${first.poster ? `<img src="${esc(first.poster)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<b>${esc(name)}</b><small>${first.type === "series" ? `${items.length} episode${items.length === 1 ? "" : "s"}` : "Film"}</small></header>${items.map(row).join("")}</section>`;
+        }).join("")}`;
+    },
+
+    settingsHtml() {
+      const p = this.prefs || { folder: "…", quality: "ask", autoDelete: "off", parallel: 2 };
+      const select = (key, options) => `<select data-pref="${key}">${options.map(([v, l]) => `<option value="${esc(v)}"${String(p[key]) === String(v) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+      return `<div class="dxd-settings">
+        <div class="dxd-set"><div><b>Download folder</b><small>Where new downloads are saved. Ones already saved stay where they are. ${p.free > 0 ? `${esc(this.size(p.free))} free there.` : ""}</small><code>${esc(p.folder)}</code></div>
+          <div class="dxd-set-btns"><button class="dxe-btn is-primary" data-a="pickFolder">Change…</button><button class="dxe-btn" data-a="openFolder">Open</button>${p.defaultFolder && p.folder !== p.defaultFolder ? '<button class="dxe-btn" data-a="resetFolder">Use the default</button>' : ""}</div></div>
+        <div class="dxd-set"><div><b>Quality</b><small>What the Download buttons save. "Ask each time" lets you choose for every download, including picking the exact stream yourself.</small></div>
+          ${select("quality", [["ask", "Ask each time"], ...DL_QUALITIES.map(([v, l]) => [v, l])])}</div>
+        <div class="dxd-set"><div><b>Delete watched downloads</b><small>A download counts as watched once you play it to the end in dx.bi. You can always delete any download yourself.</small></div>
+          ${select("autoDelete", [["off", "Never: I'll delete them"], ["finished", "As soon as I finish one"], ["day", "A day after I finish one"]])}</div>
+        <div class="dxd-set"><div><b>Downloads at once</b><small>More at once can be quicker on a fast connection.</small></div>
+          ${select("parallel", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]])}</div>
+        <p class="dxe-note">Downloads are ordinary video files with their subtitles beside them, so other players can open them too. Debrid and direct streams download fastest; torrents download through dx.bi's streaming server from the people sharing them.</p>
+      </div>`;
+    },
+
+    ensureStyle() {
+      if (document.getElementById("dxbi-downloads-style")) return;
+      const style = document.createElement("style");
+      style.id = "dxbi-downloads-style";
+      style.textContent = `
+  .dxd-ep { position: absolute; top: 50%; right: .9rem; z-index: 3; width: 2.3rem; height: 2.3rem; margin-top: -1.15rem; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1.5px solid rgba(255,255,255,.35); border-radius: 50%; background: rgba(20,20,22,.7); color: #fff; cursor: pointer; opacity: .75; transition: opacity .15s, background-color .15s, border-color .15s; }
+  [class*="video-container"]:has(> .dxd-ep) { position: relative; padding-right: 3.6rem !important; }
+  [class*="video-container"]:hover > .dxd-ep, .dxd-ep:focus-visible, .dxd-ep:not(:is(.is-done, .is-busy, .is-paused, .is-failed)):hover { opacity: 1; }
+  .dxd-ep:hover { background: rgba(255,255,255,.18); border-color: #fff; }
+  .dxd-ep svg { width: 1.15rem; height: 1.15rem; }
+  .dxd-ep.is-done, .dxd-ic.is-done { opacity: 1; border-color: transparent; background: var(--dx-accent, #e50914); }
+  .dxd-ep.is-failed { opacity: 1; border-color: #ff6b6b; color: #ff6b6b; }
+  .dxd-ep.is-busy, .dxd-ep.is-paused { opacity: 1; }
+  .dxd-ep.is-busy i, .dxd-ic.is-busy i { position: absolute; inset: -1.5px; border-radius: 50%; background: conic-gradient(var(--dx-accent, #e50914) calc(var(--p) * 1%), transparent 0); -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%); mask: radial-gradient(circle, transparent 58%, #000 60%); }
+  .dxd-ep.is-busy em, .dxd-ic.is-busy em { font: 800 .62rem Inter, system-ui, sans-serif !important; font-style: normal; }
+  .dxd-season { align-self: flex-start; display: inline-flex; align-items: center; gap: .45rem; height: 2.4rem; margin: .4rem 1rem .6rem; padding: 0 1rem; border: 1.5px solid rgba(255,255,255,.25); border-radius: 999px; background: rgba(42,42,48,.65); color: #fff; font: 700 .85rem Inter, system-ui, sans-serif !important; cursor: pointer; }
+  .dxd-season:hover, .dxd-season:focus-visible { background: rgba(255,255,255,.16); border-color: #fff; }
+  .dxd-season svg { width: 1.05rem; height: 1.05rem; }
+  .dxd-movie { height: 3rem; margin-bottom: 1rem; display: inline-flex; align-items: center; gap: .55rem; padding: 0 1.25rem 0 .9rem; border-radius: 999px; background: rgba(42,42,48,.65); border: 1.5px solid rgba(255,255,255,.28); color: #fff; font: 700 .95rem Inter, system-ui, sans-serif !important; cursor: pointer; white-space: nowrap; transition: background-color .2s, border-color .2s; }
+  .dxd-movie:hover, .dxd-movie:focus-visible { background: rgba(255,255,255,.16); border-color: #fff; }
+  .dxd-ic { position: relative; width: 1.7rem; height: 1.7rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
+  .dxd-ic svg { width: 1.2rem; height: 1.2rem; }
+  .dxd-stream { position: absolute; top: 50%; right: .8rem; z-index: 3; width: 2.4rem; height: 2.4rem; margin-top: -1.2rem; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: #fff; cursor: pointer; opacity: 0; transition: opacity .15s, background-color .15s; }
+  [class*="stream-container"]:has(> .dxd-stream) { position: relative; }
+  [class*="stream-container"]:hover > .dxd-stream, .dxd-stream:focus-visible, .dxd-is-picking .dxd-stream { opacity: 1; }
+  .dxd-is-picking .dxd-stream { background: var(--dx-accent, #e50914); }
+  .dxd-stream:hover { background: rgba(255,255,255,.22); }
+  .dxd-stream svg { width: 1.2rem; height: 1.2rem; }
+  .dxd-picking { display: flex; align-items: center; gap: .7rem; margin: .4rem 0 .8rem; padding: .7rem .9rem; border-radius: .7rem; background: color-mix(in srgb, var(--dx-accent, #e50914) 22%, rgba(20,20,22,.9)); color: #fff; font: 600 .9rem Inter, system-ui, sans-serif !important; }
+  .dxd-picking span { flex: 1; }
+  .dxd-picking svg { width: 1.2rem; height: 1.2rem; }
+  .dxd-pop { position: fixed; z-index: 100003; min-width: 13rem; max-width: 22rem; padding: .35rem; border-radius: .7rem; background: rgba(24,24,28,.98); border: 1px solid rgba(255,255,255,.1); box-shadow: 0 18px 50px rgba(0,0,0,.6); font-family: Inter, system-ui, sans-serif; }
+  .dxd-pop p { margin: .4rem .6rem .5rem; color: #ff8a8a; font: 500 .78rem/1.4 Inter, system-ui, sans-serif !important; }
+  .dxd-pop button { display: block; width: 100%; padding: .6rem .75rem; border: 0; border-radius: .45rem; background: none; color: #fff; text-align: left; font: 600 .86rem Inter, system-ui, sans-serif !important; cursor: pointer; }
+  .dxd-pop button:hover, .dxd-pop button:focus-visible { background: rgba(255,255,255,.1); }
+  .dxd-toast { position: fixed; left: 50%; bottom: 2.2rem; z-index: 100004; max-width: min(40rem, calc(100vw - 2rem)); padding: .85rem 1.3rem; border-radius: .7rem; background: rgba(24,24,28,.96); border: 1px solid rgba(255,255,255,.1); color: #fff; font: 600 .9rem/1.4 Inter, system-ui, sans-serif !important; box-shadow: 0 16px 50px rgba(0,0,0,.55); transform: translate(-50%, 1rem); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; cursor: pointer; }
+  .dxd-toast.is-on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .dxd-choose { width: 32rem; }
+  .dxd-qs { display: flex; flex-direction: column; gap: .35rem; padding: .2rem 1rem; }
+  .dxd-q { display: block; width: 100%; padding: .75rem .9rem; border: 1.5px solid transparent; border-radius: .6rem; background: rgba(255,255,255,.05); color: #fff; text-align: left; cursor: pointer; }
+  .dxd-q:hover, .dxd-q:focus-visible { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.5); outline: none; }
+  .dxd-q b { display: block; font: 700 .95rem Inter, system-ui, sans-serif !important; }
+  .dxd-q span { display: block; margin-top: .2rem; color: rgba(255,255,255,.55); font: 500 .78rem/1.4 Inter, system-ui, sans-serif !important; }
+  .dxd-q.is-src { margin-top: .4rem; border-color: rgba(255,255,255,.12); background: none; }
+  .dxd-always input { -webkit-appearance: checkbox; appearance: auto; position: static; display: inline-block; width: 1rem; height: 1rem; margin: 0; opacity: 1; accent-color: var(--dx-accent, #e50914); }
+  .dxd-always { display: flex; align-items: center; gap: .5rem; color: rgba(255,255,255,.6); font: 500 .8rem Inter, system-ui, sans-serif !important; cursor: pointer; }
+  .dxd-page { height: min(46rem, calc(100vh - 4rem)); }
+  .dxd-tabs { display: flex; gap: .3rem; padding: 0 1.4rem .6rem; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .dxd-tabs button { height: 2.3rem; padding: 0 1rem; border: 0; border-radius: 999px; background: none; color: rgba(255,255,255,.6); font: 700 .88rem Inter, system-ui, sans-serif !important; cursor: pointer; }
+  .dxd-tabs button:hover { color: #fff; }
+  .dxd-tabs button.is-on { background: #fff; color: #000; }
+  .dxd-body { flex: 1; min-height: 0; overflow-y: auto; padding: .8rem 1.4rem 1.4rem; }
+  .dxd-bar-top { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; }
+  .dxd-bar-top .dxe-spacer { flex: 1; }
+  .dxd-total { color: rgba(255,255,255,.6); font: 600 .84rem Inter, system-ui, sans-serif !important; }
+  .dxe-btn svg { width: 1rem; height: 1rem; }
+  .dxd-group { margin-top: 1rem; }
+  .dxd-group header { display: flex; align-items: center; gap: .7rem; margin-bottom: .5rem; }
+  .dxd-group header img { width: 2.2rem; height: 3.3rem; border-radius: .3rem; object-fit: cover; }
+  .dxd-group header b { font: 800 1.05rem Inter, system-ui, sans-serif !important; }
+  .dxd-group header small { color: rgba(255,255,255,.45); font: 600 .78rem Inter, system-ui, sans-serif !important; }
+  .dxd-row { display: flex; align-items: center; gap: 1rem; padding: .55rem; border-radius: .7rem; }
+  .dxd-row:hover { background: rgba(255,255,255,.04); }
+  .dxd-thumb { position: relative; flex: none; width: 9rem; aspect-ratio: 16 / 9; border-radius: .4rem; overflow: hidden; background: rgba(255,255,255,.06); }
+  .dxd-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .dxd-row:not(.is-done) .dxd-thumb img { opacity: .55; }
+  .dxd-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.2); }
+  .dxd-bar i { display: block; height: 100%; background: var(--dx-accent, #e50914); transition: width .6s; }
+  .dxd-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .15rem; }
+  .dxd-info b { font: 700 .95rem/1.3 Inter, system-ui, sans-serif !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dxd-info small { color: rgba(255,255,255,.5); font: 600 .76rem Inter, system-ui, sans-serif !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dxd-st { color: rgba(255,255,255,.75); font: 500 .8rem/1.35 Inter, system-ui, sans-serif !important; font-variant-numeric: tabular-nums; }
+  .dxd-st.is-bad { color: #ff7b7b; }
+  .dxd-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
+  .dxd-btns .dxe-btn { height: 2.2rem; padding: 0 .8rem; }
+  .dxd-btns .dxd-icon { padding: 0 .6rem; }
+  .dxd-del.is-sure { background: #c62828; }
+  .dxd-empty { display: flex; flex-direction: column; align-items: center; gap: .6rem; margin: 4rem auto; max-width: 30rem; text-align: center; color: rgba(255,255,255,.6); }
+  .dxd-empty svg { width: 2.6rem; height: 2.6rem; color: rgba(255,255,255,.4); }
+  .dxd-empty b { color: #fff; font: 800 1.1rem Inter, system-ui, sans-serif !important; }
+  .dxd-empty p { margin: 0; font: 500 .88rem/1.55 Inter, system-ui, sans-serif !important; }
+  .dxd-settings { display: flex; flex-direction: column; gap: .4rem; }
+  .dxd-set { display: flex; align-items: center; gap: 1.2rem; padding: 1rem; border-radius: .7rem; background: rgba(255,255,255,.04); }
+  .dxd-set > div:first-child { flex: 1; min-width: 0; }
+  .dxd-set b { display: block; font: 700 .95rem Inter, system-ui, sans-serif !important; }
+  .dxd-set small { display: block; margin-top: .25rem; color: rgba(255,255,255,.55); font: 500 .8rem/1.45 Inter, system-ui, sans-serif !important; }
+  .dxd-set code { display: block; margin-top: .5rem; padding: .45rem .6rem; border-radius: .4rem; background: rgba(0,0,0,.35); color: #fff; font: 500 .8rem ui-monospace, monospace !important; word-break: break-all; }
+  .dxd-set-btns { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: flex-end; max-width: 15rem; }
+  .dxd-set select { height: 2.5rem; min-width: 13rem; padding: 0 .7rem; border: 1px solid rgba(255,255,255,.2); border-radius: .5rem; background: #1c1c20; color: #fff; font: 600 .86rem Inter, system-ui, sans-serif !important; }
+  .dxd-settings .dxe-note { margin: .8rem .2rem 0; color: rgba(255,255,255,.45); font: 500 .8rem/1.5 Inter, system-ui, sans-serif !important; }
+`;
+      document.head.append(style);
+    },
+  };
+
   // The last streams the phone app was shown (api.phone.streams), for api.phone.play
   let phoneStreams = null;
   const api = {
     settings,
     sync,
+    downloads,
     sfx,
     convert,
     streamInfo,
@@ -15226,6 +16133,28 @@
     // dx.bi's phone app: what Home's own rows show, as data for its native screens (read only; the
     // page's rows above are built from the same things)
     phone: {
+      // Downloads (Downloads.kt): the stream to save for one film or episode in a quality ("best",
+      // "2160", "1080", "720", "small"), picked straight from the addons as the computer does, in
+      // the shape the player hand-off has. { stream } or { error }
+      async download(type, metaId, videoId, quality) {
+        const r = await downloads.spec(type, metaId, videoId || metaId, quality || "best");
+        if (!r.spec) return { error: r.error || "Couldn't find a stream to download." };
+        const s = r.spec;
+        return {
+          stream: {
+            url: s.url,
+            headers: s.headers,
+            subtitles: s.subtitles.map((x, i) => ({ url: x.url, lang: x.lang, label: x.lang, start: i === 0 })),
+            title: s.name || "dx.bi",
+            subtitle: s.episode,
+            background: s.background,
+            poster: s.poster,
+            type, metaId, videoId: videoId || metaId,
+            season: s.season, number: s.number,
+            quality: s.quality, provider: s.provider, filename: s.filename, size: s.size,
+          },
+        };
+      },
       // Your stats, for the app's own screen (null when Watch stats is off)
       stats() {
         if (!settings.watchStats) return null;

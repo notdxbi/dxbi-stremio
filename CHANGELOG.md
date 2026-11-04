@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.31.0
+
+- **Downloads, like Netflix.** Save films and episodes to watch without internet, in the dx.bi desktop app and the Android phone app. Films get a Download button, every episode gets a ⬇ button, and a season downloads with one press of *Download season*. You choose the quality each time (Best, 4K, 1080p, 720p or Smallest file), or once in Downloads → Settings, or choose the source yourself: on a computer, press ⬇ on any stream in the list; on a phone, use *Choose the source myself*. dx.bi checks each link first and skips debrid streams that aren't actually ready. Subtitles in your language and the artwork are saved too, and downloads play in dx.bi's own player with your progress kept, even with no connection at all.
+- **The Downloads page** (desktop: profile menu → Downloads; phone: Profile → Downloads) groups downloads by title and shows progress, speed and space used, with pause, resume, retry, delete, and *Delete watched*. Its **Settings** tab sets the download folder (desktop) or phone storage/memory card (Android), the quality, whether watched downloads are deleted automatically (never, as soon as you finish one, or a day later), how many download at once (desktop) and Wi-Fi only (Android).
+- On a computer, downloads are ordinary video files with their subtitles beside them (`Videos/dx.bi/<Title>/S01E01 - Episode.mkv`). They carry on after a dropped connection or a restart, keep the computer from sleeping while they run, and torrents download through dx.bi's streaming server.
+
 ## 2.30.0
 
 - **Subtitles start in your language on TV and phones.** With *Subtitles when a video starts* on, dx.bi TV, the Android phone app and the iPhone app now switch on a subtitle in your Stremio subtitle language as the video starts, as the desktop app does. They used to always start with subtitles off (#56).

@@ -22,6 +22,7 @@ import { setupWindowTransparency } from "./controllers/transparencyController";
 import { gpuController } from "./controllers/gpuController";
 import DeviceClock from "./core/DeviceClock";
 import FolderPicker from "./core/FolderPicker";
+import Downloads from "./core/Downloads";
 import { externalPlayerController } from "./controllers/externalPlayerController";
 import { offerEnhancedImport, seedBuiltInPlugin } from "./core/BuiltIn";
 import MpvShell from "./core/MpvShell";
@@ -242,6 +243,7 @@ app.on("ready", async () => {
     gpuController.initIPC(userDataPath);
     DeviceClock.initIPC();
     FolderPicker.initIPC();
+    Downloads.setup();
     externalPlayerController.initIPC();
 
     // macOS: protocol URLs are sent via 'open-url'
@@ -366,6 +368,8 @@ async function useServerJS() {
         await useStremioService();
     }
 }
+
+app.on("before-quit", () => Downloads.flush());
 
 app.on("window-all-closed", () => {
     logger.info("Closing app...");

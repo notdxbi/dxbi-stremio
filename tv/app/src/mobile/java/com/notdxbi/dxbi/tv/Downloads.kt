@@ -1,11 +1,13 @@
 package com.notdxbi.dxbi.tv
 
+import android.app.Activity
 import android.app.Notification
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.StatFs
 import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
@@ -21,6 +23,7 @@ import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
+import androidx.media3.exoplayer.scheduler.Requirements
 import androidx.media3.exoplayer.scheduler.Scheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,48 +37,112 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * Phones: films and episodes saved to watch offline. A stream (an addon's link, debrid ones
- * included) is downloaded in the background with Media3's DownloadManager, its subtitles alongside,
- * and plays from the phone in dx.bi's player, picking up where it was left.
+ * Phones: films and episodes saved to watch offline, like Netflix's downloads. A stream (an addon's
+ * link, debrid ones included) is downloaded in the background with Media3's DownloadManager, its
+ * subtitles alongside, and plays from the phone in dx.bi's player, picking up where it was left.
+ * dx.bi picks the stream (in the quality asked for: plugin api.phone.download), or it's the one
+ * chosen from the list.
  */
 @OptIn(UnstableApi::class)
 object Downloads {
 
-    class Item(val id: String, val stream: JSONObject, val state: Int, val percent: Float, val bytes: Long) {
+    class Item(val id: String, val stream: JSONObject, val state: Int, val percent: Float, val bytes: Long, val total: Long, val stopped: Boolean, val watchedAt: Long) {
         val title: String get() = stream.optString("title")
         val subtitle: String get() = stream.optString("subtitle")
         val art: String? get() = stream.optString("background").takeIf { it.startsWith("http") }
+        val poster: String? get() = stream.optString("poster").takeIf { it.startsWith("http") }
+        val metaId: String get() = stream.optString("metaId")
+        val videoId: String get() = stream.optString("videoId")
+        val type: String get() = stream.optString("type")
+        val season: Int? get() = if (stream.has("season") && !stream.isNull("season")) stream.optInt("season") else null
+        val number: Int? get() = if (stream.has("number") && !stream.isNull("number")) stream.optInt("number") else null
+        val quality: String get() = stream.optString("quality")
+        val provider: String get() = stream.optString("provider")
         val done get() = state == Download.STATE_COMPLETED
         val failed get() = state == Download.STATE_FAILED
+        val paused get() = stopped && !done && !failed
+        val watched get() = watchedAt > 0
     }
+
+    /** Downloads → Settings: what the Download buttons save, deleting watched ones, Wi-Fi only, where */
+    data class Settings(val quality: String, val autoDelete: String, val wifiOnly: Boolean, val storage: Int)
+
+    /** Somewhere downloads can go: the phone itself, or a memory card */
+    data class Place(val index: Int, val label: String, val dir: File, val free: Long)
 
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     val items: StateFlow<List<Item>> = _items
 
+    private val _settings = MutableStateFlow(Settings("ask", "off", false, 0))
+    val settings: StateFlow<Settings> = _settings
+
+    /** Waiting for Wi-Fi (or any connection) before the downloads can carry on */
+    private val _waiting = MutableStateFlow(false)
+    val waiting: StateFlow<Boolean> = _waiting
+
     private var manager: DownloadManager? = null
+    // (for removals the list starts itself: watched ones)
+    private var appContext: Context? = null
     private lateinit var cache: SimpleCache
     private lateinit var prefs: android.content.SharedPreferences
     private val handler = Handler(Looper.getMainLooper())
     private val http by lazy { OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build() }
 
+    private fun prefsOf(context: Context): android.content.SharedPreferences {
+        if (!::prefs.isInitialized) {
+            prefs = context.applicationContext.getSharedPreferences("downloads", Context.MODE_PRIVATE)
+            _settings.value = Settings(
+                prefs.getString("quality", "ask") ?: "ask",
+                prefs.getString("autoDelete", "off") ?: "off",
+                prefs.getBoolean("wifiOnly", false),
+                prefs.getInt("storage", 0),
+            )
+        }
+        return prefs
+    }
+
+    /** The phone's own storage, then any memory card (the app's own folder on each) */
+    fun places(context: Context): List<Place> {
+        val app = context.applicationContext
+        val dirs = app.getExternalFilesDirs(null).toList()
+        val out = mutableListOf<Place>()
+        dirs.forEachIndexed { i, d ->
+            if (d == null) return@forEachIndexed
+            val free = runCatching { StatFs(d.path).availableBytes }.getOrDefault(-1L)
+            out += Place(i, if (i == 0) "Phone storage" else if (dirs.size > 2) "Memory card $i" else "Memory card", File(d, "downloads"), free)
+        }
+        if (out.isEmpty()) out += Place(0, "Phone storage", File(app.filesDir, "downloads"), runCatching { StatFs(app.filesDir.path).availableBytes }.getOrDefault(-1L))
+        return out
+    }
+
+    private fun folder(context: Context): File {
+        val all = places(context)
+        return (all.firstOrNull { it.index == prefsOf(context).getInt("storage", 0) } ?: all.first()).dir
+    }
+
     @Synchronized
     fun manager(context: Context): DownloadManager {
         manager?.let { return it }
         val app = context.applicationContext
-        prefs = app.getSharedPreferences("downloads", Context.MODE_PRIVATE)
+        appContext = app
+        prefsOf(app)
         val db = StandaloneDatabaseProvider(app)
-        cache = SimpleCache(File(app.getExternalFilesDir(null) ?: app.filesDir, "downloads"), NoOpCacheEvictor(), db)
+        cache = SimpleCache(folder(app), NoOpCacheEvictor(), db)
         val m = DownloadManager(app, db, cache, withHeaders(), Executors.newFixedThreadPool(2))
         m.maxParallelDownloads = 2
+        m.requirements = requirements()
         m.addListener(object : DownloadManager.Listener {
             override fun onDownloadChanged(manager: DownloadManager, download: Download, finalException: Exception?) = refresh()
             override fun onDownloadRemoved(manager: DownloadManager, download: Download) = refresh()
             override fun onInitialized(manager: DownloadManager) = refresh()
+            override fun onRequirementsStateChanged(manager: DownloadManager, requirements: Requirements, notMetRequirements: Int) = refresh()
         })
         manager = m
         refresh()
         return m
     }
+
+    private fun requirements() = Requirements(if (_settings.value.wifiOnly) Requirements.NETWORK_UNMETERED else Requirements.NETWORK)
 
     /** Addons can ask for headers on their links: kept per link, added to every request for it */
     private fun withHeaders(): DataSource.Factory = ResolvingDataSource.Factory(OkHttpDataSource.Factory(http)) { spec ->
@@ -89,18 +156,41 @@ object Downloads {
         return CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(withHeaders()).setCacheWriteDataSinkFactory(null)
     }
 
-    /** Starts saving the stream the page handed over (the same details the player gets) */
-    fun add(context: Context, json: String) {
+    /** The download of one film or episode, if there is one */
+    fun find(metaId: String, videoId: String): Item? = _items.value.firstOrNull { it.metaId == metaId && it.videoId == videoId }
+
+    /**
+     * Starts saving the stream the page (or the plugin's pick) handed over (the same details the
+     * player gets). [quiet]: no "Downloading…" message (a whole season says it once). False when it
+     * can't be downloaded or already is.
+     */
+    fun add(context: Context, json: String, quiet: Boolean = false): Boolean {
         val app = context.applicationContext
         manager(app)
         val stream = JSONObject(json)
         val url = stream.optString("url")
         if (url.isEmpty() || stream.optBoolean("torrent")) {
             Toast.makeText(app, "Only debrid and direct streams can be downloaded", Toast.LENGTH_LONG).show()
-            return
+            return false
         }
-        val id = "${stream.optString("hash").hashCode()}-${stream.optString("videoId")}".replace(Regex("[^\\w-]"), "")
-        Toast.makeText(app, "Downloading ${stream.optString("title")}", Toast.LENGTH_SHORT).show()
+        // (a stream played through the page names its title in its player address:
+        // #/player/<stream>/<addon>/<meta addon>/<type>/<id>/<video>)
+        val parts = stream.optString("hash").split("/")
+        if (stream.optString("metaId").isEmpty() && parts.size >= 8 && parts[1] == "player") {
+            stream.put("type", Uri.decode(parts[5])).put("metaId", Uri.decode(parts[6]))
+            if (stream.optString("videoId").isEmpty()) stream.put("videoId", Uri.decode(parts[7]))
+        }
+        val metaId = stream.optString("metaId")
+        val videoId = stream.optString("videoId").ifEmpty { metaId }
+        stream.put("videoId", videoId)
+        val id = (if (metaId.isNotEmpty()) "$metaId:$videoId" else "${stream.optString("hash").hashCode()}-$videoId").replace(Regex("[^\\w:.-]"), "_")
+        val old = _items.value.firstOrNull { it.id == id }
+        if (old != null && !old.failed) {
+            if (!quiet) Toast.makeText(app, if (old.done) "Already downloaded" else "Already downloading", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (!quiet) Toast.makeText(app, "Downloading ${listOf(stream.optString("title"), stream.optString("subtitle")).filter { it.isNotEmpty() }.joinToString(" · ")}", Toast.LENGTH_SHORT).show()
+        prefs.edit().remove("watched:$id").remove("pos:$id").apply()
         thread(name = "dxbi-download-prepare") {
             stream.optJSONObject("headers")?.takeIf { it.length() > 0 }?.let { prefs.edit().putString("headers:$url", it.toString()).apply() }
             // subtitles are small: saved straight away (up to three, already ordered by language)
@@ -109,7 +199,7 @@ object Downloads {
             val dir = File(app.filesDir, "download-subs/$id").apply { mkdirs() }
             for (i in 0 until minOf(subs.length(), 3)) {
                 val s = subs.optJSONObject(i) ?: continue
-                val file = File(dir, "$i." + (Uri.parse(s.optString("url")).lastPathSegment?.substringAfterLast('.', "srt")?.take(4) ?: "srt"))
+                val file = File(dir, "$i." + (Uri.parse(s.optString("url")).lastPathSegment?.substringAfterLast('.', "srt")?.take(4)?.takeIf { it.matches(Regex("srt|vtt|ass|ssa")) } ?: "srt"))
                 val ok = runCatching {
                     http.newCall(Request.Builder().url(s.optString("url")).build()).execute().use { r ->
                         if (!r.isSuccessful) return@use false
@@ -120,56 +210,160 @@ object Downloads {
                 if (ok) saved.put(JSONObject(s.toString()).put("url", Uri.fromFile(file).toString()))
             }
             stream.put("subtitles", saved)
+            if (old != null) DownloadService.sendRemoveDownload(app, DownloadsService::class.java, id, false)
             val request = DownloadRequest.Builder(id, Uri.parse(url)).setData(stream.toString().toByteArray()).build()
             DownloadService.sendAddDownload(app, DownloadsService::class.java, request, false)
         }
+        return true
     }
 
     fun remove(context: Context, item: Item) {
         DownloadService.sendRemoveDownload(context.applicationContext, DownloadsService::class.java, item.id, false)
         File(context.applicationContext.filesDir, "download-subs/${item.id}").deleteRecursively()
-        prefs.edit().remove("pos:${item.id}").apply()
+        prefsOf(context).edit().remove("pos:${item.id}").remove("watched:${item.id}").apply()
     }
+
+    fun pause(context: Context, item: Item) =
+        DownloadService.sendSetStopReason(context.applicationContext, DownloadsService::class.java, item.id, 1, false)
+
+    fun resume(context: Context, item: Item) =
+        DownloadService.sendSetStopReason(context.applicationContext, DownloadsService::class.java, item.id, Download.STOP_REASON_NONE, false)
+
+    /** A failed one, again (the same link: Torrentio's ask the debrid service afresh each time) */
+    fun retry(context: Context, item: Item) {
+        DownloadService.sendRemoveDownload(context.applicationContext, DownloadsService::class.java, item.id, false)
+        handler.postDelayed({
+            val request = DownloadRequest.Builder(item.id, Uri.parse(item.stream.optString("url"))).setData(item.stream.toString().toByteArray()).build()
+            DownloadService.sendAddDownload(context.applicationContext, DownloadsService::class.java, request, false)
+        }, 400)
+    }
+
+    fun setWatched(context: Context, item: Item, watched: Boolean) {
+        prefsOf(context).edit().apply { if (watched) putLong("watched:${item.id}", System.currentTimeMillis()) else remove("watched:${item.id}") }.apply()
+        refresh()
+    }
+
+    /** Deletes every download that's been watched */
+    fun removeWatched(context: Context) = _items.value.filter { it.watched && it.done }.forEach { remove(context, it) }
 
     /** Plays a download in dx.bi's player, from the phone, where it was left */
     fun play(context: Context, item: Item) {
         val stream = JSONObject(item.stream.toString())
             .put("offline", item.id)
-            .put("startMs", prefs.getLong("pos:${item.id}", stream0(item)))
+            .put("startMs", prefsOf(context).getLong("pos:${item.id}", item.stream.optLong("startMs", 0L)))
             // (no up-next card or skip times offline: those come from the internet)
             .put("next", JSONObject.NULL)
         context.startActivity(Intent(context, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_STREAM, stream.toString()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    private fun stream0(item: Item) = item.stream.optLong("startMs", 0L)
-
-    /** Where a download was left (the player says when it closes) */
-    fun leftAt(id: String, positionMs: Long, ended: Boolean) {
+    /** Where a download was left (the player says when it closes): near the end counts as watched */
+    fun leftAt(id: String, positionMs: Long, durationMs: Long, ended: Boolean) {
         if (!::prefs.isInitialized) return
-        prefs.edit().putLong("pos:$id", if (ended) 0L else positionMs).apply()
+        val finished = ended || (durationMs > 60_000 && positionMs >= durationMs * 0.92)
+        prefs.edit().putLong("pos:$id", if (finished) 0L else positionMs).apply {
+            if (finished && !prefs.contains("watched:$id")) putLong("watched:$id", System.currentTimeMillis())
+        }.apply()
+        refresh()
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Settings
+
+    fun setQuality(context: Context, quality: String) {
+        prefsOf(context).edit().putString("quality", quality).apply()
+        _settings.value = _settings.value.copy(quality = quality)
+    }
+
+    fun setAutoDelete(context: Context, mode: String) {
+        prefsOf(context).edit().putString("autoDelete", mode).apply()
+        _settings.value = _settings.value.copy(autoDelete = mode)
+        refresh()
+    }
+
+    fun setWifiOnly(context: Context, on: Boolean) {
+        prefsOf(context).edit().putBoolean("wifiOnly", on).apply()
+        _settings.value = _settings.value.copy(wifiOnly = on)
+        manager?.requirements = requirements()
+    }
+
+    /**
+     * Moves downloads to another place (the phone or a memory card), then restarts dx.bi: the
+     * downloads' store can't be reopened somewhere else while the app runs. [progress] hears how far
+     * the copy is (0 to 1), on another thread.
+     */
+    fun moveTo(activity: Activity, place: Place, progress: (Float) -> Unit, failed: (String) -> Unit) {
+        val app = activity.applicationContext
+        val from = folder(app)
+        if (from == place.dir) return
+        manager?.pauseDownloads()
+        thread(name = "dxbi-download-move") {
+            try {
+                Thread.sleep(800) // (the running ones let go of their files)
+                val files = from.walkTopDown().filter { it.isFile }.toList()
+                val total = files.sumOf { it.length() }.coerceAtLeast(1)
+                if (place.free in 0 until total + 100_000_000L) error("Not enough space there: it needs ${"%.1f".format(total / 1e9)} GB.")
+                var copied = 0L
+                for (f in files) {
+                    val to = File(place.dir, f.relativeTo(from).path)
+                    to.parentFile?.mkdirs()
+                    f.inputStream().use { input -> to.outputStream().use { out ->
+                        val buf = ByteArray(1 shl 16)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            copied += n
+                            progress(copied.toFloat() / total)
+                        }
+                    } }
+                }
+                prefs.edit().putInt("storage", place.index).commit()
+                from.deleteRecursively()
+                handler.post {
+                    // start again as a new process, in the new place
+                    val start = activity.packageManager.getLaunchIntentForPackage(activity.packageName)?.component
+                    if (start != null) activity.startActivity(Intent.makeRestartActivityTask(start))
+                    Runtime.getRuntime().exit(0)
+                }
+            } catch (e: Exception) {
+                place.dir.deleteRecursively()
+                manager?.resumeDownloads()
+                handler.post { failed(e.message ?: "Couldn't move them.") }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
 
     private val tick = Runnable { refresh() }
 
     fun refresh() {
         val m = manager ?: return
         val list = mutableListOf<Item>()
+        val now = System.currentTimeMillis()
         runCatching {
             m.downloadIndex.getDownloads().use { c ->
                 while (c.moveToNext()) {
                     val d = c.download
                     val stream = runCatching { JSONObject(String(d.request.data)) }.getOrDefault(JSONObject())
-                    list += Item(d.request.id, stream, d.state, d.percentDownloaded.coerceAtLeast(0f), d.bytesDownloaded)
+                    list += Item(d.request.id, stream, d.state, d.percentDownloaded.coerceAtLeast(0f), d.bytesDownloaded, d.contentLength, d.stopReason != Download.STOP_REASON_NONE, prefs.getLong("watched:${d.request.id}", 0L))
                 }
             }
         }
         // (the index only keeps how far a download got now and then: the ones running are read live)
         val live = m.currentDownloads.associateBy { it.request.id }
-        _items.value = list.map { i -> live[i.id]?.let { d -> Item(i.id, i.stream, d.state, d.percentDownloaded.coerceAtLeast(0f), d.bytesDownloaded) } ?: i }
-            .sortedByDescending { it.state != Download.STATE_COMPLETED }
+        val items = list.map { i -> live[i.id]?.let { d -> Item(i.id, i.stream, d.state, d.percentDownloaded.coerceAtLeast(0f), d.bytesDownloaded, d.contentLength, d.stopReason != Download.STOP_REASON_NONE, i.watchedAt) } ?: i }
+            .sortedWith(compareBy({ it.stream.optString("title") }, { it.season ?: 0 }, { it.number ?: 0 }))
+        // watched ones go the way Downloads → Settings says
+        val wait = when (_settings.value.autoDelete) { "finished" -> 0L; "day" -> 24 * 3600 * 1000L; else -> -1L }
+        val gone = if (wait < 0) emptyList() else items.filter { it.done && it.watched && now - it.watchedAt >= wait }
+        _items.value = items - gone.toSet()
+        _waiting.value = m.notMetRequirements != 0 && items.any { !it.done && !it.failed && !it.paused }
+        appContext?.let { c -> if (gone.isNotEmpty()) handler.post { gone.forEach { remove(c, it) } } }
         handler.removeCallbacks(tick)
         if (m.currentDownloads.isNotEmpty()) handler.postDelayed(tick, 1000)
     }
+
 }
 
 /** Keeps downloads going with the app closed, with their progress in a notification */
