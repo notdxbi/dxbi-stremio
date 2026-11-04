@@ -57,7 +57,7 @@ console.log("PASS settings keep their shape");
 // 3. What the native player is given (dxbi-tv.js → PlayerActivity), and how it reports back
 // (the stream handoff: the one written out over many lines, not the short ones for trailers and the like)
 const payload = block(tv, "native.play(JSON.stringify({", true);
-for (const key of ["hash", "videoId", "skips", "url", "title", "subtitle", "startMs", "headers", "subtitles", "next", "upNext", "audioLanguage", "subtitleStyle", "background"]) {
+for (const key of ["hash", "videoId", "skips", "url", "title", "subtitle", "startMs", "headers", "subtitles", "next", "upNext", "audioLanguage", "subtitleLanguage", "subtitleStyle", "background"]) {
   assert.match(payload, new RegExp(`\\n\\s+${key}\\b`), `play payload has ${key}`);
 }
 // dx.bi settings, which the phone app draws natively from dxbi-tv.js's list

@@ -138,17 +138,19 @@ final class MPV {
 
     // MARK: - Playing
 
-    func load(_ url: String, start: Double, headers: [String: String], audioLanguage: String?) {
+    func load(_ url: String, start: Double, headers: [String: String], audioLanguage: String?, subtitleLanguage: String? = nil) {
         let fields = headers.map { "\($0.key): \($0.value)" }.joined(separator: ",")
         property("http-header-fields", fields)
         property("start", start > 0 ? String(format: "%.2f", start) : "none")
         if let audioLanguage, !audioLanguage.isEmpty { property("alang", "\(audioLanguage),eng,en") }
+        // (a subtitle in the video itself, in Stremio's subtitle language, starts on)
+        property("slang", subtitleLanguage ?? "")
         command(["loadfile", url, "replace"])
     }
 
-    /** A subtitle file, listed but not shown until it's chosen */
-    func addSubtitle(_ url: String, title: String, lang: String) {
-        command(["sub-add", url, "auto", title, lang], wait: false)
+    /** A subtitle file, listed but not shown until it's chosen ([start]: shown straight away) */
+    func addSubtitle(_ url: String, title: String, lang: String, start: Bool = false) {
+        command(["sub-add", url, start ? "select" : "auto", title, lang], wait: false)
     }
 
     // (shown at once: the button doesn't wait for mpv to say so)

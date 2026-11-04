@@ -488,6 +488,8 @@
   }
 
   function subtitleLabel(lang) {
+    // (OpenSubtitles' own code, which Intl doesn't know)
+    if (/^pob$/i.test(lang || "")) return "Portuguese (Brazil)";
     try { return new Intl.DisplayNames(["en"], { type: "language" }).of(lang) || lang; } catch (_) { return lang; }
   }
 
@@ -501,20 +503,56 @@
     }
   }
 
-  // Addons can offer dozens of subtitle files: keep up to three per language, with the Stremio
-  // subtitle language (and English) first, so the TV's subtitle menu stays short
-  async function pickSubtitles(list) {
-    const preferred = (await profileSettings()).subtitlesLanguage || "";
-    const rank = (lang) => (lang === preferred ? 0 : /^(eng|en)$/.test(lang) ? 1 : 2);
+  // One language, however it's written: "por" and "pt" are both Portuguese (and OpenSubtitles'
+  // Brazilian Portuguese "pob" counts as Portuguese too)
+  function sameLanguage(a, b) {
+    if (!a || !b) return false;
+    const norm = (x) => { x = String(x).toLowerCase(); return /^(pob|pb|pt-br)$/.test(x) ? "por" : x; };
+    a = norm(a); b = norm(b);
+    return a === b || subtitleLabel(a).toLowerCase() === subtitleLabel(b).toLowerCase();
+  }
+
+  // The subtitle language a video starts in: Stremio's (Settings → Player), unless dx.bi's
+  // "Subtitles when a video starts" is Off
+  async function startSubtitleLanguage() {
+    const dx = window.__dxbi;
+    if (dx && dx.settings && dx.settings.subtitlesStart === "off") return "";
+    return (await profileSettings()).subtitlesLanguage || "";
+  }
+
+  // Subtitle addons answer a moment after the player opens: wait (up to [ms]) for one in the start
+  // language before handing over, or the TV's player only gets what had arrived (often only English)
+  async function subtitlesSoon(state, language, hash, ms) {
+    const has = (s) => (s && s.subtitles || []).some((x) => x && x.url && sameLanguage(x.lang, language));
+    if (!language || has(state)) return state;
+    const until = Date.now() + ms;
+    while (Date.now() < until && location.hash === hash) {
+      await new Promise((r) => setTimeout(r, 250));
+      const next = await playerState();
+      if (next) state = next;
+      if (has(state)) break;
+    }
+    return state;
+  }
+
+  // Addons can offer dozens of subtitle files: keep up to three per language, with the start
+  // language (and English) first, so the TV's subtitle menu stays short. The first in the start
+  // language is marked to switch on as the video starts
+  async function pickSubtitles(list, language) {
+    const preferred = language || (await profileSettings()).subtitlesLanguage || "";
+    const rank = (lang) => (sameLanguage(lang, preferred) ? 0 : /^(eng|en)$/.test(lang) ? 1 : 2);
     const count = {};
     const out = [];
+    let started = false;
     for (const sub of list.filter((x) => x && x.url).sort((a, b) => rank(a.lang || "") - rank(b.lang || ""))) {
       const lang = sub.lang || "";
       count[lang] = (count[lang] || 0) + 1;
       if (count[lang] > 3) continue;
       // "English", "English 2", "English 3"
       // (where it came from: the stream's own, or a subtitle addon's search by title, which may not fit this release)
-      out.push({ url: sub.url, lang, label: subtitleLabel(lang) + (count[lang] > 1 ? ` ${count[lang]}` : ""), source: sub.source || "addon" });
+      const pick = { url: sub.url, lang, label: subtitleLabel(lang) + (count[lang] > 1 ? ` ${count[lang]}` : ""), source: sub.source || "addon" };
+      if (language && !started && sameLanguage(lang, language)) pick.start = started = true;
+      out.push(pick);
       if (out.length >= 45) break;
     }
     return out;
@@ -642,22 +680,26 @@
     const lib = state.libraryItem && state.libraryItem.state;
     const resumeMs = lib && lib.video_id === videoId && lib.timeOffset > 0 ? lib.timeOffset : 0;
     const headers = (stream.behaviorHints && stream.behaviorHints.proxyHeaders && stream.behaviorHints.proxyHeaders.request) || {};
-    // the stream's own subtitle files first, then the subtitle addons'
-    const subtitles = await pickSubtitles([
-      ...(stream.subtitles || []).map((s) => ({ ...s, source: "stream" })),
-      ...(state.subtitles || []).map((s) => ({ ...s, source: "addon" })),
-    ]);
     const episode = video && video.season != null ? `S${video.season} E${video.episode}${video.title || video.name ? ` · ${video.title || video.name}` : ""}` : "";
 
     const profile = await profileSettings();
+    const subtitleLanguage = await startSubtitleLanguage();
     // Skip intro / recap / credits: the times dx.bi has for this episode (looked up while the player
-    // gets ready, never holding it up for long)
+    // gets ready, never holding it up for long). Meanwhile the subtitle addons get a moment to answer
     const metaPath = state.selected.metaRequest && state.selected.metaRequest.path;
     const dx = window.__dxbi;
-    const skips = dx && dx.skipSegments && videoId
-      ? await Promise.race([dx.skipSegments(meta.type || (metaPath && metaPath.type), meta.id || (metaPath && metaPath.id), videoId).catch(() => []), new Promise((r) => setTimeout(() => r([]), 4000))])
-      : [];
+    const [withSubtitles, skips] = await Promise.all([
+      subtitlesSoon(state, subtitleLanguage, hash, 4000),
+      dx && dx.skipSegments && videoId
+        ? Promise.race([dx.skipSegments(meta.type || (metaPath && metaPath.type), meta.id || (metaPath && metaPath.id), videoId).catch(() => []), new Promise((r) => setTimeout(() => r([]), 4000))])
+        : [],
+    ]);
     if (location.hash !== hash) { handoff = null; return; }
+    // the stream's own subtitle files first, then the subtitle addons'
+    const subtitles = await pickSubtitles([
+      ...(stream.subtitles || []).map((s) => ({ ...s, source: "stream" })),
+      ...(withSubtitles.subtitles || []).map((s) => ({ ...s, source: "addon" })),
+    ], subtitleLanguage);
     // (where the end credits start, in seconds: stopped past there counts as finished)
     const credits = (skips || []).find((s) => s && s.type === "credits");
     handoff = { hash, videoId, started: Date.now(), creditsAt: credits && credits.start > 0 ? credits.start : 0 };
@@ -674,6 +716,8 @@
       next: nextLink(state) ? { title: nextTitle(state.nextVideo), thumbnail: state.nextVideo.thumbnail || "" } : null,
       upNext: (dx && dx.settings && dx.settings.upNext) || "10",
       audioLanguage: profile.audioLanguage || "",
+      // (empty: subtitles start off)
+      subtitleLanguage,
       // Stremio's subtitle settings (Settings → Player), drawn the same way by the native player
       subtitleStyle: {
         size: profile.subtitlesSize,

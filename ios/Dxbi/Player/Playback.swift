@@ -25,6 +25,8 @@ final class Playback: Identifiable {
         var lang: String
         /** "stream": comes with this stream; "addon": a subtitle addon's search by title (may not fit) */
         var source: String
+        /** The one to switch on as the video starts (in Stremio's subtitle language) */
+        var start = false
     }
 
     /** How the picture fits the screen */
@@ -87,7 +89,7 @@ final class Playback: Identifiable {
         upNextSeconds = next == nil ? 0 : Int(payload.text("upNext") ?? "10") ?? 0
         subtitles = payload.objects("subtitles").compactMap { s in
             guard let url = s.text("url") else { return nil }
-            return Subtitle(url: url, label: s.text("label") ?? s.string("lang"), lang: s.string("lang"), source: s.text("source") ?? "addon")
+            return Subtitle(url: url, label: s.text("label") ?? s.string("lang"), lang: s.string("lang"), source: s.text("source") ?? "addon", start: s.bool("start"))
         }
         let player = MPV()
         mpv = player
@@ -122,7 +124,7 @@ final class Playback: Identifiable {
         let headers = (payload.object("headers") ?? [:]).compactMapValues { $0 as? String }
         if let size = payload.object("subtitleStyle")?.double("size"), size > 0 { mpv.subtitleScale(size / 100) }
         mpv.gravity(fit.gravity)
-        mpv.load(payload.string("url"), start: payload.double("startMs") / 1000, headers: headers, audioLanguage: payload.text("audioLanguage"))
+        mpv.load(payload.string("url"), start: payload.double("startMs") / 1000, headers: headers, audioLanguage: payload.text("audioLanguage"), subtitleLanguage: payload.text("subtitleLanguage"))
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -132,7 +134,7 @@ final class Playback: Identifiable {
     }
 
     private func loaded() {
-        for s in subtitles { mpv.addSubtitle(s.url, title: s.label, lang: s.lang) }
+        for s in subtitles { mpv.addSubtitle(s.url, title: s.label, lang: s.lang, start: s.start) }
     }
 
     private func update() {
