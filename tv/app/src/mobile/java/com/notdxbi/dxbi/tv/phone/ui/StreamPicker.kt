@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -65,6 +66,8 @@ fun StreamPicker(
     bottom: Dp = 24.dp,
     /** The ⋮ menu: another app, a Chromecast, or a download */
     onPlayIn: (StreamOption, Phone.Target) -> Unit = { s, _ -> onPlay(s) },
+    /** a tap downloads the stream rather than playing it ("Choose the source myself") */
+    downloading: Boolean = false,
 ) {
     var quality by rememberSaveable { mutableStateOf<String?>(null) }
     var provider by rememberSaveable { mutableStateOf<String?>(null) }
@@ -97,10 +100,10 @@ fun StreamPicker(
                     Modifier.padding(Gutter, 10.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White).clickable { onPlay(best) }.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(30.dp))
+                    Icon(if (downloading) Icons.Filled.Download else Icons.Filled.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(30.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(if (choices.sameAsLastTime) "Play · same as last time" else "Play the best stream", color = Color.Black, style = MaterialTheme.typography.labelLarge)
+                        Text(if (downloading) "Download the best stream" else if (choices.sameAsLastTime) "Play · same as last time" else "Play the best stream", color = Color.Black, style = MaterialTheme.typography.labelLarge)
                         Text(
                             listOf(best.label, best.provider, best.sizeText).filter { !it.isNullOrBlank() }.joinToString(" · "),
                             color = Color.Black.copy(alpha = 0.65f),

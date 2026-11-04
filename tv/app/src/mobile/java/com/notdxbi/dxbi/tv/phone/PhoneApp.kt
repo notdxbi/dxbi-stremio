@@ -49,6 +49,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -117,8 +119,11 @@ fun PhoneApp(engine: Engine) {
         val ready by stremio.ready.collectAsState()
         val guest by stremio.guest.collectAsState()
         val a = account
+        // no internet: the downloads still play (Stremio's page may never start without it)
+        var offline by remember { mutableStateOf(false) }
         when {
-            a == null && !ready -> Starting()
+            offline -> com.notdxbi.dxbi.tv.phone.ui.DownloadsScreen(onBack = { offline = false }, offline = true)
+            a == null && !ready -> Starting { offline = true }
             a != null && !a.signedIn && !guest -> SignInScreen(stremio)
             else -> Screens(stremio)
         }
@@ -126,12 +131,27 @@ fun PhoneApp(engine: Engine) {
 }
 
 @Composable
-private fun Starting() {
+private fun Starting(onDownloads: () -> Unit) {
+    // taking a while: offer the downloads (there's often no internet when it's this slow)
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(8000)
+        slow = true
+    }
     Box(Modifier.fillMaxSize().background(Dx.Background), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Logo(64.sp)
             Spacer(Modifier.height(24.dp))
             CircularProgressIndicator(color = Dx.Accent, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+            if (slow) {
+                Spacer(Modifier.height(28.dp))
+                Text("Can't reach Stremio? Your downloads play without internet.", color = Dx.Muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 32.dp))
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.material3.Button(
+                    onClick = onDownloads,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                ) { Text("Watch your downloads") }
+            }
         }
     }
 }

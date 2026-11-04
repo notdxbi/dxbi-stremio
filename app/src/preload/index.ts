@@ -21,6 +21,7 @@ import { applyThemeAPI } from "./api/applyTheme";
 import { gpuRendererAPI } from "./api/gpuRenderer";
 import { externalPlayerAPI } from "./api/externalPlayer";
 import { miniPlayerAPI, miniPlayerInfo } from "./api/miniPlayer";
+import { downloadsAPI } from "./api/downloads";
 import { pluginLogger } from "./api/pluginLogger";
 import Helpers from "../utils/Helpers";
 import { mpvShellEnabled, installMpvShell } from "./mpvShell";
@@ -41,6 +42,7 @@ export const stremioEnhancedAPI = {
     ...gpuRendererAPI,
     ...externalPlayerAPI,
     ...miniPlayerAPI,
+    ...downloadsAPI,
 };
 
 

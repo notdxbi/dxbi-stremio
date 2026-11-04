@@ -112,6 +112,12 @@ export const IPC_CHANNELS = {
     MINI_RESUME: 'dxbi-mini-resume',
     MINI_MOVE: 'dxbi-mini-move',
     MINI_SIZE: 'dxbi-mini-size',
+    DL_LIST: 'dxbi-dl-list',
+    DL_ADD: 'dxbi-dl-add',
+    DL_ACTION: 'dxbi-dl-action',
+    DL_SETTINGS: 'dxbi-dl-settings',
+    DL_PICK_FOLDER: 'dxbi-dl-pick-folder',
+    DL_CHANGED: 'dxbi-dl-changed',
 } as const;
 
 // File extensions for mods
