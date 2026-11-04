@@ -215,7 +215,10 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
 
   let area = await place(Math.round(sw * 0.05), Math.round(sh * 0.05), Math.round(sw * 0.8), Math.round(sh * 0.8));
   switcher("on start");
-  const home = screen("1-home", area);
+  // (Home's billboard changes slide now and then, and a video can stall for a moment while it
+  // starts: each is measured up to three times, keeping Home's stillest and the video's liveliest)
+  let home = screen("1-home", area);
+  for (let i = 0; i < 2 && home >= 10; i++) { await sleep(1500); home = Math.min(home, screen("1-home", area)); }
 
   const stream = { url: `http://127.0.0.1:${CLIP_PORT}/clip.mkv`, name: "dx.bi test", title: "10-bit HEVC + AC3" };
   const encoded = encodeURIComponent(zlib.deflateSync(Buffer.from(JSON.stringify(stream))).toString("base64"));
@@ -263,7 +266,8 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   // Hide Stremio's controls so the sample area is only video
   await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
   await sleep(4000);
-  const playing = screen("2-playing", area);
+  let playing = screen("2-playing", area);
+  for (let i = 0; i < 2 && playing < 10; i++) { await sleep(1500); playing = Math.max(playing, screen("2-playing", area)); }
   if (playing >= 10 && home < 10) pass("the video shows on screen behind the page (moving picture)");
   else fail(`the video doesn't show on screen (${playing} points changed while playing, ${home} on Home)`);
 
