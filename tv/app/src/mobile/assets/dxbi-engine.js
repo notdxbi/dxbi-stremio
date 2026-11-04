@@ -390,6 +390,30 @@
       }
     },
     views,
+    // The player closed (dxbi-tv.js): when the series it played is the one open on its page, the
+    // episode it closed on is picked there, or the next one when it was finished (highlighted, its
+    // streams ready, nothing plays), as on a computer
+    async afterPlaying(videoId, finished) {
+      try {
+        await coreReady;
+        const s = await core().getState("meta_details");
+        const meta = s && s.metaItem && s.metaItem.content;
+        const sel = s && s.selected;
+        if (!meta || meta.type !== "Ready" || !sel || !sel.metaPath) return;
+        const videos = meta.content.videos || [];
+        const i = videos.findIndex((v) => v.id === videoId);
+        if (i < 0 || videos[i].season == null) return;
+        const now = Date.now();
+        const out = (v) => !v.released || Date.parse(v.released) <= now;
+        const target = finished ? videos.slice(i + 1).find((v) => v.season > 0 && out(v)) : videos[i];
+        console.info("[dx.bi engine] after playing", videoId, finished, "→", target && target.id, "(picked:", sel.streamPath && sel.streamPath.id, ")");
+        if (!target || (sel.streamPath && sel.streamPath.id === target.id)) return;
+        const streamPath = { resource: "stream", type: sel.metaPath.type, id: target.id, extra: [] };
+        await ops.load({ field: "meta_details", model: "MetaDetails", args: { metaPath: sel.metaPath, streamPath, guessStream: false } });
+      } catch (err) {
+        console.warn("[dx.bi engine] couldn't pick the next episode", err);
+      }
+    },
   };
 
   coreReady.then(() => send({ type: "ready" }));

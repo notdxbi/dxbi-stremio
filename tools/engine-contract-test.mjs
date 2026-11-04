@@ -72,7 +72,11 @@ console.log("PASS the play handoff keeps its fields and callbacks");
 // 4. Every bridge call the page makes exists in Bridge.kt
 const used = new Set([...tv.matchAll(/bridge\.(\w+)\(/g), ...engine.matchAll(/bridge\.(\w+)\(/g)].map((m) => m[1]));
 const offered = new Set([...bridge.matchAll(/@JavascriptInterface\s+fun (\w+)/g)].map((m) => m[1]));
-for (const name of used) assert.ok(offered.has(name), `Bridge.kt offers ${name}`);
+// (the iPhone page's own: it can't reach an http:// streaming server itself, Android's page can)
+const iphonePage = read("ios/Dxbi/Engine/Page.swift");
+const iphoneOnly = new Set(["serverUp"]);
+for (const name of used) assert.ok(offered.has(name) || iphoneOnly.has(name), `Bridge.kt offers ${name}`);
+for (const name of iphoneOnly) assert.ok(iphonePage.includes(`${name}: (t,`), `the iPhone page offers ${name}`);
 assert.ok(offered.has("engine"), "Bridge.kt offers engine");
 console.log(`PASS the bridge has all ${used.size} methods the page calls`);
 

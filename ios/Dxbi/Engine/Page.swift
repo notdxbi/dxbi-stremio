@@ -50,6 +50,9 @@ final class Page: NSObject {
         // Nothing in the page plays by itself (its own player, sounds): it would take over the lock
         // screen's Now Playing and play sound nobody asked for. The app's player does the playing
         config.mediaTypesRequiringUserActionForPlayback = .all
+        // (nor does its hidden video go into picture in picture or to AirPlay in place of the app's)
+        config.allowsPictureInPictureMediaPlayback = false
+        config.allowsAirPlayForMediaPlayback = false
         config.websiteDataStore = .default()
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 400, height: 800), configuration: config)
         super.init()
@@ -106,6 +109,13 @@ final class Page: NSObject {
         let shim = """
         (function () {
           if (window.DxbiTV) return;
+          // No Web Audio in the page: a page with an audio context makes iOS set the app's sound to
+          // "ambient", and an app like that can't be Now Playing (the lock screen and Control Centre
+          // said Not Playing). The page has nothing to play on an iPhone anyway: the app's player
+          // plays (dx.bi's sound effects and party chimes do without one)
+          for (const name of ["AudioContext", "webkitAudioContext", "OfflineAudioContext", "webkitOfflineAudioContext"]) {
+            try { Object.defineProperty(window, name, { value: undefined, configurable: false, writable: false }); } catch (_) {}
+          }
           const post = (message) => { try { window.webkit.messageHandlers.dxbi.postMessage(message); } catch (_) {} };
           const ios = (window.__dxbiIos = { settings: \(Json.encode(savedSettings)), plugin: \(Json.quote(resource("dxbi.plugin.js"))), active: "", pendingClose: "", utcOffset: \(Self.utcOffset) });
           window.DxbiTV = {
@@ -124,6 +134,13 @@ final class Page: NSObject {
             toast: (t, text) => post({ op: "toast", text }),
             engine: (t, json) => post({ op: "engine", json }),
             findServers: () => post({ op: "findServers" }),
+            // Whether the streaming server answers (the page itself isn't allowed to reach an http:// one)
+            serverUp: (t, url) => new Promise((resolve) => {
+              const id = (ios.asked = (ios.asked || 0) + 1);
+              (ios.answers = ios.answers || {})[id] = resolve;
+              post({ op: "serverUp", id, url });
+              setTimeout(() => { if (ios.answers[id]) { delete ios.answers[id]; resolve(false); } }, 8000);
+            }),
             deviceInfo: () => \(Json.quote(Json.encode(device))),
             // minutes ahead of UTC on the phone's own clock (the plugin's deviceClock: times as the phone shows them)
             utcOffset: () => ios.utcOffset,
@@ -201,6 +218,16 @@ final class Page: NSObject {
         settings.set(Json.encode(all), forKey: "plugin-settings")
     }
 
+    /** Stremio's streaming server at [address] answers (its settings, as Stremio asks for them) */
+    nonisolated static func serverAnswers(_ address: String) async -> Bool {
+        guard let base = URL(string: address.hasSuffix("/") ? address : address + "/"),
+              base.scheme == "http" || base.scheme == "https" else { return false }
+        var request = URLRequest(url: base.appending(path: "settings"), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        request.httpMethod = "GET"
+        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0) < 500
+    }
+
     fileprivate func received(_ message: WKScriptMessage) {
         // Only Stremio's own page, not a trailer or anything else it embeds
         guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == "web.stremio.com",
@@ -212,6 +239,12 @@ final class Page: NSObject {
         case "saveSetting": saveSetting(plugin: body.string("plugin"), key: body.string("key"), valueJson: body.string("value"))
         case "openExternal": if let url = URL(string: body.string("url")) { UIApplication.shared.open(url) }
         case "toast": onToast?(body.string("text"))
+        case "serverUp":
+            let id = body.int("id")
+            Task { @MainActor in
+                let up = await Self.serverAnswers(body.string("url"))
+                js("(function (a) { const f = a && a[\(id)]; if (f) { delete a[\(id)]; f(\(up)); } })(window.__dxbiIos && window.__dxbiIos.answers)")
+            }
         case "findServers":
             // (not looked for yet on iPhone: Settings → Streaming server takes an address)
             js("window.__dxbiTv && window.__dxbiTv.serversFound && window.__dxbiTv.serversFound([])")

@@ -9,7 +9,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <application>
+    <!-- The larger memory allowance: a 4K stream's buffer (ExoPlayer keeps ~130 MB of it in Java
+         memory) took the app past 3/4 of the normal one, and Android then closed the screen under the
+         player, with Stremio's page in it: watch progress stopped, and the page came back without the
+         title it had open -->
+    <application android:largeHeap="true">
         <!-- The player: a small window when leaving the app, and turning with the phone and its folds -->
         <activity
             android:name=".PlayerActivity"

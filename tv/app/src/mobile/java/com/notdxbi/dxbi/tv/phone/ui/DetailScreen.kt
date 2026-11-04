@@ -126,7 +126,8 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     /** What Play starts: the episode they're in the middle of, else the first one */
     fun nextVideo(d: Details): Video? {
         if (type != "series") return null
-        return d.videos.firstOrNull { it.id == d.resumeVideoId } ?: d.videos.firstOrNull { (it.season ?: 0) > 0 && !it.upcoming } ?: d.videos.firstOrNull()
+        // (the one picked first: the page moves it on to the next episode after one is finished)
+        return d.videos.firstOrNull { it.id == d.videoId } ?: d.videos.firstOrNull { it.id == d.resumeVideoId } ?: d.videos.firstOrNull { (it.season ?: 0) > 0 && !it.upcoming } ?: d.videos.firstOrNull()
     }
 
     // The streams for that episode, fetched before Play is pressed
@@ -135,6 +136,12 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     }
     // dx.bi's reading of them, again as more addons answer
     LaunchedEffect(details) { if (details?.videoId != null) choices = stremio.streams() }
+    // the episode picked shows in its season (back from the player, the page picks the next one
+    // when the last was finished: dxbi-engine.js afterPlaying)
+    LaunchedEffect(details?.videoId) {
+        val d = details ?: return@LaunchedEffect
+        d.videos.firstOrNull { it.id == d.videoId }?.season?.let { season = it }
+    }
     val current = choices?.takeIf { details?.videoId != null && it.videoId == details.videoId }
 
     // (Android 13 and later ask before an app shows notifications: downloads show their progress in one)
@@ -235,7 +242,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             val shown = season ?: nextVideo(details)?.season ?: seasons.firstOrNull()
             item { SeasonPicker(seasons, shown) { season = it } }
             items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
-                Episode(v, resumeHere = v.id == details.resumeVideoId, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) }) { start(v.id) }
+                Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) }) { start(v.id) }
             }
         }
         if (details != null && details.cast.isNotEmpty()) item {
@@ -268,7 +275,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                             SeasonPicker(seasons, shown) { season = it }
                             LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
                                 items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
-                                    Episode(v, resumeHere = v.id == details.resumeVideoId, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) }) { start(v.id) }
+                                    Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) }) { start(v.id) }
                                 }
                             }
                         } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
@@ -410,7 +417,7 @@ private fun seasonName(s: Int?) = when (s) {
 /** An episode: tap to play it; hold for watched, unwatched, or watched up to here */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Episode(v: Video, resumeHere: Boolean, onWatched: (watched: Boolean, upTo: Boolean) -> Unit, onPlay: () -> Unit) {
+private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatched: (watched: Boolean, upTo: Boolean) -> Unit, onPlay: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().combinedClickable(enabled = !v.upcoming, onLongClick = { menu = true }, onClick = onPlay).padding(horizontal = Gutter, vertical = 10.dp)) {
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -431,7 +438,7 @@ private fun Episode(v: Video, resumeHere: Boolean, onWatched: (watched: Boolean,
                 Text("${v.episode ?: ""}. ${v.title.ifEmpty { "Episode ${v.episode ?: ""}" }}", color = Dx.Text, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val note = when {
                     v.upcoming -> v.released?.take(10)?.let { "Coming $it" } ?: "Coming soon"
-                    resumeHere -> "Continue watching"
+                    resumeHere -> if (inProgress) "Continue watching" else "Up next"
                     v.watched -> "Watched"
                     else -> v.released?.take(4)
                 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 import UIKit
 
 /**
@@ -9,6 +10,8 @@ import UIKit
 final class PlayerHost: UIHostingController<AnyView> {
 
     private static weak var shown: PlayerHost?
+    /** Stremio's page: it goes with the player (see PageBox) */
+    private static weak var page: WKWebView?
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
@@ -17,11 +20,15 @@ final class PlayerHost: UIHostingController<AnyView> {
 
     @MainActor
     static func show(_ playback: Playback, stremio: Stremio) {
-        shown?.dismiss(animated: false)
+        if let old = shown {
+            if let page, page.superview === old.view { PageBox.bringBack(page) }
+            old.dismiss(animated: false)
+        }
         let host = PlayerHost(rootView: AnyView(PlayerScreen(playback: playback).environment(stremio).preferredColorScheme(.dark)))
         host.modalPresentationStyle = .fullScreen
         host.view.backgroundColor = .black
         shown = host
+        page = stremio.page.webView
         present(host, playback: playback, tries: 0)
     }
 
@@ -43,6 +50,7 @@ final class PlayerHost: UIHostingController<AnyView> {
         }
         // (sideways only once the player is there to be sideways)
         AppDelegate.orientations = .landscape
+        if let page { PageBox.lend(page, to: host.view) }
         top.present(host, animated: true)
     }
 
@@ -53,6 +61,8 @@ final class PlayerHost: UIHostingController<AnyView> {
         AppDelegate.orientations = .portrait
         let presenter = host.presentingViewController
         host.dismiss(animated: true) {
+            // the page back under the app's screens, unless another player has it already
+            if let page, page.superview === host.view { PageBox.bringBack(page) }
             presenter?.setNeedsUpdateOfSupportedInterfaceOrientations()
             (presenter?.view.window?.windowScene)?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
         }

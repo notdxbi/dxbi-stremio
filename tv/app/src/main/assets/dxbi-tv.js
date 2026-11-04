@@ -522,6 +522,12 @@
 
   // Whether Stremio's streaming server (on this TV, or a computer picked in Settings) is answering
   async function streamingServerUp() {
+    // An iPhone: Stremio's page (https) isn't allowed to reach a server at an http:// address, so
+    // Stremio always thinks it's offline there. The app asks the server itself
+    if (bridge.serverUp) {
+      const url = (await profileSettings()).streamingServerUrl;
+      try { return !!url && !!(await bridge.serverUp(TOKEN, url)); } catch (_) { return false; }
+    }
     try {
       const s = await core().getState("streaming_server");
       return !!(s && s.settings && s.settings.type === "Ready");
@@ -579,10 +585,18 @@
     // otherwise the choice is offered for this stream
     let torrent = false;
     // (an iPhone can't download torrents itself: without a streaming server they can't play)
+    // (an iPhone's page can't reach the server, so Stremio may not have made its address: made here)
+    const server = bridge.serverUp && stream.infoHash ? (await profileSettings()).streamingServerUrl : "";
+    if (!url && server && serverUp) {
+      const trackers = [...(stream.announce || []), ...(stream.sources || [])].filter((x) => /^tracker:/.test(x)).map((x) => `tr=${encodeURIComponent(x.replace(/^tracker:/, ""))}`);
+      url = `${server.replace(/\/?$/, "/")}${encodeURIComponent(stream.infoHash)}/${Number.isInteger(stream.fileIdx) ? stream.fileIdx : -1}${trackers.length ? `?${trackers.join("&")}` : ""}`;
+    }
     if (!url && stream.infoHash && !bridge.torrentUrl) {
       handoff = null;
       if (location.hash === hash) history.back();
-      toast("This is a torrent, and it needs a streaming server: set one in Settings, or pick a debrid stream.", 7000);
+      toast(server
+        ? `Couldn't reach your streaming server (${server.replace(/^https?:\/\/|\/$/g, "")}). Check that Stremio or dx.bi is running there, and that this iPhone is on the same network (or the same VPN, like Tailscale).`
+        : "This is a torrent, and it needs a streaming server: set one in Settings, or pick a debrid stream.", 9000);
       return;
     }
     if (!url && stream.infoHash) {
@@ -644,7 +658,9 @@
       ? await Promise.race([dx.skipSegments(meta.type || (metaPath && metaPath.type), meta.id || (metaPath && metaPath.id), videoId).catch(() => []), new Promise((r) => setTimeout(() => r([]), 4000))])
       : [];
     if (location.hash !== hash) { handoff = null; return; }
-    handoff = { hash, videoId, started: Date.now() };
+    // (where the end credits start, in seconds: stopped past there counts as finished)
+    const credits = (skips || []).find((s) => s && s.type === "credits");
+    handoff = { hash, videoId, started: Date.now(), creditsAt: credits && credits.start > 0 ? credits.start : 0 };
     tv.partyVideo = new NativeVideo();
     partySeen = "";
     native.play(JSON.stringify({
@@ -787,15 +803,46 @@
     return nextLink(state);
   }
 
+  // An episode: its watched tag (on its own: the season's others stay as they are). A film: marked
+  // watched unless the 70% rule already did (that would count it watched twice)
+  async function markFinished(videoId) {
+    const state = await playerState();
+    const meta = (state && state.metaItem && state.metaItem.content) || {};
+    const video = videoId && (meta.videos || []).find((v) => v.id === videoId);
+    const lib = state && state.libraryItem && state.libraryItem.state;
+    if (video) dispatch({ action: "Player", args: { action: "MarkVideoAsWatched", args: [video, true] } });
+    else if (meta.id && meta.type === "movie" && !(lib && lib.flaggedWatched)) {
+      try { core().dispatch({ action: "Ctx", args: { action: "LibraryItemMarkAsWatched", args: { id: meta.id, is_watched: true } } }); } catch (_) { /* not this time */ }
+    }
+  }
+
   async function closeHandoff(timeMs, durationMs, ended, error, next) {
     tv.partyVideo = null;
     if (handoff && /^#\/player\//.test(location.hash)) {
       if (timeMs > 0) tv.onProgress(timeMs, durationMs, true);
       if (ended) dispatch({ action: "Player", args: { action: "Ended" } });
+      // The phone apps: finished (played to the end, or closed past the end credits) is marked
+      // watched, as Mark as watched does. Stremio only marks a video it saw 70% of playing, so one
+      // with its intro skipped, or closed in the credits, moved Continue Watching on without it
+      const finished = ended || (durationMs > 0 && timeMs >= durationMs * 0.9) || (handoff.creditsAt > 0 && timeMs >= handoff.creditsAt * 1000);
+      const phone = !!window.__dxbiEngine;
+      const videoId = handoff.videoId;
+      if (phone && finished) {
+        // Stremio moves Continue Watching on to the next episode as the player closes, when it's
+        // past 90%: closed in the credits before that, it's told it got there
+        if (durationMs > 0 && timeMs < durationMs * 0.9) tv.onProgress(Math.ceil(durationMs * 0.95), durationMs, true);
+        await markFinished(videoId);
+      }
       handoff = null;
       const link = next && await nextLinkFor(await playerState());
+      console.info("[dx.bi TV] player closed", JSON.stringify({ videoId, timeMs, durationMs, ended, next, finished, link: link || null }));
       if (link) location.replace(link);
       else history.back();
+      // The phone apps: its series page picks the next episode (or the one it closed on), once the
+      // page has left the player (a page it goes back to may load the old one first)
+      if (phone && window.__dxbiEngine.afterPlaying && !(link && /^#\/player\//.test(link))) {
+        setTimeout(() => window.__dxbiEngine.afterPlaying(videoId, finished), 1200);
+      }
     } else {
       handoff = null;
     }

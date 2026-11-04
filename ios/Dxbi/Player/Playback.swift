@@ -95,8 +95,20 @@ final class Playback: Identifiable {
         start()
     }
 
+    /**
+     * The app's sound as a video player's: only then is it Now Playing (lock screen, Control Centre).
+     * Checked every second while it plays: the web page underneath can change it (to ambient sound,
+     * which mixes with others and isn't Now Playing)
+     */
+    private func claimSound() {
+        let session = AVAudioSession.sharedInstance()
+        guard session.category != .playback || session.mode != .moviePlayback || !session.categoryOptions.isEmpty else { return }
+        try? session.setCategory(.playback, mode: .moviePlayback, options: [])
+        try? session.setActive(true)
+    }
+
     private func start() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        claimSound()
         try? AVAudioSession.sharedInstance().setActive(true)
         UIApplication.shared.isIdleTimerDisabled = true
         UIApplication.shared.beginReceivingRemoteControlEvents()
@@ -137,6 +149,7 @@ final class Playback: Identifiable {
 
     private func tick() {
         guard !closing else { return }
+        if !paused { claimSound() }
         stremio?.partyTick(position: position, duration: duration, paused: paused, buffering: buffering, rate: speed)
         // Stremio's watch progress, every few seconds
         if Date().timeIntervalSince(lastReport) > 5, mpv.started {
@@ -236,17 +249,60 @@ final class Playback: Identifiable {
 
     /** The title's poster, for the lock screen and Control Centre */
     private func loadArtwork() {
-        guard let url = URL(string: payload.text("poster") ?? payload.string("background")) else { return }
+        // the poster, else the backdrop (a download's are on the phone)
+        let urls = [payload.text("poster"), payload.text("background")].compactMap { $0 }.compactMap { link -> URL? in
+            link.hasPrefix("/") ? URL(fileURLWithPath: link) : URL(string: link)
+        }
+        guard !urls.isEmpty else { return }
         Task {
-            guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
-            artwork = Self.artwork(image)
-            nowPlaying()
+            for attempt in 0..<2 {
+                for url in urls {
+                    if let image = await Self.picture(url) {
+                        artwork = Self.artwork(image)
+                        nowPlaying()
+                        return
+                    }
+                }
+                if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
+            }
         }
     }
 
-    /** (iOS asks for the picture from its own thread: the closure mustn't belong to the main one) */
+    /** The picture, at most 1000 pixels across (iOS drops an artwork it finds too big) */
+    nonisolated private static func picture(_ url: URL) async -> UIImage? {
+        let data: Data
+        if url.isFileURL {
+            guard let d = try? Data(contentsOf: url) else { return nil }
+            data = d
+        } else {
+            var request = URLRequest(url: url, timeoutInterval: 15)
+            request.setValue("image/jpeg,image/png,image/*", forHTTPHeaderField: "Accept")
+            guard let (d, response) = try? await URLSession.shared.data(for: request),
+                  ((response as? HTTPURLResponse)?.statusCode ?? 200) < 400 else { return nil }
+            data = d
+        }
+        guard let image = UIImage(data: data), image.size.width > 0, image.size.height > 0 else { return nil }
+        let scale = min(1, 1000 / max(image.size.width * image.scale, image.size.height * image.scale))
+        let size = CGSize(width: (image.size.width * image.scale * scale).rounded(), height: (image.size.height * image.scale * scale).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+    }
+
+    /**
+     * (iOS asks for the picture from its own thread: the closure mustn't belong to the main one.)
+     * Drawn at the size it asks for
+     */
     nonisolated private static func artwork(_ image: UIImage) -> MPMediaItemArtwork {
-        MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in image }
+        MPMediaItemArtwork(boundsSize: image.size) { @Sendable asked in
+            guard asked.width > 0, asked.height > 0, asked != image.size else { return image }
+            let fit = min(asked.width / image.size.width, asked.height / image.size.height)
+            let size = CGSize(width: max(1, (image.size.width * fit).rounded()), height: max(1, (image.size.height * fit).rounded()))
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            return UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        }
     }
 
     private func remoteCommands() {

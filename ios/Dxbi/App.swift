@@ -174,6 +174,43 @@ private struct ZoomSource: ViewModifier {
 /** The page, in the window but out of sight */
 struct PageHost: UIViewRepresentable {
     let webView: WKWebView
-    func makeUIView(context: Context) -> WKWebView { webView }
-    func updateUIView(_ view: WKWebView, context: Context) {}
+    func makeUIView(context: Context) -> PageBox {
+        let box = PageBox()
+        PageBox.home = box
+        box.take(webView)
+        return box
+    }
+    func updateUIView(_ view: PageBox, context: Context) {}
+}
+
+/**
+ * Where the page is. A web view out of the window stops working (iOS pauses its page), and the
+ * player's full-screen cover takes the app's screens, this one included, out of the window while it
+ * shows: so the page goes along with the player, under the video, and comes back when it closes.
+ * Without that, watch progress and how the player closed only reached Stremio now and then.
+ */
+final class PageBox: UIView {
+    static weak var home: PageBox?
+
+    func take(_ webView: WKWebView) {
+        webView.alpha = 1
+        webView.isUserInteractionEnabled = true
+        webView.frame = bounds
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(webView)
+    }
+
+    /** Under the player's picture (kept the size it was, so the page isn't laid out again) */
+    static func lend(_ webView: WKWebView, to view: UIView) {
+        let size = webView.bounds.size
+        webView.autoresizingMask = []
+        webView.frame = CGRect(origin: .zero, size: size.width > 0 ? size : CGSize(width: 400, height: 800))
+        webView.alpha = 0.02
+        webView.isUserInteractionEnabled = false
+        view.insertSubview(webView, at: 0)
+    }
+
+    static func bringBack(_ webView: WKWebView) {
+        home?.take(webView)
+    }
 }
