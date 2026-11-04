@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.31.2
+
+- **Stream stats show your torrent connection limit.** The Peers line used to read "1 connected of 55 found", but 55 was never the number of peers found: it's how many connections Stremio's torrent profile allows (Default allows 55). It now reads "1 connected (limit 55)", and on the Default or Soft profile it points to *Settings → Streaming → Torrent profile*, where Fast (200) or Ultra fast (400) raises it. The profile applies to torrents opened after you change it, so start the video again afterwards. A torrent can only go as fast as the people sharing it can send, however fast your connection is; cached debrid streams don't depend on peers.
+
 ## 2.31.1
 
 - **Downloads play straight from your computer.** On the desktop app, *Play downloaded* sent many files through the streaming server's converter, the same way an online stream is converted, so skipping through buffered while VLC played the same file smoothly. Stremio only plays a file directly when it's H.264, HEVC, VP8 or VP9 with no subtitle tracks inside, so AV1 releases and almost anything with built-in subtitles (most anime and Blu-ray releases) were converted on the fly. Downloads now play directly from the disk whenever this PC can decode them, and skipping is instant. Files it can't decode (DTS or AC3 sound, for example) are still converted.

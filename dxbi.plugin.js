@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description The dx.bi experience: cinematic billboard, Netflix-style carousels, hover previews with trailers, ratings on posters, critic reviews, skip intro and up next, anime filler guide, new episode badges, watch stats and viewers, stream sorting & filters, a Netflix-style player with black-bar removal, night mode and subtitle sync, watch parties with friends, a cinematic intro and interface sounds. Use with the dx.bi theme.
- * @version 2.31.1
+ * @version 2.31.2
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.31.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.31.2"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -14057,7 +14057,7 @@
         if (!r.ok) return null;
         const j = await r.json();
         const n = (x) => (typeof x === "number" && isFinite(x) ? x : null);
-        return { peers: n(j.peers), swarm: n(j.swarmSize), down: n(j.downloadSpeed), downloaded: n(j.downloaded), progress: n(j.streamProgress), length: n(j.streamLen) };
+        return { peers: n(j.peers), cap: n(j.opts && j.opts.connections) || n(j.swarmSize), down: n(j.downloadSpeed), downloaded: n(j.downloaded), progress: n(j.streamProgress), length: n(j.streamLen) };
       } catch (_) {
         return null;
       }
@@ -14171,7 +14171,7 @@
           ${this.graph()}
           ${speedNote ? `<p class="dxt-note">${esc(speedNote)}</p>` : ""}
           ${row("Source", source)}
-          ${torrent ? row("Peers", torrent.peers !== null ? `${torrent.peers} connected${torrent.swarm ? ` of ${torrent.swarm} found` : ""}` : "") : ""}
+          ${torrent ? row("Peers", torrent.peers !== null ? `${torrent.peers} connected${torrent.cap ? ` (limit ${torrent.cap}${torrent.cap < 200 ? ": Settings → Streaming → Torrent profile → Fast or Ultra fast raises it" : ""})` : ""}` : "") : ""}
           ${torrent && torrent.progress !== null ? row("Ready", `${Math.floor(torrent.progress * 100)}% of the file`, torrent.downloaded ? `${formatBytes(torrent.downloaded)} downloaded this time` : "") : ""}
         </div>`;
     },
