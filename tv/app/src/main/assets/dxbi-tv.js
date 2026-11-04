@@ -826,6 +826,8 @@
       // with its intro skipped, or closed in the credits, moved Continue Watching on without it
       const finished = ended || (durationMs > 0 && timeMs >= durationMs * 0.9) || (handoff.creditsAt > 0 && timeMs >= handoff.creditsAt * 1000);
       if (window.__dxbiEngine && finished) await markFinished(handoff.videoId);
+      // (and its page moves on to the next episode)
+      if (window.__dxbiEngine && window.__dxbiEngine.afterPlaying && !next) window.__dxbiEngine.afterPlaying(handoff.videoId, finished);
       handoff = null;
       const link = next && await nextLinkFor(await playerState());
       if (link) location.replace(link);

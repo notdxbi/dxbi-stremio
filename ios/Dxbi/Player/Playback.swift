@@ -95,8 +95,20 @@ final class Playback: Identifiable {
         start()
     }
 
+    /**
+     * The app's sound as a video player's: only then is it Now Playing (lock screen, Control Centre).
+     * Checked every second while it plays: the web page underneath can change it (to ambient sound,
+     * which mixes with others and isn't Now Playing)
+     */
+    private func claimSound() {
+        let session = AVAudioSession.sharedInstance()
+        guard session.category != .playback || session.mode != .moviePlayback || !session.categoryOptions.isEmpty else { return }
+        try? session.setCategory(.playback, mode: .moviePlayback, options: [])
+        try? session.setActive(true)
+    }
+
     private func start() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        claimSound()
         try? AVAudioSession.sharedInstance().setActive(true)
         UIApplication.shared.isIdleTimerDisabled = true
         UIApplication.shared.beginReceivingRemoteControlEvents()
@@ -137,6 +149,7 @@ final class Playback: Identifiable {
 
     private func tick() {
         guard !closing else { return }
+        if !paused { claimSound() }
         stremio?.partyTick(position: position, duration: duration, paused: paused, buffering: buffering, rate: speed)
         // Stremio's watch progress, every few seconds
         if Date().timeIntervalSince(lastReport) > 5, mpv.started {

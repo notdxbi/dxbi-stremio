@@ -91,6 +91,12 @@ struct TitleView: View {
         .onChange(of: details?.state == .ready && ref.type != "series", initial: true) { _, ready in
             if ready && ref.play && !autoPlayed { autoPlayed = true; start(nil) }
         }
+        // The episode picked shows in its season (back from the player, the page picks the next one
+        // when the last was finished: dxbi-engine.js afterPlaying)
+        .onChange(of: details?.videoId) { _, id in
+            guard let d = details, let v = d.videos.first(where: { $0.id == id }), let s = v.season else { return }
+            season = s
+        }
         // dx.bi's reading of the streams, again as more addons answer
         .task(id: details?.streamsKey) {
             guard details?.videoId != nil else { return }
@@ -109,7 +115,8 @@ struct TitleView: View {
     /** What Play starts: the episode they're in the middle of, else the first one that's out */
     private func nextVideo(_ d: Details) -> Video? {
         guard ref.type == "series" else { return nil }
-        return d.videos.first { $0.id == d.resumeVideoId } ?? d.videos.first { ($0.season ?? 0) > 0 && !$0.upcoming } ?? d.videos.first
+        // (the one picked first: the page moves it on to the next episode after one is finished)
+        return d.videos.first { $0.id == d.videoId } ?? d.videos.first { $0.id == d.resumeVideoId } ?? d.videos.first { ($0.season ?? 0) > 0 && !$0.upcoming } ?? d.videos.first
     }
 
     private func start(_ videoId: String?) {
@@ -307,7 +314,7 @@ struct TitleView: View {
                     .scrollTargetBehavior(.viewAligned)
                     .scrollIndicators(.hidden)
                     // the episode they're on, in view (once the episodes are there, and again on its season)
-                    .task(id: "\(shown.count)-\(season ?? -1)") {
+                    .task(id: "\(shown.count)-\(season ?? -1)-\(d.videoId ?? "")") {
                         guard let v = nextVideo(d), shown.contains(where: { $0.id == v.id }) else { return }
                         try? await Task.sleep(for: .milliseconds(250))
                         withAnimation(.smooth) { proxy.scrollTo(v.id, anchor: .leading) }
@@ -319,7 +326,7 @@ struct TitleView: View {
 
     private func episodeButton(_ v: Video, width: CGFloat, d: Details) -> some View {
         Button { start(v.id) } label: {
-            EpisodeCard(video: v, width: width, fallbackArt: title.backdrop, playing: v.id == d.resumeVideoId && d.resumeMs > 0)
+            EpisodeCard(video: v, width: width, fallbackArt: title.backdrop, playing: v.id == nextVideo(d)?.id)
         }
         .buttonStyle(.plain)
         .contextMenu {

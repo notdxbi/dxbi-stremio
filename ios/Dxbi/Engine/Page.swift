@@ -50,6 +50,9 @@ final class Page: NSObject {
         // Nothing in the page plays by itself (its own player, sounds): it would take over the lock
         // screen's Now Playing and play sound nobody asked for. The app's player does the playing
         config.mediaTypesRequiringUserActionForPlayback = .all
+        // (nor does its hidden video go into picture in picture or to AirPlay in place of the app's)
+        config.allowsPictureInPictureMediaPlayback = false
+        config.allowsAirPlayForMediaPlayback = false
         config.websiteDataStore = .default()
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 400, height: 800), configuration: config)
         super.init()
@@ -106,6 +109,13 @@ final class Page: NSObject {
         let shim = """
         (function () {
           if (window.DxbiTV) return;
+          // No Web Audio in the page: a page with an audio context makes iOS set the app's sound to
+          // "ambient", and an app like that can't be Now Playing (the lock screen and Control Centre
+          // said Not Playing). The page has nothing to play on an iPhone anyway: the app's player
+          // plays (dx.bi's sound effects and party chimes do without one)
+          for (const name of ["AudioContext", "webkitAudioContext", "OfflineAudioContext", "webkitOfflineAudioContext"]) {
+            try { Object.defineProperty(window, name, { value: undefined, configurable: false, writable: false }); } catch (_) {}
+          }
           const post = (message) => { try { window.webkit.messageHandlers.dxbi.postMessage(message); } catch (_) {} };
           const ios = (window.__dxbiIos = { settings: \(Json.encode(savedSettings)), plugin: \(Json.quote(resource("dxbi.plugin.js"))), active: "", pendingClose: "", utcOffset: \(Self.utcOffset) });
           window.DxbiTV = {
