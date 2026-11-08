@@ -44,9 +44,15 @@
   // iPhone has no engine, so no torrentUrl)
   tv.torrentDownloads = PHONE && !!bridge.torrentUrl;
   // Words written for a TV, as a phone shows them
-  const forDevice = (text) => (PHONE && typeof text === "string"
-    ? text.replace(/ On a TV, only[^.]*\./, "").replace(/\bthis TV\b/g, "this phone").replace(/\bthis TV's\b/g, "this phone's")
-    : text);
+  // (and words written for a computer, as a TV or phone shows them: settings said "on this PC only")
+  const forDevice = (text) => {
+    if (typeof text !== "string") return text;
+    const own = PHONE ? "this phone" : "this TV";
+    text = text.replace(/\bthis PC\b/g, own).replace(/\bthis computer\b/g, own);
+    if (!PHONE) return text;
+    return text.replace(/ On a TV, only[^.]*\./, "").replace(/\bthis TV's\b/g, "this phone's").replace(/\bthis TV\b/g, "this phone")
+      .replace(/\bdx\.bi TV\b/g, "dx.bi").replace(/under your profile menu → /g, "in Profile → ").replace(/in your profile menu\b/g, "in Profile");
+  };
   const upright = () => PHONE && window.screen && screen.height > screen.width;
   let VIEWPORT = "width=1280, user-scalable=no";
   function fitViewport() {

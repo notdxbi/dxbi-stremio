@@ -68,15 +68,16 @@ fun Modifier.shimmer(): Modifier {
 /** A title's art, or its name on a dark card while there's none (or it hasn't loaded) */
 @Composable
 fun Art(url: String?, name: String, modifier: Modifier, shape: RoundedCornerShape = RoundedCornerShape(6.dp)) {
-    Box(modifier.clip(shape).background(Dx.Raised), contentAlignment = Alignment.Center) {
+    // (no artwork: the name on a soft card, set like a title rather than a missing image)
+    Box(modifier.clip(shape).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Dx.Raised, Dx.Surface))), contentAlignment = Alignment.Center) {
         Text(
             name,
-            color = Dx.Faint,
-            style = MaterialTheme.typography.bodySmall,
+            color = Dx.Muted,
+            style = MaterialTheme.typography.titleSmall,
             textAlign = TextAlign.Center,
-            maxLines = 3,
+            maxLines = 4,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(10.dp),
         )
         if (url != null) AsyncImage(model = url, contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
@@ -132,7 +133,7 @@ private fun Modifier.combinedClickableCompat(onClick: () -> Unit) = this.combine
 /** A titled row of posters, or placeholders while it loads */
 @Composable
 fun PosterRow(title: String, items: List<Title>, loading: Boolean = false, onMore: (() -> Unit)? = null, onLongClick: ((Title) -> Unit)? = null, onOpen: (Title) -> Unit) {
-    Column(Modifier.padding(bottom = 22.dp)) {
+    Column(Modifier.padding(bottom = 16.dp)) {
         RowHeader(title, onMore)
         LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (items.isEmpty() && loading) items(5) { PosterPlaceholder() }

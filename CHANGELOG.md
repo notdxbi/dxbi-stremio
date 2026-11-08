@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.33.0
+
+- **Phone title pages need far less scrolling, like Netflix.** The picture is wide instead of tall, the story shows three lines (tap for the rest), and who's in it is one *Starring* line under it instead of a cast list at the very bottom. Episodes take two lines each and show their air date, so a whole season fits in about two swipes. Once the picture scrolls away, a solid bar with the title holds the back and cast buttons (they used to float over the episodes).
+- **Phone Home shows more rows.** The Series, Films and Categories chips step aside while you scroll down and come back when you scroll up, the rows sit closer together, and titles without artwork get a proper card instead of a grey box.
+- **Phone settings in sections.** dx.bi settings opens on a short list (Player, Home, Browsing & library, Episodes & skipping, Watch party, Intro & sounds), each on its own page, with two-line explanations. Options that only apply to the TV and computer are gone from the phone, and text written for a computer ("on this PC only") now reads right on phones and TVs.
+- **Smoother TV.** Since 2.24 a broken style rule had brought back the blurred backgrounds TVs are meant to skip: every IMDb badge became an extra layer for the TV's graphics to draw. Fixing it cut those layers from 105 to 27, and hover cards now open without stutter (about 58 frames a second instead of 36 at Fire TV Stick speed). The same fix brings back the Windows workaround for scrolled panels leaving copies behind.
+- **The TV remote moves through the profile menu on every page.** On the Settings page it was stuck on *Log in / Sign up*; now Up and Down go through every entry, and Back closes it.
+- **A cleaner Settings page on computers.** Every toggle lines up on the right with the other controls, sections use the room there is, section titles are bold, and dx.bi's own section reads properly: the built-in look is named, About is laid out, and the plugin's description is short.
+- **Rows named like Netflix:** *Popular Films* and *Featured Series* instead of *Popular - Movie* and *Featured - Series*.
+
 ## 2.32.0
 
 - **Menus and pages appear finished.** The profile menu used to open with Stremio's four entries and then grow as dx.bi's were added a moment later; it now opens complete. Title pages did the same, with Reviews, Hide and *Ends at* arriving after the page and pushing the buttons down. dx.bi's parts now go in before the page is drawn.

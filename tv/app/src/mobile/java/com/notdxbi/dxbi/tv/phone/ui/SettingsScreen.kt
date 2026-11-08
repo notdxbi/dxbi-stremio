@@ -16,7 +16,21 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -52,15 +66,35 @@ private val WEB_ONLY = setOf(
     "liteMode", "builtInTheme", "previews", "ratings", "animeTitles", "wideContinue", "librarySort", "trailers",
     "whoIsWatching", "addonTools", "posterAccent", "crispPosters", "streamTools", "streamRows", "splash", "introSound",
     "profileSync", "uiSounds", "focusColour", "videoRowsOnly", "newEpisodes", "accent",
+    // hover cards and dimmed watched titles are the big screen's (the phone has neither)
+    "trailerDelay", "watchedTitles",
 )
 
-/** dx.bi settings: the same list the TV shows, as a phone settings screen */
+/** Each section's icon on the first page */
+private fun sectionIcon(group: String): androidx.compose.ui.graphics.vector.ImageVector = when (group.lowercase()) {
+    "player" -> Icons.Filled.PlayCircle
+    "home" -> Icons.Filled.Home
+    "browsing & library" -> Icons.Filled.VideoLibrary
+    "subtitles" -> Icons.Filled.Subtitles
+    "episodes & skipping" -> Icons.Filled.SkipNext
+    "watch party" -> Icons.Filled.Groups
+    "intro & sounds" -> Icons.AutoMirrored.Filled.VolumeUp
+    else -> Icons.Filled.Tune
+}
+
+/**
+ * dx.bi settings: the same list the TV shows, in sections like a phone's own Settings. The first page
+ * lists the sections; each opens on its own short page (one long list of every option took a lot of
+ * scrolling to find anything).
+ */
 @Composable
 fun SettingsScreen(stremio: Stremio, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf<List<Setting>?>(null) }
     var editing by remember { mutableStateOf<Setting?>(null) }
+    var section by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { list = stremio.settings().filter { it.key !in WEB_ONLY } }
+    androidx.activity.compose.BackHandler(enabled = section != null) { section = null }
 
     fun save(s: Setting, value: Any?) {
         // shown at once, saved behind
@@ -68,32 +102,48 @@ fun SettingsScreen(stremio: Stremio, onBack: () -> Unit) {
         scope.launch { stremio.saveSetting(s.key, value) }
     }
 
+    // the phone's own option (where videos play) leads the Player section
+    val other by stremio.playInOtherApp.collectAsState()
+    val playIn = Setting("playIn", "select", "Play videos in", "dx.bi's player, or another app on this phone (VLC, mpv, MX Player…).",
+        "Player", listOf(false to "dx.bi's player", true to "External player (ask which)"), other)
+
     Column(Modifier.fillMaxSize().background(Dx.Background).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Dx.Text) }
-            Text("dx.bi settings", style = MaterialTheme.typography.titleLarge, color = Dx.Text)
+            IconButton(onClick = { if (section != null) section = null else onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Dx.Text) }
+            Text(section ?: "dx.bi settings", style = MaterialTheme.typography.titleLarge, color = Dx.Text)
         }
         val items = list
         if (items == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
             return@Column
         }
-        LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
-            // the phone's own: where videos play
-            item(key = "playIn") {
-                val other by stremio.playInOtherApp.collectAsState()
-                Text("PLAYER", color = Dx.Accent, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = Gutter, top = 22.dp, bottom = 4.dp))
-                SettingRow(
-                    Setting("playIn", "select", "Play videos in", "dx.bi's player, or an external player on this phone (VLC, mpv, MX Player…). The player's More menu and each stream's ⋮ menu play with an external player any time.",
-                        "", listOf(false to "dx.bi's player", true to "External player (ask which)"), other),
-                    onToggle = {}, onPick = { stremio.setPlayInOtherApp(it == true) }, onEdit = {},
-                )
-            }
-            itemsIndexed(items, key = { _, s -> s.key }) { i, s ->
-                if (s.group.isNotEmpty() && s.group != items.getOrNull(i - 1)?.group) {
-                    Text(s.group.uppercase(), color = Dx.Accent, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = Gutter, top = 22.dp, bottom = 4.dp))
+        val groups = (listOf("Player") + items.map { it.group.ifEmpty { "More" } }).distinct()
+        fun inGroup(g: String) = (if (g == "Player") listOf(playIn) else emptyList()) + items.filter { it.group.ifEmpty { "More" } == g }
+        val open = section
+        if (open == null) {
+            LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 32.dp)) {
+                items(groups, key = { it }) { g ->
+                    val inside = inGroup(g)
+                    Row(
+                        Modifier.fillMaxWidth().clickable { section = g }.padding(horizontal = Gutter, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(sectionIcon(g), contentDescription = null, tint = Dx.Text, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(18.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(g, color = Dx.Text, style = MaterialTheme.typography.titleSmall)
+                            Text(inside.map { it.label.removePrefix("$g: ").removePrefix("Reviews: ").replaceFirstChar { c -> c.uppercase() } }.distinct().take(3).joinToString(", "), color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Dx.Faint)
+                    }
                 }
-                SettingRow(s, onToggle = { save(s, it) }, onPick = { save(s, it) }, onEdit = { editing = s })
+            }
+        } else {
+            LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 32.dp)) {
+                items(inGroup(open), key = { it.key }) { s ->
+                    if (s.key == "playIn") SettingRow(s, onToggle = {}, onPick = { stremio.setPlayInOtherApp(it == true) }, onEdit = {})
+                    else SettingRow(s, onToggle = { save(s, it) }, onPick = { save(s, it) }, onEdit = { editing = s })
+                }
             }
         }
     }
@@ -120,6 +170,8 @@ fun SettingsScreen(stremio: Stremio, onBack: () -> Unit) {
 @Composable
 private fun SettingRow(s: Setting, onToggle: (Boolean) -> Unit, onPick: (Any?) -> Unit, onEdit: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
+    // (long explanations stay two lines; a press on them shows all of it)
+    var whole by remember(s.key) { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().clickable {
             when (s.type) {
@@ -132,9 +184,13 @@ private fun SettingRow(s: Setting, onToggle: (Boolean) -> Unit, onPick: (Any?) -
     ) {
         Column(Modifier.weight(1f)) {
             Text(s.label, color = Dx.Text, style = MaterialTheme.typography.titleSmall)
-            if (s.description.isNotEmpty()) Text(s.description, color = Dx.Faint, style = MaterialTheme.typography.bodySmall)
+            if (s.description.isNotEmpty()) Text(
+                s.description, color = Dx.Muted, style = MaterialTheme.typography.bodySmall,
+                maxLines = if (whole) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp).clickable { whole = !whole },
+            )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         when (s.type) {
             "toggle" -> Switch(
                 checked = s.value == true,
@@ -142,7 +198,11 @@ private fun SettingRow(s: Setting, onToggle: (Boolean) -> Unit, onPick: (Any?) -
                 colors = SwitchDefaults.colors(checkedTrackColor = Dx.Accent, checkedThumbColor = Color.White, uncheckedTrackColor = Dx.Raised),
             )
             "select" -> Box {
-                Text(s.options.firstOrNull { it.first == s.value }?.second ?: s.value?.toString().orEmpty(), color = Dx.Muted, style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(s.options.firstOrNull { it.first == s.value }?.second ?: s.value?.toString().orEmpty(), color = Dx.Muted, style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 150.dp))
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = Dx.Faint, modifier = Modifier.size(18.dp))
+                }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     s.options.forEach { (value, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { menu = false; onPick(value) }) }
                 }

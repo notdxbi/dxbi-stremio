@@ -95,6 +95,19 @@ fun HomeScreen(
     val list = rememberLazyListState()
     // the top bar darkens once Home scrolls under it
     val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 40 } }
+    // the chips step aside while Home scrolls down and come back on the way up, as on Netflix: more
+    // of the rows on screen
+    var chips by remember { mutableStateOf(true) }
+    LaunchedEffect(list) {
+        var lastIndex = 0
+        var lastOffset = 0
+        androidx.compose.runtime.snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.collect { (i, o) ->
+            val moved = i != lastIndex || kotlin.math.abs(o - lastOffset) > 24
+            if (i == 0 && o < 40) chips = true
+            else if (moved) chips = i < lastIndex || (i == lastIndex && o < lastOffset)
+            if (moved) { lastIndex = i; lastOffset = o }
+        }
+    }
 
     fun fits(type: String) = when (filter) {
         HomeFilter.All -> true
@@ -110,7 +123,7 @@ fun HomeScreen(
             item(key = "billboard") {
                 if (slides.isNotEmpty()) Billboard(slides, onOpen, onPlay)
                 else Box(Modifier.padding(horizontal = Gutter).fillMaxWidth().aspectRatio(billboardShape()).clip(RoundedCornerShape(12.dp)).shimmer())
-                Spacer(Modifier.height(26.dp))
+                Spacer(Modifier.height(20.dp))
             }
 
             val resume = continueWatching.filter { fits(it.title.type) }
@@ -145,7 +158,7 @@ fun HomeScreen(
 
         var party by rememberSaveable { mutableStateOf(false) }
         if (party) PartySheet(stremio) { party = false }
-        TopBar(scrolled, filter, onFilter = { filter = it }, onSearch = onSearch, onParty = { party = true }, onCategories = {
+        TopBar(scrolled, chips || filter != HomeFilter.All, filter, onFilter = { filter = it }, onSearch = onSearch, onParty = { party = true }, onCategories = {
             onCategories(if (filter == HomeFilter.Series) "series" else "movie")
         })
     }
@@ -161,6 +174,7 @@ private fun typeSuffix(type: String, ambiguous: Boolean) = if (!ambiguous) "" el
 @Composable
 private fun TopBar(
     scrolled: Boolean,
+    chips: Boolean,
     filter: HomeFilter,
     onFilter: (HomeFilter) -> Unit,
     onSearch: () -> Unit,
@@ -179,6 +193,11 @@ private fun TopBar(
             CastButton()
             IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = "Search", tint = Dx.Text) }
         }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = chips,
+            enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut(),
+        ) {
         Row(Modifier.padding(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (filter != HomeFilter.All) {
                 Pill(selected = false, onClick = { onFilter(HomeFilter.All) }) { Icon(Icons.Filled.Close, contentDescription = "All", tint = Dx.Text, modifier = Modifier.size(18.dp)) }
@@ -190,6 +209,7 @@ private fun TopBar(
                 Text("Categories", color = Dx.Text, style = MaterialTheme.typography.labelMedium)
                 Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = Dx.Text, modifier = Modifier.size(18.dp))
             }
+        }
         }
     }
 }
@@ -289,7 +309,7 @@ fun TitleArt(t: Title, modifier: Modifier, textSize: Int = 30, start: Boolean = 
 
 @Composable
 private fun ContinueRow(items: List<Continue>, onOpen: (Continue) -> Unit, onResume: (Continue) -> Unit, onRemove: (Continue) -> Unit) {
-    Column(Modifier.padding(bottom = 22.dp)) {
+    Column(Modifier.padding(bottom = 16.dp)) {
         RowHeader("Continue Watching")
         LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(items, key = { it.title.id }) { c ->
@@ -327,7 +347,7 @@ private fun ContinueRow(items: List<Continue>, onOpen: (Continue) -> Unit, onRes
 
 @Composable
 private fun AiringRow(items: List<Airing>, onOpen: (Airing) -> Unit) {
-    Column(Modifier.padding(bottom = 22.dp)) {
+    Column(Modifier.padding(bottom = 16.dp)) {
         RowHeader("Airing This Week")
         LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(items, key = { it.id }) { a ->
