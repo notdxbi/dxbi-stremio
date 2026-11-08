@@ -2341,6 +2341,21 @@
       if (e.key === "Tab" || this.keeps(e.target, e.key)) return;
       // Start from the title the mouse was on, rather than wherever focus was left
       const focused = document.activeElement;
+      // Stremio's popup menus (the profile menu) hold focus with focus-lock, which undid a move made
+      // during the key press and put focus back on the first entry: on the Settings page the remote
+      // was stuck on "Log in / Sign up". Up/down step through the menu in order, just after the press.
+      const locked = focused && focused.closest && focused.closest("[data-focus-lock-disabled]");
+      if (locked && this.DIRS[e.key]) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const dy = this.DIRS[e.key][1];
+        if (!dy) return;
+        const items = [...locked.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+          .filter((n) => !n.closest("[data-focus-guard]") && n.checkVisibility() && n.getBoundingClientRect().height > 4);
+        const next = items[items.indexOf(focused) + dy];
+        if (next) setTimeout(() => { if (next.isConnected) next.focus({ preventScroll: true }); }, 0);
+        return;
+      }
       const hovered = entering && (preview.card || document.querySelector('#app [class*="meta-item-container"]:hover'));
       if (hovered && !hovered.contains(focused) && (!focused || focused === document.body || focused.closest('[class*="meta-item-container"]'))) {
         if (this.go(hovered, e)) return;
