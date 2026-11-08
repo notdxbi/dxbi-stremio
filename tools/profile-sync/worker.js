@@ -16,7 +16,7 @@ const ALLOWED_ORIGINS = new Set(["https://web.stremio.com"]);
 const STREMIO_API = "https://api.strem.io/api/getUser";
 
 // What can be kept: the profiles and their choices, and dx.bi's settings, nothing else
-const KEY = /^(viewers|libraryOwners|kidsAllow|(homeLayout|hidden|cwDismissed):[\w-]{1,40})$/;
+const KEY = /^(viewers|libraryOwners|kidsAllow|(homeLayout|hidden|cwDismissed|progress):[\w-]{1,40})$/;
 const MAX_BODY = 1536 * 1024;
 const MAX_ENTRIES = 200;
 const MAX_VALUE = 100 * 1024;

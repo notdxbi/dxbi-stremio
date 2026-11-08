@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.34.1
+ * @version 2.35.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.34.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.35.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -9290,7 +9290,7 @@
   // ---------------------------------------------------------------------------
 
   const SYNC_ENDPOINT = "https://dxbi-sync.dxbialt.workers.dev/sync";
-  const SYNCED = /^(viewers|libraryOwners|kidsAllow|(homeLayout|hidden|cwDismissed):[\w-]{1,40})$/;
+  const SYNCED = /^(viewers|libraryOwners|kidsAllow|(homeLayout|hidden|cwDismissed|progress):[\w-]{1,40})$/;
   const SYNC_MAX_VALUE = 100 * 1024;
 
   // Two copies of the same thing, from two devices. Nothing here touches the page or the store.
@@ -9351,6 +9351,13 @@
       for (const [id, at] of Object.entries(mine || {})) out[id] = Math.max(Number(out[id]) || 0, Number(at) || 0);
       return out;
     },
+
+    // A viewer's places from two devices: the newest place per title wins
+    progress(mine, theirs) {
+      const out = { ...(theirs || {}) };
+      for (const [id, r] of Object.entries(mine || {})) if (r && (!out[id] || (Number(r.at) || 0) > (Number(out[id].at) || 0))) out[id] = r;
+      return out;
+    },
   };
 
   const cloudSync = {
@@ -9362,6 +9369,8 @@
     retryAt: 0,
     failures: 0,
     rejectedKey: "",
+    // keys the sync service doesn't know yet (a newer dx.bi than the service): left out, so the rest still syncs
+    unknownKeys: new Set(),
 
     // Nothing leaves a device with a single viewer: there's nothing to keep apart. (Unless it's down to
     // one because a viewer was removed: the other devices have to hear of that.)
@@ -9430,6 +9439,7 @@
         for (const k of [...this.dirty]) {
           if (entries.length >= 200) break;
           this.dirty.delete(k);
+          if (this.unknownKeys.has(k)) continue;
           const entry = store.data[k];
           if (entry && JSON.stringify(entry.v === undefined ? null : entry.v).length <= SYNC_MAX_VALUE) {
             entries.push({ k, t: entry.t, v: entry.v === undefined ? null : entry.v });
@@ -9445,8 +9455,13 @@
         }).catch(() => null);
         if (!r || !r.ok) {
           for (const e of entries) this.dirty.add(e.k); // goes again next time
+          const unknown = r && r.status === 400 ? String(((await r.json().catch(() => null)) || {}).error || "").match(/^Not something dx\.bi syncs: (\S+)$/) : null;
           if (r && r.status === 401) this.rejectedKey = auth.key;
-          else {
+          else if (unknown && entries.some((e) => e.k === unknown[1])) {
+            this.unknownKeys.add(unknown[1]);
+            this.dirty.delete(unknown[1]);
+            this.schedule();
+          } else {
             this.failures++;
             this.retryAt = Date.now() + (r && r.status === 413 ? 60 : r && r.status === 429 ? 5 : [1, 5, 15][Math.min(2, this.failures - 1)]) * 60000;
           }
@@ -9521,6 +9536,8 @@
           if (!this.keep(key, e, before, merged)) continue;
         } else if (/^cwDismissed:/.test(key) && e.v && typeof e.v === "object") {
           if (!this.keep(key, e, before, syncMerge.latest(before, e.v))) continue;
+        } else if (/^progress:/.test(key) && e.v && typeof e.v === "object") {
+          if (!this.keep(key, e, before, syncMerge.progress(before, e.v))) continue;
         } else {
           if (!newer) continue;
           store.put(key, { t: e.t, v: e.v });
@@ -9680,6 +9697,111 @@
   // share is still the account's.
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Each viewer's own place in what they watch. Stremio keeps one resume point per title for the whole
+  // account, so two viewers watching the same show moved each other's place (and Continue Watching
+  // showed whoever watched last). dx.bi keeps each viewer's position beside it and shows them theirs:
+  // in Continue Watching, the player's resume point and title pages. Synced with the rest of a viewer.
+  // ---------------------------------------------------------------------------
+  const viewerProgress = {
+    playing: null, // { id, video } of what the player has open
+    last: null, // { time, duration } from the player, not yet saved
+    savedAt: 0,
+    KEEP: 300,
+
+    key(viewerId) { return `progress:${viewerId || viewers.current().id}`; },
+    all(viewerId) { return store.get(this.key(viewerId), null) || {}; },
+    get(id) { return this.all()[id] || null; },
+    // (nearly at the end: Stremio moves the title on to its next episode itself, so its own state is the one to show)
+    finished(r) { return !!r && (r.done || (r.d > 0 && r.t / r.d >= 0.92)); },
+
+    save(force) {
+      const p = this.playing;
+      const l = this.last;
+      if (!p || !l || !(l.time > 0)) return;
+      if (!force && Date.now() - this.savedAt < 15000) return;
+      this.savedAt = Date.now();
+      const all = { ...this.all() };
+      all[p.id] = { v: p.video, t: Math.round(l.time), d: Math.round(l.duration || 0), at: Date.now() };
+      const ids = Object.keys(all);
+      if (ids.length > this.KEEP) ids.sort((a, b) => all[a].at - all[b].at).slice(0, ids.length - this.KEEP).forEach((k) => delete all[k]);
+      store.set(this.key(), all);
+    },
+
+    // What the player and Stremio's own actions say (called for every action dx.bi sees)
+    observe(a) {
+      if (!a || !a.args) return;
+      if (a.action === "Load" && a.args.model === "Player") {
+        const args = a.args.args || {};
+        const id = args.metaRequest && args.metaRequest.path && args.metaRequest.path.id;
+        const video = (args.streamRequest && args.streamRequest.path && args.streamRequest.path.id) || id;
+        this.save(true);
+        this.playing = typeof id === "string" ? { id, video } : null;
+        this.last = null;
+      } else if (a.action === "Player") {
+        const { action: name, args } = a.args;
+        if (name === "TimeChanged" && args) {
+          this.last = { time: Number(args.time) || 0, duration: Number(args.duration) || 0 };
+          this.save(false);
+        } else if (name === "PausedChanged" && args && args.paused) this.save(true);
+        else if (name === "Ended" && this.playing) {
+          this.save(true);
+          const all = { ...this.all() };
+          if (all[this.playing.id]) { all[this.playing.id] = { ...all[this.playing.id], done: true, at: Date.now() }; store.set(this.key(), all); }
+        }
+      } else if (a.action === "Unload") {
+        this.save(true);
+        this.playing = null;
+      }
+    },
+
+    // A library item's state as this viewer has it (shared titles only: a title just one viewer has is
+    // already theirs). false: a shared title this viewer hasn't watched (kept out of their Continue Watching)
+    apply(item) {
+      if (!item || !item.state || typeof item._id !== "string") return true;
+      if (!viewerLibrary.shared(item._id)) return true;
+      const r = this.get(item._id);
+      if (!r) return false;
+      if (this.finished(r)) return true;
+      const was = item.state.video_id;
+      item.state = { ...item.state, timeOffset: r.t, duration: r.d || item.state.duration, video_id: r.v, lastWatched: new Date(r.at).toISOString() };
+      // the progress bar Stremio worked out, and links to the episode the other viewer is on
+      if (typeof item.progress === "number" && item.state.duration > 0) item.progress = Math.min(1, r.t / item.state.duration);
+      const links = item.deepLinks;
+      if (links && typeof links === "object" && was && r.v && was !== r.v) {
+        const out = { ...links };
+        const from = encodeURIComponent(was);
+        for (const k of Object.keys(out)) {
+          if (typeof out[k] !== "string") continue;
+          if (k === "player") out[k] = null; // (its stream is for the other episode: the episode's streams instead)
+          else out[k] = out[k].split(from).join(encodeURIComponent(r.v));
+        }
+        item.deepLinks = out;
+      }
+      return true;
+    },
+
+    // Once per device: everyone keeps the place the account had, so nothing vanishes from anyone's
+    // Continue Watching on the day this starts; from then on each viewer's place is their own
+    seed(items) {
+      if (localStorage.getItem("dxbi.progressSeeded")) return;
+      const list = viewers.list().list;
+      if (list.length < 2 || !Array.isArray(items) || !items.length) return;
+      try { localStorage.setItem("dxbi.progressSeeded", "1"); } catch (_) { return; }
+      for (const v of list) {
+        const all = { ...this.all(v.id) };
+        let added = 0;
+        for (const item of items) {
+          const st = item && item.state;
+          if (!st || all[item._id] || !(st.timeOffset > 0) || !viewerLibrary.ownersOf(item._id).includes(v.id)) continue;
+          all[item._id] = { v: st.video_id || item._id, t: st.timeOffset, d: st.duration || 0, at: Date.parse(st.lastWatched) || Date.now() };
+          added++;
+        }
+        if (added) store.set(this.key(v.id), all);
+      }
+    },
+  };
+
   const viewerLibrary = {
     paged: {},
 
@@ -9785,6 +9907,7 @@
         return state;
       };
       live.dispatch = (action, ...rest) => {
+        try { if (this.on()) viewerProgress.observe(action); } catch (err) { log("viewer progress failed", err); }
         try { if (this.on() && this.intercept(action) === false) return Promise.resolve(); } catch (err) { log("viewer library action failed", err); }
         return dispatch(action, ...rest);
       };
@@ -9815,6 +9938,12 @@
       if ((model === "library" || model === "continue_watching") && Array.isArray(s.catalog)) {
         const all = s.catalog.length;
         s.catalog = s.catalog.filter((i) => mine(i._id) && (model === "library" || !this.dismissed(i._id)));
+        // each viewer's own place: theirs on shared titles, and Continue Watching leaves out shared
+        // titles they haven't watched, newest first
+        if (model === "continue_watching") {
+          viewerProgress.seed(s.catalog);
+          s.catalog = s.catalog.filter((i) => viewerProgress.apply(i)).sort((x, y) => (Date.parse(y.state && y.state.lastWatched) || 0) - (Date.parse(x.state && x.state.lastWatched) || 0));
+        } else s.catalog.forEach((i) => viewerProgress.apply(i));
         // Stremio pages its library 100 at a time: fetch on while this viewer's page is thin
         if (all && all % 100 === 0 && s.catalog.length < 40 && this.paged[model] !== all) {
           this.paged[model] = all;
@@ -9825,10 +9954,17 @@
           const id = (i.libraryItem && i.libraryItem._id) || i._id || i.id;
           return mine(id) && !this.dismissed(id);
         });
-      } else if (model === "meta_details") {
-        if (s.libraryItem && !mine(s.libraryItem._id)) {
+        viewerProgress.seed(s.items.map((i) => i.libraryItem || i));
+        s.items = s.items.filter((i) => viewerProgress.apply(i.libraryItem || i))
+          .sort((x, y) => (Date.parse(((y.libraryItem || y).state || {}).lastWatched) || 0) - (Date.parse(((x.libraryItem || x).state || {}).lastWatched) || 0));
+      } else if (model === "meta_details" || model === "player") {
+        if (model === "meta_details" && s.libraryItem && !mine(s.libraryItem._id)) {
           s.libraryItem = null;
           this.unmark(s.metaItem, 0, true);
+        }
+        // this viewer's own resume point (from the start on a shared title they haven't watched)
+        if (s.libraryItem && s.libraryItem.state && !viewerProgress.apply(s.libraryItem)) {
+          s.libraryItem = { ...s.libraryItem, state: { ...s.libraryItem.state, timeOffset: 0 } };
         }
       } else if (model === "calendar" && Array.isArray(s.items)) {
         const raw = this.raw();
