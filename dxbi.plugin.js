@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.33.0
+ * @version 2.33.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.33.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.33.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -356,13 +356,13 @@
       key: "trailerDelay",
       type: "select",
       label: "Trailer delay",
-      description: "How long a hover card waits before its trailer starts.",
+      description: "How long a hover card waits before its trailer shows. YouTube takes about 4 seconds to start one, so that's the quickest.",
       defaultValue: DEFAULTS.trailerDelay,
       options: [
-        { label: "Right away", value: "0" },
-        { label: "1 second", value: "1" },
-        { label: "3 seconds", value: "3" },
+        { label: "As soon as it's ready", value: "0" },
         { label: "5 seconds", value: "5" },
+        { label: "8 seconds", value: "8" },
+        { label: "12 seconds", value: "12" },
       ],
     },
     {
@@ -470,6 +470,8 @@
       if (typeof DEFAULTS[key] === "boolean") out[key] = raw[key] === true || raw[key] === "true";
       else out[key] = String(raw[key]);
     }
+    // (1 and 3 seconds are gone: YouTube can't show a trailer that soon, so they meant "as soon as it's ready")
+    if (out.trailerDelay === "1" || out.trailerDelay === "3") out.trailerDelay = "0";
     return out;
   }
 
@@ -12394,15 +12396,39 @@
       }
     },
 
+    // The trailer loads (hidden, muted) as soon as the card opens, and shows at the chosen delay or as
+    // soon as YouTube is really playing, whichever is later. It used to start loading only after the
+    // delay, so YouTube's own start-up (a few seconds) made every choice feel the same, and the late
+    // details arriving restarted the countdown from zero.
     schedule(el, info, meta, token) {
-      this.stop();
       if (!settings.trailers) return;
+      // (already on its way for this card: the late details don't start it again)
+      if (token === this.token && (this.timer || this.frame)) return;
+      this.warm();
+      this.stop();
       this.token = token;
+      this.showAt = performance.now() + (Number(settings.trailerDelay) || 0) * 1000;
       this.timer = setTimeout(async () => {
         const id = await this.idFor(info, meta);
+        // (the card can still be opening when the trailer's id comes back: it waits for it, briefly)
+        for (let i = 0; i < 20 && id && token === preview.token && !el.classList.contains("is-open"); i++) await new Promise((r) => setTimeout(r, 50));
+        this.timer = null;
         if (!id || token !== preview.token || !el.classList.contains("is-open")) return;
         this.start(el, id);
-      }, Math.max(600, (Number(settings.trailerDelay) || 0) * 1000));
+      }, 0);
+    },
+
+    // YouTube's servers, connected to ahead of the first trailer (a few hundred ms off its start)
+    warm() {
+      if (this.warmed) return;
+      this.warmed = true;
+      for (const href of ["https://www.youtube-nocookie.com", "https://www.youtube.com", "https://i.ytimg.com", "https://www.google.com"]) {
+        const link = document.createElement("link");
+        link.rel = "preconnect";
+        link.href = href;
+        link.crossOrigin = "";
+        document.head.append(link);
+      }
     },
 
     start(el, id) {
@@ -12439,8 +12465,14 @@
       });
     },
 
-    command(func) {
-      try { this.frame && this.frame.contentWindow.postMessage(JSON.stringify({ event: "command", func, args: [] }), "*"); } catch (_) { /* gone */ }
+    command(func, args = []) {
+      try { this.frame && this.frame.contentWindow.postMessage(JSON.stringify({ event: "command", func, args }), "*"); } catch (_) { /* gone */ }
+    },
+
+    // (played hidden while it waited for the chosen delay: shown from the beginning)
+    seekStart() {
+      this.command("seekTo", [0, true]);
+      this.time = 0;
     },
 
     // Carry on watching the hover card's trailer full screen, from the same moment, with sound
@@ -12467,22 +12499,26 @@
       const state = d && d.info && (typeof d.info === "object" ? d.info.playerState : d.info);
       if (d && d.info && typeof d.info === "object" && typeof d.info.currentTime === "number") t.time = d.info.currentTime;
       if (d && d.event === "onError") t.stop();
-      if (state === 1 && !t.revealTimer) {
-        // YouTube shows its own controls for the first moments of playback: reveal after they fade
+      if (state === 1 && !t.revealTimer && !(t.frame && t.frame.closest(".dxe-trailer.is-playing"))) {
+        // YouTube shows its own controls for the first moments of playback: reveal after they fade,
+        // and not before the delay chosen in settings (from the trailer's start, rewound to it)
         const frame = t.frame;
+        const wait = Math.max(2800, (t.showAt || 0) - performance.now());
         t.revealTimer = setTimeout(() => {
           t.revealTimer = null;
           const box = frame.isConnected && frame.closest(".dxe-trailer");
           if (!box || t.frame !== frame || box.classList.contains("is-playing")) return;
+          if (wait > 3200) t.seekStart();
           box.classList.add("is-playing");
           box.parentElement && box.parentElement.classList.add("has-trailer");
           if (!t.muted) t.command("unMute");
-        }, 2800);
+        }, wait);
       }
     },
 
     stop() {
       clearTimeout(this.timer);
+      this.timer = null;
       clearTimeout(this.revealTimer);
       this.revealTimer = null;
       if (this.frame) {
