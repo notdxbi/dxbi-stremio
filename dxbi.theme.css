@@ -4714,9 +4714,15 @@ body[data-dx-route="player"] > [class*="seek-tooltip"] {
    (backdrop-filter) background: the streams list then looks like rows drawn over each other.
    Solid backgrounds instead (dx.bi's plugin adds .dx-win on Windows). TVs (.dx-tv, dx.bi TV) get the
    same, since their graphics are far weaker than a computer's. */
+/* (keep this rule whole: in 2.24 another rule was dropped into the middle of its selector list, and
+   Windows and TVs got their blurs back, 39 TV badges each became a GPU layer of its own) */
 .dx-win #app *,
 .dx-win body > *,
 .dx-tv #app *,
+.dx-tv body > * {
+    backdrop-filter: none !important;
+}
+
 /* No big soft shadows on a TV: each is a blur painted again whenever what it surrounds changes, the
    selected poster's at every press of the remote. A fine line instead (from Nathflix, by Lavagnou) */
 html.dx-tv {
@@ -4736,10 +4742,6 @@ html.dx-tv {
 .dx-tv .dx-hero-title,
 .dx-tv .dx-hero-desc {
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-
-.dx-tv body > * {
-    backdrop-filter: none !important;
 }
 
 .dx-win #app [class*="metadetails-content"] [class*="streams-list-container"],
