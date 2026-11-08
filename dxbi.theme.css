@@ -2765,7 +2765,8 @@ html[data-dx-lite] .dx-hero-dot.is-active::after {
     color: var(--dx-text-2);
 }
 
-body[data-dx-ptitle] #app [class*="player-container"] [class*="player-title-container"] {
+body[data-dx-ptitle] #app [class*="player-container"] [class*="player-title-container"],
+body[data-dx-ptitle] #app [class*="player-container"] [class*="nav-bar-layer"] > [class^="title-"] {
     visibility: hidden;
 }
 

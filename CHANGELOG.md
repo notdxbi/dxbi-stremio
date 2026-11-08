@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.34.1
+
+- **dx.bi works in a browser.** https://notdxbi.github.io/dxbi-web/ is dx.bi on the web: Stremio's open-source web app with dx.bi built in, for any computer, tablet or phone browser. It's Stremio's public release, which differs a little from web.stremio.com, so row titles and the player's title in the control bar now work on both. In a browser, debrid and direct streams play; torrents need the dx.bi app.
+
 ## 2.34.0
 
 - **dx.bi for iPhone runs on iOS 18 and later** (it needed iOS 26). On iOS 18 to 25 the screens use frosted glass and standard buttons where iOS 26 has Liquid Glass; everything else is the same.
