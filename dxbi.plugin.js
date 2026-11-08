@@ -7361,7 +7361,7 @@
   const mo = new MutationObserver((records) => {
     for (const r of records) {
       // Ignore changes we made ourselves
-      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item, .dxe-report")) continue;
+      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item, .dxe-report, .dxl-empty")) continue;
       scheduleSync();
       // Library's watched filters hide titles in the same frame Stremio draws them (a whole sync
       // later, the wrong titles were on screen for a moment)
@@ -14832,7 +14832,12 @@
       }
       if (note) {
         if (!empty) note.remove();
-        else note.textContent = want ? "Nothing in your library is watched yet." : "You've watched everything in your library.";
+        else {
+          // (only when it differs: rewriting the same text is still a page change, which brought
+          // this straight back here, for ever — the Library froze once everything was watched)
+          const text = want ? "Nothing in your library is watched yet." : "You've watched everything in your library.";
+          if (note.textContent !== text) note.textContent = text;
+        }
       }
     },
 
