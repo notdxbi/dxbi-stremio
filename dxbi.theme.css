@@ -2530,6 +2530,51 @@ html[data-dx-lite] .dx-hero-dot.is-active::after {
     font-weight: 700;
 }
 
+/* Sections use the room there is (Stremio caps them at ~490px, which left half the page empty),
+   and every control sits on the right edge: toggles used to float in the middle of a centred box,
+   out of line with the dropdowns and buttons above and below them */
+#app [class*="settings-content"] [class*="sections-container"] > [class*="section-"] {
+    max-width: 46rem;
+}
+
+#app [class*="settings-content"] [class*="option-"] > [class*="content-"] {
+    justify-content: flex-end;
+}
+
+/* Each section's title, set like the rest of dx.bi's headings (it was a thin, light weight) */
+#app [class*="settings-content"] [class*="sections-container"] > [class*="section-"] > [class*="label-"] {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--dx-text);
+}
+
+/* The app's notes under its own options */
+#app [class*="settings-content"] .dxbi-note {
+    margin: -0.2rem 0 1rem;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--dx-text-3);
+}
+
+#app [class*="settings-content"] .dxbi-note b {
+    color: var(--dx-text-2);
+    font-weight: 600;
+}
+
+/* App, build and server versions under the menu: small print, not menu-sized text */
+#app [class*="settings-content"] > [class*="menu-"] [class*="version-label"] {
+    padding: 0.15rem 1rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--dx-text-3);
+}
+
+#app [class*="settings-content"] > [class*="menu-"] [class*="spacing"] {
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--dx-line);
+}
+
 #app [class*="settings-content"] [class*="option-"] [class*="content-"] [class*="button-container"],
 #app [class*="settings-content"] [class*="multiselect-menu"] > [class*="button-container"] {
     border-radius: var(--dx-radius);

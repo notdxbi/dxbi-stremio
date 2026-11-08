@@ -88,7 +88,11 @@ export function checkSettings() {
 
     Helpers.waitForElm(SELECTORS.THEMES_CATEGORY).then(() => {
         const isCurrentThemeDefault = localStorage.getItem(STORAGE_KEYS.CURRENT_THEME) === "Default";
-        document.querySelector(SELECTORS.THEMES_CATEGORY)?.insertAdjacentHTML("afterbegin", getDefaultThemeTemplate(isCurrentThemeDefault));
+        // under the Themes heading (it sat above it, as an unexplained "Default · Applied" row)
+        const themes = document.querySelector(SELECTORS.THEMES_CATEGORY);
+        const heading = themes?.querySelector('[class*="heading"]');
+        if (heading) heading.insertAdjacentHTML("afterend", getDefaultThemeTemplate(isCurrentThemeDefault));
+        else themes?.insertAdjacentHTML("afterbegin", getDefaultThemeTemplate(isCurrentThemeDefault));
         
         themesList.forEach(theme => {
             const metaData = ExtractMetaData.extractMetadataFromFile(join(properties.themesPath, theme));
