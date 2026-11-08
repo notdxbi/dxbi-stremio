@@ -1181,6 +1181,12 @@ html[data-dx-lite] .dx-hero-backdrop.kb {
     animation: none;
 }
 
+/* …and doesn't keep each full-screen backdrop on a GPU layer of its own: a Fire TV Stick's graphics
+   driver crashed (dx.bi closed) moving from Home to Settings with ~300 MB of memory left */
+html[data-dx-lite] .dx-hero-backdrop {
+    will-change: auto;
+}
+
 html[data-dx-lite] .dx-hero-dot.is-active::after {
     animation: none;
     transform: none;

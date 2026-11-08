@@ -6,7 +6,7 @@
 - **Smoother scrolling and page changes on computers.** Scrolling no longer searches the whole page on every frame, and dx.bi's look uses Stremio's real class names on computers too (TVs have done this since 2.17), so switching pages takes less work.
 - **The Library no longer freezes** when *Not watched* or *Watched* leaves nothing to show, for example after Trakt marks your whole library as watched (#80).
 - **Back closes the profile menu on TV.** Opening the profile picture's menu with the remote left you stuck in it: Back now closes it and returns to the profile button.
-- **Lite mode keeps the billboard still** on slower TV boxes. Its slow zoom kept a Fire TV Stick drawing about 20 frames a second even with nothing pressed, leaving less for the remote.
+- **Lite mode keeps the billboard still** on slower TV boxes. Its slow zoom kept a Fire TV Stick drawing about 20 frames a second even with nothing pressed, leaving less for the remote, and its pictures no longer hold extra graphics memory (a Fire TV Stick's graphics driver crashed dx.bi when memory ran low).
 - **Downloaded films and episodes have subtitles on Android phones.** The subtitles saved with a download never loaded in the player, so the menu was empty.
 - **A proper Android app icon.** Samsung phones showed dx.bi's icon shrunk inside a white frame; it now fills the shape your launcher uses (#81).
 - The TV steps in the README now use the Downloader code **9614380** (#83).
