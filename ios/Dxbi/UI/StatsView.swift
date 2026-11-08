@@ -99,7 +99,7 @@ struct StatsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .dxGlass(in: .rect(cornerRadius: 20))
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {

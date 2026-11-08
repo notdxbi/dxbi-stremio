@@ -177,7 +177,7 @@ struct PlayerScreen: View {
                 Label("\(party.people.count)", systemImage: "person.2.fill")
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 12).padding(.vertical, 8)
-                    .glassEffect(.regular, in: .capsule)
+                    .dxGlass(in: .capsule)
             }
             if playback.duration > 0 {
                 Text("Ends at \(now.addingTimeInterval((playback.duration - playback.position) / max(playback.speed, 0.1)), format: .dateTime.hour().minute())")
@@ -203,7 +203,7 @@ struct PlayerScreen: View {
                     .frame(width: 66, height: 66)
                     .contentTransition(.symbolEffect(.replace))
             }
-            .buttonStyle(.glass)
+            .dxGlassButton()
             .buttonBorderShape(.circle)
             .accessibilityLabel(playback.paused ? "Play" : "Pause")
             GlassCircle(icon: "goforward.10", label: "Forward 10 seconds", size: 62) { playback.mpv.seek(by: 10); poke() }
@@ -233,11 +233,11 @@ struct PlayerScreen: View {
                 SpeedMenu(playback: playback, onOpen: hold)
                 TracksMenu(playback: playback, onOpen: hold)
                 Button { stremio.playExternally(playback) } label: { Image(systemName: "arrow.up.forward.app").frame(width: 24, height: 24) }
-                    .buttonStyle(.glass)
+                    .dxGlassButton()
                     .accessibilityLabel("Play with external player")
                 if playback.nextTitle != nil {
                     Button { playback.playNext() } label: { Label("Next", systemImage: "forward.end.fill").frame(height: 24) }
-                        .buttonStyle(.glass)
+                        .dxGlassButton()
                 }
             }
             .font(.subheadline.weight(.semibold))
@@ -253,7 +253,7 @@ struct PlayerScreen: View {
                     Text(text)
                         .font(.footnote.weight(.semibold))
                         .padding(.horizontal, 14).padding(.vertical, 7)
-                        .glassEffect(.regular, in: .capsule)
+                        .dxGlass(in: .capsule)
                         .padding(.top, 10)
                         .transition(.opacity)
                 }
@@ -261,7 +261,7 @@ struct PlayerScreen: View {
                     Text("\(time(preview))  (\(preview >= playback.position ? "+" : "−")\(time(abs(preview - playback.position))))")
                         .font(.title3.weight(.semibold)).monospacedDigit()
                         .padding(.horizontal, 18).padding(.vertical, 10)
-                        .glassEffect(.regular, in: .capsule)
+                        .dxGlass(in: .capsule)
                         .padding(.top, 10)
                 }
                 Spacer()
@@ -292,7 +292,7 @@ struct PlayerScreen: View {
                         upNext(next)
                     } else if !locked, let segment = playback.segment {
                         Button { playback.skip() } label: { Text(segment.label).font(.headline).padding(.horizontal, 8).frame(height: 30) }
-                            .buttonStyle(.glassProminent)
+                            .dxGlassProminentButton()
                             .tint(.white)
                             .foregroundStyle(.black)
                     }
@@ -331,7 +331,7 @@ struct PlayerScreen: View {
                 .frame(width: 170, alignment: .leading)
             }
             .padding(10)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+            .dxGlass(interactive: true, in: .rect(cornerRadius: 18))
         }
         .buttonStyle(.plain)
     }
@@ -543,7 +543,7 @@ private struct SpeedMenu: View {
         } label: {
             Label(playback.speed == 1 ? "Speed" : "\(playback.speed.formatted())×", systemImage: "gauge.with.dots.needle.67percent").frame(height: 24)
         }
-        .buttonStyle(.glass)
+        .dxGlassButton()
         .simultaneousGesture(TapGesture().onEnded(onOpen))
         // (opening upward, iOS turned the list upside down: Off ended up at the bottom)
         .menuOrder(.fixed)
@@ -578,7 +578,7 @@ private struct TracksMenu: View {
         } label: {
             Label("Subtitles", systemImage: "captions.bubble.fill").frame(height: 24)
         }
-        .buttonStyle(.glass)
+        .dxGlassButton()
         .simultaneousGesture(TapGesture().onEnded(onOpen))
         // (opening upward, iOS turned the list upside down: Off ended up at the bottom)
         .menuOrder(.fixed)
@@ -611,6 +611,6 @@ private struct LevelBar: View {
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 14)
-        .glassEffect(.regular, in: .capsule)
+        .dxGlass(in: .capsule)
     }
 }

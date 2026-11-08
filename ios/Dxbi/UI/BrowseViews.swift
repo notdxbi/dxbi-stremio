@@ -182,7 +182,7 @@ struct DiscoverView: View {
                         }
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .dxGlass(interactive: true, in: .capsule)
                     }
                     if !d.genres.isEmpty {
                         genre(nil, on: d.genre == nil)
@@ -203,7 +203,7 @@ struct DiscoverView: View {
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .foregroundStyle(on ? .black : .white)
                 .background(on ? AnyShapeStyle(.white) : AnyShapeStyle(.clear), in: .capsule)
-                .glassEffect(on ? .identity : .regular.interactive(), in: .capsule)
+                .dxGlass(interactive: true, hidden: on, in: .capsule)
         }
         .buttonStyle(.plain)
     }

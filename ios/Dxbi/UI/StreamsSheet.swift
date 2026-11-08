@@ -46,7 +46,7 @@ struct StreamsSheet: View {
                 .padding(.bottom, 30)
             }
             .navigationTitle(heading)
-            .navigationSubtitle(subheading ?? "")
+            .dxNavigationSubtitle(subheading ?? "")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -115,7 +115,7 @@ struct StreamsSheet: View {
         .padding(.vertical, 8)
         .foregroundStyle(on ? .black : .white)
         .background(on ? AnyShapeStyle(.white) : AnyShapeStyle(.clear), in: .capsule)
-        .glassEffect(on ? .identity : .regular.interactive(), in: .capsule)
+        .dxGlass(interactive: true, hidden: on, in: .capsule)
     }
 
     private func row(_ s: StreamOption, picked: Bool) -> some View {

@@ -249,7 +249,7 @@ struct TitleView: View {
             } label: {
                 Image(systemName: "ellipsis").font(.system(size: 20, weight: .semibold)).frame(width: 36, height: 36)
             }
-            .buttonStyle(.glass)
+            .dxGlassButton()
             .buttonBorderShape(.circle)
         }
         .frame(maxWidth: 400)
@@ -386,7 +386,7 @@ struct TitleView: View {
                 }
                 .frame(width: 76, height: 76)
                 .clipShape(.circle)
-                .glassEffect(.regular, in: .circle)
+                .dxGlass(in: .circle)
                 Text(name).font(.footnote).lineLimit(2).multilineTextAlignment(.center)
                 if let role, !role.isEmpty { Text(role).font(.caption).foregroundStyle(Dx.muted).lineLimit(2).multilineTextAlignment(.center) }
             }

@@ -109,7 +109,7 @@ struct PrimaryPill: View {
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity, minHeight: 50)
         }
-        .buttonStyle(.glassProminent)
+        .dxGlassProminentButton()
         .tint(.white)
         .foregroundStyle(.black)
         .buttonBorderShape(.capsule)
@@ -129,7 +129,7 @@ struct GlassCircle: View {
                 .frame(width: size - 14, height: size - 14)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(.glass)
+        .dxGlassButton()
         .buttonBorderShape(.circle)
         .accessibilityLabel(label)
     }

@@ -22,11 +22,11 @@ struct WelcomeView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .padding(16)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                        .dxGlass(in: .rect(cornerRadius: 18))
                     SecureField("Password", text: $password)
                         .textContentType(.password)
                         .padding(16)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                        .dxGlass(in: .rect(cornerRadius: 18))
                         .onSubmit(signIn)
                 }
                 .padding(.top, 20)
@@ -184,7 +184,7 @@ struct AddonsView: View {
                 } label: { Image(systemName: "ellipsis.circle").font(.title3) }
             } else {
                 Button("Get") { act(addon.transportUrl) { await stremio.install(addon) } }
-                    .buttonStyle(.glass)
+                    .dxGlassButton()
                     .font(.subheadline.weight(.bold))
             }
         }

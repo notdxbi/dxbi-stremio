@@ -65,30 +65,14 @@ struct HomeView: View {
             .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > min(g.size.height * 0.74, width * 1.55) - 140 } action: { _, past in
                 pastBillboard = past
             }
-            .scrollEdgeEffectHidden(!pastBillboard, for: .top)
+            .dxScrollEdgeEffectHidden(!pastBillboard)
             .ignoresSafeArea(edges: .top)
         }
         .screenBackground()
         .navigationTitle("Home")
         .toolbarTitleDisplayMode(.inlineLarge)
         .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { party = true } label: { Image(systemName: "person.2.fill") }
-                    .accessibilityLabel("Watch party")
-            }
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            // The picture is the button, a perfect circle (not inside the bar's glass capsule)
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { account = true } label: {
-                    Avatar(email: stremio.account?.email, size: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Profile and settings")
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
+        .modifier(HomeToolbar(party: $party, account: $account, email: stremio.account?.email))
         .sheet(isPresented: $account) { AccountView() }
         .sheet(isPresented: $party) { PartyView() }
         .refreshable { stremio.refreshExtras() }
@@ -111,7 +95,7 @@ struct HomeView: View {
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 6)
                     }
-                    .buttonStyle(.glass)
+                    .dxGlassButton()
                     .tint(on ? .white : nil)
                 }
             }
@@ -288,7 +272,7 @@ private struct Billboard: View {
                 NavigationLink(value: Route.title(TitleRef(type: title.type, id: title.id, name: title.name, play: true))) {
                     Label("Play", systemImage: "play.fill").font(.headline).frame(width: 150, height: 50)
                 }
-                .buttonStyle(.glassProminent)
+                .dxGlassProminentButton()
                 .tint(.white)
                 .foregroundStyle(.black)
                 GlassCircle(icon: title.inLibrary ? "checkmark" : "plus", label: title.inLibrary ? "In your Library" : "Add to Library") {
@@ -322,5 +306,45 @@ struct Avatar: View {
             .frame(width: size, height: size)
             .background(LinearGradient(colors: [Color(red: 0.35, green: 0.6, blue: 0.75), Color(red: 0.2, green: 0.4, blue: 0.55)], startPoint: .top, endPoint: .bottom), in: .circle)
             .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 1))
+    }
+}
+
+
+/// Home's top-right buttons. iOS 26 sets the picture apart from the bar's glass capsule; before
+/// iOS 26 there's no capsule, so the two plain buttons sit side by side.
+private struct HomeToolbar: ViewModifier {
+    @Binding var party: Bool
+    @Binding var account: Bool
+    let email: String?
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.toolbar {
+                ToolbarItem(placement: .topBarTrailing) { partyButton }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                // The picture is the button, a perfect circle (not inside the bar's glass capsule)
+                ToolbarItem(placement: .topBarTrailing) { accountButton }
+                    .sharedBackgroundVisibility(.hidden)
+            }
+        } else {
+            content.toolbar {
+                ToolbarItem(placement: .topBarTrailing) { partyButton }
+                ToolbarItem(placement: .topBarTrailing) { accountButton }
+            }
+        }
+    }
+
+    private var partyButton: some View {
+        Button { party = true } label: { Image(systemName: "person.2.fill") }
+            .accessibilityLabel("Watch party")
+    }
+
+    private var accountButton: some View {
+        Button { account = true } label: {
+            Avatar(email: email, size: 44)
+                .dxGlass(interactive: true, in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Profile and settings")
     }
 }
