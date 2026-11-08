@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.35.0
+ * @version 2.35.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.35.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.35.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -508,17 +508,19 @@
     // the saved values can differ from the cached copy applied at start (a TV has no cached copy)
     applyAccent();
     applySubtitleStyle();
-    API.onSettingsSaved((all) => {
-      const subtitlesBefore = settings.subtitlesStart;
-      Object.assign(settings, normalise(all));
-      persistSettings();
-      builtInTheme.ensure();
-      subtitlesStart.apply(settings.subtitlesStart !== subtitlesBefore).catch(() => { /* core busy */ });
-      applyAccent();
-      applySubtitleStyle();
-      hero.reset();
-      scheduleSync();
-    });
+    API.onSettingsSaved(settingsSaved);
+  }
+
+  function settingsSaved(all) {
+    const subtitlesBefore = settings.subtitlesStart;
+    Object.assign(settings, normalise(all));
+    persistSettings();
+    builtInTheme.ensure();
+    subtitlesStart.apply(settings.subtitlesStart !== subtitlesBefore).catch(() => { /* core busy */ });
+    applyAccent();
+    applySubtitleStyle();
+    hero.reset();
+    scheduleSync();
   }
 
   function persistSettings() {
@@ -7375,6 +7377,92 @@
   // ---------------------------------------------------------------------------
 
   let syncQueued = false;
+  // ---------------------------------------------------------------------------
+  // dx.bi's settings in a web browser. The apps have their own settings screens; in a browser they're
+  // a section at the top of Settings, saved in this browser.
+  // ---------------------------------------------------------------------------
+  const webSettings = {
+    on: !API && !IN_APP && !IN_TV,
+    // what only the apps can do: hand a stream to mpv/VLC, convert video through a streaming server,
+    // and switch the dx.bi look off (a browser has no other look to fall back to)
+    HIDDEN: new Set(["externalPlayer", "convertVideo", "builtInTheme"]),
+    SECRET: new Set(["tmdbKey", "mdblistKey"]),
+
+    ensure() {
+      if (!this.on || currentRoute() !== "settings") return;
+      const list = document.querySelector('#app [class*="settings-content"] [class*="sections-container"]');
+      if (!list || list.firstElementChild?.classList.contains("dxw-settings")) return;
+      list.querySelector(":scope > .dxw-settings")?.remove();
+      this.style();
+      list.prepend(this.build());
+    },
+
+    style() {
+      if (document.getElementById("dxw-settings-style")) return;
+      const st = document.createElement("style");
+      st.id = "dxw-settings-style";
+      st.textContent = `
+        .dxw-settings { padding: 0 0 2.5rem; margin: 0 0 2.5rem; border-bottom: 1px solid var(--dx-line, rgba(255,255,255,.08)); color: #fff; font-family: Inter, system-ui, sans-serif; }
+        .dxw-head { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; margin: 0 0 .5rem; }
+        .dxw-settings .dxw-head h2 { margin: 0; font: 400 2.4rem/1 "Bebas Neue", Inter, sans-serif !important; letter-spacing: .02em; color: var(--dx-accent, #e50914); }
+        .dxw-head span { color: #8d8d96; font-size: .85rem; }
+        .dxw-group { margin: 1.75rem 0 .5rem; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8d8d96; }
+        .dxw-row { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: .85rem 0; border-top: 1px solid var(--dx-line, rgba(255,255,255,.06)); }
+        .dxw-group + .dxw-row { border-top: 0; }
+        .dxw-text { min-width: 0; }
+        .dxw-label { font-size: .95rem; font-weight: 600; }
+        .dxw-desc { margin-top: .25rem; color: #9a9aa3; font-size: .82rem; line-height: 1.45; max-width: 38rem; }
+        .dxw-switch { flex: none; position: relative; width: 2.75rem; height: 1.6rem; border: 0; border-radius: 1rem; background: rgba(255,255,255,.18); cursor: pointer; transition: background-color .2s; }
+        .dxw-switch::after { content: ""; position: absolute; top: .2rem; left: .2rem; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #fff; transition: transform .2s cubic-bezier(.2,.8,.2,1); }
+        .dxw-switch[aria-checked="true"] { background: var(--dx-accent, #e50914); }
+        .dxw-switch[aria-checked="true"]::after { transform: translateX(1.15rem); }
+        .dxw-select, .dxw-input { flex: none; max-width: 15rem; padding: .55rem .75rem; border: 1px solid rgba(255,255,255,.16); border-radius: .5rem; background: #18181d; color: #fff; font: 500 .9rem Inter, system-ui, sans-serif; }
+        .dxw-select { width: 13rem; cursor: pointer; }
+        .dxw-input { width: 15rem; }
+        .dxw-switch:focus-visible, .dxw-select:focus-visible, .dxw-input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+        @media (max-width: 640px) {
+          .dxw-row { flex-wrap: wrap; gap: .6rem; }
+          .dxw-select, .dxw-input { max-width: 100%; width: 100%; }
+        }`;
+      document.head.append(st);
+    },
+
+    build() {
+      const el = document.createElement("div");
+      el.className = "dxw-settings";
+      let group = "";
+      let html = '<div class="dxw-head"><h2>DX.BI</h2><span>Saved in this browser</span></div>';
+      for (const o of SCHEMA) {
+        if (o.tvOnly || this.HIDDEN.has(o.key)) continue;
+        if (o.group !== group) { group = o.group; html += `<h3 class="dxw-group">${esc(group)}</h3>`; }
+        const v = settings[o.key];
+        const id = `dxw-${o.key}`;
+        let control;
+        if (o.type === "toggle") control = `<button type="button" class="dxw-switch" role="switch" id="${id}" data-key="${o.key}" aria-checked="${v ? "true" : "false"}"></button>`;
+        else if (o.type === "select") control = `<select class="dxw-select" id="${id}" data-key="${o.key}">${(o.options || []).map((x) => `<option value="${esc(x.value)}"${String(x.value) === String(v) ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select>`;
+        else control = `<input class="dxw-input" id="${id}" data-key="${o.key}" type="${this.SECRET.has(o.key) ? "password" : "text"}" autocomplete="off" spellcheck="false" value="${esc(v || "")}">`;
+        html += `<div class="dxw-row"><label class="dxw-text" for="${id}"><div class="dxw-label">${esc(o.label)}</div>${o.description ? `<div class="dxw-desc">${esc(o.description)}</div>` : ""}</label>${control}</div>`;
+      }
+      el.innerHTML = html;
+      el.addEventListener("click", (e) => {
+        const sw = e.target.closest(".dxw-switch");
+        if (!sw) return;
+        const next = sw.getAttribute("aria-checked") !== "true";
+        sw.setAttribute("aria-checked", String(next));
+        this.set(sw.dataset.key, next);
+      });
+      el.addEventListener("change", (e) => {
+        const c = e.target.closest(".dxw-select, .dxw-input");
+        if (c) this.set(c.dataset.key, c.classList.contains("dxw-input") ? c.value.trim() : c.value);
+      });
+      return el;
+    },
+
+    set(key, value) {
+      settingsSaved({ ...settings, [key]: value });
+    },
+  };
+
   function scheduleSync() {
     if (syncQueued) return;
     syncQueued = true;
@@ -7388,7 +7476,7 @@
     const steps = IN_TV
       ? [updateRoute, brandTitle, () => addonTools.ensure(), () => watchParty.ensure(), communitySync]
       : [updateRoute, brandTitle, () => player.ensure(), () => playerClock.ensure(), () => { convert.ensure().catch(() => { /* player state not ready */ }); }, () => convert.confirmHevc(), () => externalDefault.ensure(), () => placeholder.ensure(), () => playbackHelp.ensure(), () => scrub.ensure(), () => enhance.ensure(), () => watchParty.ensure(), () => skip.ensure(), () => tune.ensure(), () => streamInfo.ensure(), () => addonTools.ensure(), communitySync];
-    steps.push(() => { titleColour.ensure().catch(() => { /* next sync */ }); });
+    steps.push(() => { titleColour.ensure().catch(() => { /* next sync */ }); }, () => webSettings.ensure());
     if (currentRoute() === "detail") steps.push(() => streamTools.ensure(), () => streamRows.ensure(), () => quickPlay.ensure());
     if (!IN_TV) steps.push(() => downloads.ensure());
     steps.push(() => { quickPlay.note().catch(() => { /* next sync */ }); });
@@ -7405,7 +7493,7 @@
   const mo = new MutationObserver((records) => {
     for (const r of records) {
       // Ignore changes we made ourselves
-      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item, .dxe-report, .dxl-empty")) continue;
+      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item, .dxe-report, .dxl-empty, .dxw-settings")) continue;
       scheduleSync();
       // Library's watched filters hide titles in the same frame Stremio draws them (a whole sync
       // later, the wrong titles were on screen for a moment)

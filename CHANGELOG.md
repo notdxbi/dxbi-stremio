@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.35.1
+
+- **dx.bi on the web has its settings.** In a browser (https://notdxbi.github.io/dxbi-web/), Settings now starts with dx.bi's own settings, grouped like the apps' and saved in that browser. Changes take effect straight away.
+- **dx.bi on the web opens on dx.bi.** It now shows a dx.bi loading screen from its first frame (no glimpse of Stremio's), then the intro or a fade into Home. dx.bi also starts sooner there, and the "install a streaming server" bar no longer shows, since torrents need the dx.bi app.
+
 ## 2.35.0
 
 - **Everyone keeps their own place.** When two viewers watch the same show or film, each now resumes where *they* left off, sees their own progress bar and episode in Continue Watching, and a shared title someone hasn't started stays out of their Continue Watching. Places sync between your devices with the rest of your viewers' things. Nothing changes if dx.bi has one viewer, and on the day you update everyone keeps the place they had.
