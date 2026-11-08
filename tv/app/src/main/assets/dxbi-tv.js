@@ -967,9 +967,14 @@
       const close = stremioModal.querySelector('[class*="close-button"]');
       if (close) { close.click(); return true; }
     }
-    const menu = document.querySelector('[class*="menu-container"][class*="open"], [class*="popup-menu-container"]');
+    // (an open popup menu: the profile menu's is only marked by its direction class, so it was
+    // missed and Back left the remote stuck in it)
+    const menu = document.querySelector('[class*="menu-container"][class*="open"], [class*="popup-menu-container"], [class*="menu-container"][class*="menu-direction"]');
     if (menu) {
+      const toggle = menu.parentElement;
       document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      // the remote carries on from the button that opened it
+      setTimeout(() => { if (toggle && toggle.isConnected) toggle.focus({ preventScroll: true }); }, 60);
       return true;
     }
     const route = (location.hash || "#/").replace(/^#\/?/, "").split(/[/?]/)[0];

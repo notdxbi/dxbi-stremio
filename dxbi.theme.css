@@ -1174,6 +1174,18 @@ body:not(.dx-discover-picked) #app [class*="discover-content"] [class*="meta-ite
     to { transform: scaleX(1); }
 }
 
+/* LITE MODE (slower TV boxes): the billboard holds still. Its slow zoom repainted the whole screen
+   every frame — about 20 fps of work on a Fire TV Stick even with nothing pressed — which left less
+   for the remote. The active dot fills at once instead of counting down. */
+html[data-dx-lite] .dx-hero-backdrop.kb {
+    animation: none;
+}
+
+html[data-dx-lite] .dx-hero-dot.is-active::after {
+    animation: none;
+    transform: none;
+}
+
 /* Rows that follow the billboard sit above its fade */
 #app [class*="board-content-"]:not([class*="board-content-container"]) > .dx-hero ~ * {
     position: relative;
