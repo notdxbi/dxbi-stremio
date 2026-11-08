@@ -2364,7 +2364,12 @@
       // Everything else: a list (streams, episodes…) steps one item at a time; otherwise the nearest
       // thing on screen that way. Reached without the browser's jump (it scrolled the billboard up
       // whenever one of its buttons took focus). Nothing found: Stremio's own navigation takes it.
-      if (!focused || focused === document.body) {
+      // (a whole page counts as nothing: when a dialog closes, Stremio can leave focus on its page
+      // container, and from a box the size of the screen there was nothing "that way" — the
+      // remote did nothing until the app was restarted)
+      const box0 = focused && focused !== document.body && focused.getBoundingClientRect();
+      const lost = !focused || focused === document.body || (box0 && box0.width >= window.innerWidth * 0.8 && box0.height >= window.innerHeight * 0.6);
+      if (lost) {
         // Nothing selected yet: start on the page itself (the billboard, or its first title), or in
         // whatever dialog is showing over it. Only what can actually be seen counts.
         // TV: the billboard's first button when it's in sight and nothing covers it, without
@@ -15352,6 +15357,8 @@
     },
 
     async torrentsOk() {
+      // (dx.bi's phone app downloads torrents with its own engine; a TV or iPhone can't)
+      if (IN_TV) return !!(window.__dxbiTv && window.__dxbiTv.torrentDownloads);
       const server = await core().getState("streaming_server").catch(() => null);
       return !!(server && server.settings && server.settings.type === "Ready");
     },
@@ -15430,7 +15437,7 @@
     // Everything the app (or the phone) needs to save one stream: { spec } or { error }
     async spec(type, metaId, videoId, quality, chosen) {
       const { meta, transport } = await this.meta(type, metaId);
-      const torrents = !IN_TV && (await this.torrentsOk());
+      const torrents = await this.torrentsOk();
       let item = chosen || null;
       if (item) {
         const problem = await this.check(item.st);
@@ -15447,10 +15454,10 @@
           if (problem) items = items.filter((x) => x !== next);
           else item = next;
         }
-        if (!item) return { error: problem || (torrents ? "No stream is ready to download yet (the ones there need your debrid service to fetch them first)." : "No debrid or direct stream for it: torrents need dx.bi's streaming server.") };
+        if (!item) return { error: problem || (torrents ? "No stream is ready to download yet (the ones there need your debrid service to fetch them first)." : IN_TV ? "No debrid or direct stream for it: torrents can't be downloaded here." : "No debrid or direct stream for it: torrents need dx.bi's streaming server.") };
       }
       const st = item.st;
-      if (!st.url && !(st.infoHash && torrents)) return { error: IN_TV ? "Torrents can't be downloaded on a phone. Pick a debrid or direct stream." : "Torrents need dx.bi's streaming server, which isn't running." };
+      if (!st.url && !(st.infoHash && torrents)) return { error: IN_TV ? "Torrents can't be downloaded here. Pick a debrid or direct stream." : "Torrents need dx.bi's streaming server, which isn't running." };
       const video = (meta.videos || []).find((v) => v.id === videoId);
       const episode = video && video.season != null ? `S${video.season} E${video.episode}${video.title || video.name ? ` · ${video.title || video.name}` : ""}` : "";
       const subtitles = await this.subtitlesFor(type, videoId, st.subtitles).catch(() => []);
@@ -16251,18 +16258,44 @@
       // the shape the player hand-off has. { stream } or { error }
       async download(type, metaId, videoId, quality) {
         const r = await downloads.spec(type, metaId, videoId || metaId, quality || "best");
+        return this.downloadAnswer(r, type, metaId, videoId || metaId);
+      },
+      // One stream from phone.streams' list, to download (a torrent: the app's engine fetches it)
+      async downloadOption(index) {
+        const item = phoneStreams && phoneStreams.items[index];
+        if (!item) return { error: "That stream isn't there any more. Open the list again." };
+        const state = await core().getState("meta_details").catch(() => null);
+        const sel = state && state.selected;
+        const type = sel && sel.metaPath && sel.metaPath.type;
+        const metaId = sel && sel.metaPath && sel.metaPath.id;
+        const videoId = (sel && sel.streamPath && sel.streamPath.id) || metaId;
+        if (!type || !metaId) return { error: "Couldn't tell which title that's for. Try again." };
+        let addon = null;
+        for (const g of (state && Array.isArray(state.streams) ? state.streams : [])) if (g && g.content && Array.isArray(g.content.content) && g.content.content.includes(item.st)) addon = g.addon;
+        const r = await downloads.spec(type, metaId, videoId, "best", { ...item, addon });
+        return this.downloadAnswer(r, type, metaId, videoId);
+      },
+      // downloads.spec's answer in the shape the phone's player hand-off has: { stream } or { error }
+      downloadAnswer(r, type, metaId, videoId) {
         if (!r.spec) return { error: r.error || "Couldn't find a stream to download." };
         const s = r.spec;
         return {
           stream: {
             url: s.url,
+            // (a torrent: Downloads.kt makes its address. Addons' "sources" list its trackers)
+            magnet: s.torrent ? {
+              infoHash: s.torrent.infoHash,
+              fileIdx: s.torrent.fileIdx == null ? -1 : s.torrent.fileIdx,
+              trackers: s.torrent.sources.filter((x) => /^tracker:/.test(x)).map((x) => x.replace(/^tracker:/, "")),
+              name: s.filename,
+            } : null,
             headers: s.headers,
             subtitles: s.subtitles.map((x, i) => ({ url: x.url, lang: x.lang, label: x.lang, start: i === 0 })),
             title: s.name || "dx.bi",
             subtitle: s.episode,
             background: s.background,
             poster: s.poster,
-            type, metaId, videoId: videoId || metaId,
+            type, metaId, videoId,
             season: s.season, number: s.number,
             quality: s.quality, provider: s.provider, filename: s.filename, size: s.size,
           },

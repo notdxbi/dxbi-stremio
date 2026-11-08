@@ -40,6 +40,9 @@
   // ---------------------------------------------------------------------------
   const PHONE = (() => { try { return !!bridge.isPhone(); } catch (_) { return false; } })();
   tv.phone = PHONE;
+  // (Android phones download torrents themselves, with dx.bi's torrent engine: Downloads.kt. An
+  // iPhone has no engine, so no torrentUrl)
+  tv.torrentDownloads = PHONE && !!bridge.torrentUrl;
   // Words written for a TV, as a phone shows them
   const forDevice = (text) => (PHONE && typeof text === "string"
     ? text.replace(/ On a TV, only[^.]*\./, "").replace(/\bthis TV\b/g, "this phone").replace(/\bthis TV's\b/g, "this phone's")
@@ -198,6 +201,8 @@
     // One dialog at a time: Stremio's own (a promotion, an addon to install) goes first, since it
     // holds on to the remote's focus while it's open
     while (document.querySelector('[class*="modal-container"]')) await new Promise((r) => setTimeout(r, 400));
+    // (where the remote was before: it goes back there when the dialog closes)
+    const before = document.activeElement;
     return new Promise((resolve) => {
       const el = document.createElement("div");
       el.className = "dxtv-modal";
@@ -209,8 +214,10 @@
       </div>`;
       const field = el.querySelector("input");
       const finish = (i) => {
+        const had = el.contains(document.activeElement);
         el.remove();
         if (openModal && openModal.el === el) openModal = null;
+        if (had && before && before !== document.body && before.isConnected) before.focus({ preventScroll: true });
         resolve(input != null ? { button: i, value: field ? field.value : "" } : i);
       };
       el.addEventListener("click", (e) => {
