@@ -195,11 +195,9 @@ private fun StreamRow(s: StreamOption, picked: Boolean, onPlayIn: (Phone.Target)
                 )
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Play with external player") }, onClick = { menu = false; onPlayIn(Phone.Target.External) })
-                    // (a torrent plays from the phone itself: a TV can't reach it, and it isn't a file to save)
-                    if (!s.torrent) {
-                        DropdownMenuItem(text = { Text("Cast to a TV") }, onClick = { menu = false; onPlayIn(Phone.Target.Cast) })
-                        DropdownMenuItem(text = { Text("Download") }, onClick = { menu = false; onPlayIn(Phone.Target.Download) })
-                    }
+                    // (a torrent plays from the phone itself: a TV can't reach it)
+                    if (!s.torrent) DropdownMenuItem(text = { Text("Cast to a TV") }, onClick = { menu = false; onPlayIn(Phone.Target.Cast) })
+                    DropdownMenuItem(text = { Text("Download") }, onClick = { menu = false; onPlayIn(Phone.Target.Download) })
                 }
             }
         }

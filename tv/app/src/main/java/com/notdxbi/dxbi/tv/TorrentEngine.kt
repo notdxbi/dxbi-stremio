@@ -1,6 +1,7 @@
 package com.notdxbi.dxbi.tv
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import org.libtorrent4j.AnnounceEntry
@@ -14,8 +15,10 @@ import org.libtorrent4j.TorrentFlags
 import org.libtorrent4j.TorrentHandle
 import org.libtorrent4j.TorrentInfo
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 /**
@@ -25,12 +28,20 @@ import java.util.concurrent.Executors
  *
  * One torrent at a time; its download is deleted when playback stops (and at the next start, in
  * case the app was closed mid-way).
+ *
+ * Phones also save torrents to watch offline (Downloads.kt): those are "kept" torrents, any number
+ * at once, in a folder that survives restarts. Media3's downloader copies the file from the same
+ * web server (/k/<hash>) as it arrives, and the torrent's own copy is deleted once that's done.
  */
 object TorrentEngine {
     private const val TAG = "dxbi-torrent"
     private const val METADATA_TIMEOUT_S = 60
     private const val READ_AHEAD_PIECES = 12
     private const val PIECE_WAIT_MS = 90_000L
+    // (a download's reader gives up a little sooner than its HTTP client would, then asks again from
+    // where it got to: Media3 retries, and only fails after several waits with nothing new)
+    private const val KEPT_PIECE_WAIT_MS = 45_000L
+    const val SCHEME = "dxbi-torrent"
 
     // Well-known open trackers, added to every torrent alongside its own (as Stremio's server does):
     // many streams list few or none, and leave finding peers to the DHT
@@ -54,7 +65,14 @@ object TorrentEngine {
         val size: Long = info.files().fileSize(file)
         val pieceLength: Int = info.pieceLength()
         @Volatile var closed = false
+        // a download's: playback stopping leaves it be
+        @Volatile var kept = false
+        @Volatile var paused = false
     }
+
+    /** Torrents being saved for offline, by hash */
+    private val kept = ConcurrentHashMap<String, Active>()
+    private val keptLocks = ConcurrentHashMap<String, Any>()
 
     @Volatile private var active: Active? = null
     @Volatile private var opening: String? = null
@@ -70,7 +88,7 @@ object TorrentEngine {
         val settings = SettingsPack()
             .listenInterfaces("0.0.0.0:6881,[::]:6881")
             .connectionsLimit(120)
-            .activeDownloads(2)
+            .activeDownloads(8)
         val s = SessionManager(false)
         s.start(SessionParams(settings))
         session = s
@@ -98,6 +116,12 @@ object TorrentEngine {
 
     private fun start(hash: String, fileIdx: Int, trackers: List<String>, nameHint: String) {
         val s = session ?: return
+        // being downloaded already: played from that copy (which stays when playback stops)
+        kept[hash]?.let { k ->
+            if (k.paused) { k.handle.resume(); k.paused = false }
+            if (opening == hash) active = k
+            return
+        }
         try {
             val allTrackers = (trackers.take(30) + OPEN_TRACKERS).distinct()
             val magnet = buildString {
@@ -148,14 +172,123 @@ object TorrentEngine {
         return (hinted.ifEmpty { pool }).maxByOrNull { files.fileSize(it) } ?: 0
     }
 
-    /** Stops the download and deletes it */
+    /** Stops the download and deletes it (unless it's also being saved for offline) */
     fun close() {
         opening = null
         val a = active ?: return
         active = null
+        if (a.kept) return
         a.closed = true
         try { session?.remove(a.handle, SessionHandle.DELETE_FILES) } catch (_: Exception) { }
         Log.i(TAG, "closed ${a.hash}")
+    }
+
+    // ---- Downloads (phones) ----
+
+    /** The address a download of [infoHash] is saved under: the same every time, whatever port the web server gets */
+    fun downloadUri(infoHash: String, fileIdx: Int, trackers: List<String>, nameHint: String): String =
+        Uri.Builder().scheme(SCHEME).authority(infoHash.lowercase())
+            .appendQueryParameter("f", fileIdx.toString())
+            .appendQueryParameter("n", nameHint)
+            .apply { trackers.take(30).forEach { appendQueryParameter("tr", it) } }
+            .build().toString()
+
+    fun hashOf(uri: String): String? = Uri.parse(uri).takeIf { it.scheme == SCHEME }?.authority?.lowercase()
+
+    /**
+     * Where the downloader reads a [downloadUri] from right now: starts (or carries on) fetching it into
+     * [dir], first getting the torrent's details from peers when they aren't saved yet. Blocks; throws
+     * when it can't, and the downloader tries again.
+     */
+    fun resolveDownload(context: Context, uri: Uri, dir: File): Uri {
+        ensure(context)
+        val hash = uri.authority?.lowercase()?.takeIf { it.matches(Regex("[0-9a-f]{40}")) } ?: throw IOException("Not a torrent")
+        val address = Uri.parse("http://127.0.0.1:${server!!.listeningPort}/k/$hash")
+        synchronized(keptLocks.getOrPut(hash) { Any() }) {
+            kept[hash]?.let { k ->
+                if (k.paused) { k.handle.resume(); k.paused = false }
+                return address
+            }
+            val s = session ?: throw IOException("The torrent engine isn't running")
+            // playing it right now: that copy carries on as the download
+            active?.takeIf { it.hash == hash }?.let { a ->
+                a.kept = true
+                kept[hash] = a
+                return address
+            }
+            val trackers = uri.getQueryParameters("tr").filter { it.isNotEmpty() }
+            val allTrackers = (trackers + OPEN_TRACKERS).distinct()
+            dir.mkdirs()
+            // the torrent's details, from the last time or from peers (DHT and the stream's trackers)
+            val saved = File(dir, "$hash.torrent")
+            val bytes = saved.takeIf { it.length() > 0 }?.readBytes() ?: run {
+                val magnet = buildString {
+                    append("magnet:?xt=urn:btih:").append(hash)
+                    for (t in allTrackers) append("&tr=").append(java.net.URLEncoder.encode(t, "UTF-8"))
+                }
+                s.fetchMagnet(magnet, METADATA_TIMEOUT_S, dir)?.also { runCatching { saved.writeBytes(it) } }
+            } ?: throw IOException("No peers answered for this torrent")
+            val info = TorrentInfo.bdecode(bytes)
+            val files = info.files()
+            val fileIdx = uri.getQueryParameter("f")?.toIntOrNull() ?: -1
+            val pick = if (fileIdx in 0 until files.numFiles()) fileIdx else chooseFile(info, uri.getQueryParameter("n").orEmpty())
+            val priorities = Array(files.numFiles()) { if (it == pick) Priority.DEFAULT else Priority.IGNORE }
+            val data = File(dir, hash)
+            // (what's already in the folder from before is checked and kept)
+            s.download(info, data, null, priorities, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+            val handle = s.find(Sha1Hash.parseHex(hash)) ?: throw IOException("Couldn't start the torrent")
+            handle.unsetFlags(TorrentFlags.AUTO_MANAGED)
+            handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+            handle.resume()
+            for (t in allTrackers) handle.addTracker(AnnounceEntry(t))
+            handle.forceReannounce()
+            handle.forceDHTAnnounce()
+            val a = Active(hash, handle, info, pick, File(data, files.filePath(pick))).apply { this.kept = true }
+            kept[hash] = a
+            Log.i(TAG, "downloading ${files.filePath(pick)} (${a.size / 1048576} MB)")
+            return address
+        }
+    }
+
+    /**
+     * Downloads that aren't running (paused, waiting for Wi-Fi, queued) stop fetching too: only
+     * [running] carry on, and they start again when the downloader next reads them.
+     */
+    fun keepRunning(running: Set<String>) {
+        for ((hash, a) in kept) {
+            if (hash in running || a.paused || active === a) continue
+            runCatching { a.handle.pause() }
+            a.paused = true
+        }
+    }
+
+    /** A download that's finished or been deleted: the torrent's own copy goes */
+    fun drop(context: Context, hash: String, dir: File) {
+        worker.execute {
+            synchronized(keptLocks.getOrPut(hash) { Any() }) {
+                val a = kept.remove(hash)
+                if (a != null) {
+                    a.kept = false
+                    if (active !== a) {
+                        a.closed = true
+                        runCatching { session?.remove(a.handle, SessionHandle.DELETE_FILES) }
+                    }
+                }
+                File(dir, hash).deleteRecursively()
+                File(dir, "$hash.torrent").delete()
+            }
+        }
+        Log.i(TAG, "dropped download $hash")
+    }
+
+    /** Clears out torrents left in [dir] by downloads that are no longer there ([wanted]: the ones that are) */
+    fun tidy(dir: File, wanted: Set<String>) {
+        worker.execute {
+            dir.listFiles()?.forEach { f ->
+                val hash = f.name.removeSuffix(".torrent")
+                if (hash.matches(Regex("[0-9a-f]{40}")) && hash !in wanted && !kept.containsKey(hash)) f.deleteRecursively()
+            }
+        }
     }
 
     /** For the player's status line: "Finding peers…", "12 peers · 2.4 MB/s", or why it failed */
@@ -178,7 +311,7 @@ object TorrentEngine {
         if (a.handle.havePiece(piece)) return true
         val lastPiece = ((a.offset + a.size - 1) / a.pieceLength).toInt()
         for (p in piece..minOf(lastPiece, piece + READ_AHEAD_PIECES)) a.handle.setPieceDeadline(p, (p - piece) * 200)
-        val until = System.currentTimeMillis() + PIECE_WAIT_MS
+        val until = System.currentTimeMillis() + if (a.kept && active !== a) KEPT_PIECE_WAIT_MS else PIECE_WAIT_MS
         while (!a.closed && System.currentTimeMillis() < until) {
             if (a.handle.havePiece(piece)) return true
             Thread.sleep(60)
@@ -217,6 +350,10 @@ object TorrentEngine {
 
     private class Server : NanoHTTPD("127.0.0.1", 0) {
         override fun serve(session: IHTTPSession): Response {
+            if (session.uri.startsWith("/k/")) {
+                val a = kept[session.uri.removePrefix("/k/").lowercase()] ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "not downloading")
+                return send(a, session)
+            }
             val hash = session.uri.removePrefix("/t/").lowercase()
             // the torrent's details can take a while to arrive from peers: the player's first request waits
             val until = System.currentTimeMillis() + (METADATA_TIMEOUT_S + 5) * 1000L
@@ -226,6 +363,10 @@ object TorrentEngine {
                 a = active
             }
             if (a == null || a.hash != hash) return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, failure ?: "not playing")
+            return send(a, session)
+        }
+
+        private fun send(a: Active, session: IHTTPSession): Response {
             // the file is created as soon as the download starts; wait for it to exist
             for (i in 0 until 50) { if (a.path.exists()) break; Thread.sleep(100) }
 

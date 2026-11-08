@@ -216,6 +216,16 @@ class Stremio(context: Context, val engine: Engine, private val scope: Coroutine
      * player, another app, on a Chromecast (where Play goes anyway while one is connected) or as a download
      */
     fun play(option: StreamOption, target: Phone.Target = Phone.Target.Player) = scope.launch {
+        // a torrent to download: dx.bi's torrent engine fetches it, no player (or streaming server) needed
+        if (target == Phone.Target.Download && option.torrent) {
+            val answer = runCatching {
+                engine.call("dx", JSONObject().put("method", "phone.downloadOption").put("args", JSONArray().put(option.index)), 60_000) as? JSONObject
+            }.getOrNull()
+            val stream = answer?.optJSONObject("stream")
+            if (stream != null) com.notdxbi.dxbi.tv.Downloads.add(app, stream.toString())
+            else android.widget.Toast.makeText(app, answer?.optString("error")?.ifEmpty { null } ?: "Couldn't download that one. Try again.", android.widget.Toast.LENGTH_LONG).show()
+            return@launch
+        }
         Phone.nextTarget = when {
             target != Phone.Target.Player -> target
             !option.torrent && Cast.connected(app) -> Phone.Target.Cast

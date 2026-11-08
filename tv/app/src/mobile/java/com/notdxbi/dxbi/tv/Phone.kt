@@ -53,6 +53,8 @@ object Phone {
         // Another app playing a stream (VLC, mpv, MX Player…): it says where it got to when it closes
         external = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { ExternalPlayer.finished(it.data) }
         val engine = Engine(js).also { engine = it }
+        // (downloads left unfinished last time carry on as soon as dx.bi opens)
+        Downloads.manager(activity)
         // (where it draws nothing, touches reach the page: how the page shows through when it's needed)
         val screens = ComposeView(activity).apply { setContent { PhoneApp(engine) } }
         root.addView(screens, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))

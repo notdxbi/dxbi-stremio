@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.notdxbi.dxbi.tv.Downloads
+import com.notdxbi.dxbi.tv.TorrentEngine
 import com.notdxbi.dxbi.tv.phone.Stremio
 import kotlinx.coroutines.launch
 
@@ -232,6 +233,7 @@ fun DownloadIcon(item: Downloads.Item?, size: Dp = 34.dp, onDownload: () -> Unit
 /** What a download is doing, in words */
 fun downloadStatus(d: Downloads.Item, waiting: Boolean): String = when {
     d.done -> listOf(sizeText(d.total.takeIf { it > 0 } ?: d.bytes), if (d.watched) "Watched" else "").filter { it.isNotEmpty() }.joinToString(" · ")
+    d.failed && d.stream.optString("url").startsWith("${TorrentEngine.SCHEME}:") -> "Didn't finish: nobody sharing this torrent could be reached for a while. Try again, or pick another stream."
     d.failed -> "Didn't finish: the link may have expired, or your debrid service isn't ready yet. Try again."
     d.paused -> "Paused · ${d.percent.toInt()}%"
     waiting -> if (Downloads.settings.value.wifiOnly) "Waiting for Wi-Fi · ${d.percent.toInt()}%" else "Waiting for a connection · ${d.percent.toInt()}%"
