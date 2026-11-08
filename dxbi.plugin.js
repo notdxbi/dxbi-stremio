@@ -1567,8 +1567,22 @@
     if (!cards.length) return !OTHER_TYPES.has(type.toLowerCase());
     return [...cards].some((a) => VIDEO_TYPES.has(decodeURIComponent(a.getAttribute("href").split("/detail/")[1].split("/")[0]).toLowerCase()));
   }
+  // Stremio titles rows "Popular - Movie": named the way Netflix would ("Popular Films"). English
+  // only (other languages translate the type), and the same text node, so React's own updates still land
+  const ROW_TYPE_NAMES = { Movie: "Films", Series: "Series" };
+  function rowTitles() {
+    for (const t of document.querySelectorAll('#app [class*="board-row"] [class*="header-container"] [class*="title-container"] > [class*="title"]')) {
+      const node = t.firstChild;
+      if (!node || node.nodeType !== 3) continue;
+      const m = /^(.+) - (Movie|Series)$/.exec(node.nodeValue);
+      // (a name that already says it, "Public Domain Movies", keeps just the name)
+      if (m) node.nodeValue = /\b(movies?|films?|series|shows?|anime)\b/i.test(m[1]) ? m[1] : `${m[1]} ${ROW_TYPE_NAMES[m[2]]}`;
+    }
+  }
+
   function filterRows() {
     if (currentRoute() !== "board") return;
+    rowTitles();
     for (const row of document.querySelectorAll('[class*="board-content-"]:not([class*="board-content-container"]) > [class*="board-row"]')) {
       const href = row.querySelector('[class*="header-container"] a[href^="#/discover/"]')?.getAttribute("href");
       const type = href ? decodeURIComponent(href.split("/")[3] || "") : "";
