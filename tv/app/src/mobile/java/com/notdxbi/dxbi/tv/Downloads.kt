@@ -150,6 +150,13 @@ object Downloads {
                     }
                 }.getOrNull()
                 if (wanted != null) TorrentEngine.tidy(torrentDir(app), wanted)
+                // Downloads only run while the service does, and nothing else brings it back after
+                // dx.bi was updated, closed by Android or the phone restarted: they sat at
+                // "Downloading 0%" for ever
+                val unfinished = runCatching {
+                    manager.downloadIndex.getDownloads(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING).use { it.count > 0 }
+                }.getOrDefault(false)
+                if (unfinished) runCatching { DownloadService.sendResumeDownloads(app, DownloadsService::class.java, false) }
                 refresh()
             }
             override fun onRequirementsStateChanged(manager: DownloadManager, requirements: Requirements, notMetRequirements: Int) = refresh()
@@ -161,8 +168,13 @@ object Downloads {
 
     private fun requirements() = Requirements(if (_settings.value.wifiOnly) Requirements.NETWORK_UNMETERED else Requirements.NETWORK)
 
-    /** Where torrents being downloaded keep their own copy until it's been saved */
-    private fun torrentDir(context: Context): File = File(folder(context).parentFile ?: context.filesDir, "torrent-parts")
+    /**
+     * Where torrents being downloaded keep their own copy until it's been saved: the app's own
+     * storage, never shared storage (Android/data, a memory card), which Android serves through
+     * FUSE. There, libtorrent's file handling crashed Android 14's storage daemon, which took
+     * dx.bi (and every app using storage) down with it a few seconds into a download.
+     */
+    private fun torrentDir(context: Context): File = File(context.noBackupFilesDir, "torrent-parts")
 
     /** Addons can ask for headers on their links: kept per link, added to every request for it */
     private fun withHeaders(): DataSource.Factory = ResolvingDataSource.Factory(OkHttpDataSource.Factory(http)) { spec ->
