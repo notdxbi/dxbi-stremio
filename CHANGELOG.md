@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.35.0
+
+- **The desktop app runs on dx.bi's own copy of Stremio's web app.** Stremio's web app is open source; dx.bi now builds a tested release of it itself (github.com/notdxbi/dxbi-web) instead of loading web.stremio.com, so a change on Stremio's site can no longer break dx.bi before it has been tested. The first time it starts, dx.bi copies your sign-in, library and settings across on your own computer (nothing is sent anywhere), so you stay signed in and everything is where you left it. If dx.bi's copy ever can't be reached, the app uses web.stremio.com for that session. This is the first step towards dx.bi standing on its own; TV, phones and iPhone follow.
+
 ## 2.34.0
 
 - **dx.bi for iPhone runs on iOS 18 and later** (it needed iOS 26). On iOS 18 to 25 the screens use frosted glass and standard buttons where iOS 26 has Liquid Glass; everything else is the same.

@@ -1,7 +1,8 @@
 import { BrowserWindow, ipcMain, screen, shell } from "electron";
 import { join } from "path";
-import { IPC_CHANNELS, URLS } from "../constants";
+import { IPC_CHANNELS } from "../constants";
 import { getLogger } from "../utils/logger";
+import { webAddress } from "./WebOrigin";
 
 const logger = getLogger("MiniPlayer");
 
@@ -67,7 +68,7 @@ function open(main: BrowserWindow, hash: string, at: number) {
         if (mini === win) mini = null;
         tellMain(main);
     });
-    win.loadURL(URLS.STREMIO_WEB + hash);
+    win.loadURL(webAddress() + hash);
     tellMain(main);
     logger.info("Mini player opened");
 }

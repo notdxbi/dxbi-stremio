@@ -2,8 +2,9 @@ import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 import Updater from "./core/Updater";
 import Properties from "./core/Properties";
+import * as WebOrigin from "./core/WebOrigin";
 import logger from "./utils/logger";
-import { IPC_CHANNELS, URLS, SERVER_JS_URL } from "./constants";
+import { IPC_CHANNELS, SERVER_JS_URL } from "./constants";
 
 // Fix GTK 2/3 and GTK 4 conflict on Linux
 import { app } from 'electron';
@@ -85,7 +86,7 @@ async function createWindow() {
         webPreferences: {
             preload: join(__dirname, "//preload/index.js"),
             // Security Note: These settings are required for the plugin/theme system
-            // to work properly. The app loads web.stremio.com and needs to:
+            // to work properly. The app loads Stremio's web app (dx.bi's own copy) and needs to:
             // 1. Make cross-origin requests to local streaming server (webSecurity: false)
             // 2. Access Node.js APIs for file operations (nodeIntegration: true)
             webSecurity: false,
@@ -130,7 +131,15 @@ async function createWindow() {
     ipcMain.once(IPC_CHANNELS.UI_READY, reveal);
     win.webContents.once("did-fail-load", reveal);
     setTimeout(reveal, 6000);
-    mainWindow.loadURL(URLS.STREMIO_WEB);
+    // dx.bi's own copy of Stremio's web app (its stored data is moved over the first time)
+    const address = await WebOrigin.choose();
+    if (address === WebOrigin.DXBI_WEB) {
+        // (dx.bi's copy not answering: web.stremio.com for this run)
+        win.webContents.once("did-fail-load", (_e, code, _desc, url, isMainFrame) => {
+            if (isMainFrame && code !== -3 && url.startsWith(WebOrigin.DXBI_WEB) && !win.isDestroyed()) win.loadURL(WebOrigin.fallBack());
+        });
+    }
+    mainWindow.loadURL(address);
     watchLoad(win);
         
     if (transparencyEnabled) {
@@ -419,7 +428,7 @@ function handleStremioURL(url: string) {
         console.log('Received stremio:// URL:', url);
         
         if (mainWindow && url.endsWith("/manifest.json")) {
-            mainWindow.loadURL(URLS.STREMIO_WEB_ADD_ADDON + encodeURIComponent(url));
+            mainWindow.loadURL(WebOrigin.webAddress() + "#/addons?addon=" + encodeURIComponent(url));
         }
     } catch (err) {
         console.error('Invalid stremio:// URL', err);
