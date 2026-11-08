@@ -13,6 +13,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.NoOpCacheEvictor
@@ -150,10 +151,15 @@ object Downloads {
         if (saved == null) spec else spec.withAdditionalHeaders(saved.keys().asSequence().associateWith { saved.optString(it) })
     }
 
-    /** What the player reads a download through: the phone first, the internet for anything not saved yet */
+    /**
+     * What the player reads a download through: the phone first, the internet for anything not saved yet.
+     * Its subtitles were saved as files (file://), which only DefaultDataSource opens: through the
+     * cache alone (web addresses only) they failed, and downloads had no subtitles to choose.
+     */
     fun playback(context: Context): DataSource.Factory {
         manager(context)
-        return CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(withHeaders()).setCacheWriteDataSinkFactory(null)
+        val saved = CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(withHeaders()).setCacheWriteDataSinkFactory(null)
+        return DefaultDataSource.Factory(context.applicationContext, saved)
     }
 
     /** The download of one film or episode, if there is one */
@@ -207,7 +213,17 @@ object Downloads {
                         true
                     }
                 }.getOrDefault(false)
-                if (ok) saved.put(JSONObject(s.toString()).put("url", Uri.fromFile(file).toString()))
+                // (addons' links often have no extension: the file's first line says what it is)
+                val named = if (!ok) file else runCatching {
+                    val head = file.inputStream().use { input -> ByteArray(512).let { b -> String(b, 0, maxOf(0, input.read(b)), Charsets.UTF_8) } }.trimStart('\uFEFF', ' ', '\r', '\n')
+                    val ext = when {
+                        head.startsWith("WEBVTT") -> "vtt"
+                        head.startsWith("[Script Info]", ignoreCase = true) -> "ass"
+                        else -> file.extension
+                    }
+                    if (ext == file.extension) file else File(dir, "$i.$ext").also { file.renameTo(it) }
+                }.getOrDefault(file)
+                if (ok) saved.put(JSONObject(s.toString()).put("url", Uri.fromFile(named).toString()))
             }
             stream.put("subtitles", saved)
             if (old != null) DownloadService.sendRemoveDownload(app, DownloadsService::class.java, id, false)
