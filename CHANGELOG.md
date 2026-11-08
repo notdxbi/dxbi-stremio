@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.33.1
+
+- **Trailer delay works.** Every choice used to end up at about the same time: the trailer only began loading once the delay was over, then YouTube took a few seconds to start, and the countdown restarted when the title's details arrived. Trailers now load quietly as soon as the hover card opens and show exactly when you chose, from the beginning. The choices are *As soon as it's ready* (about 4 seconds, as fast as YouTube can start one), 5, 8 and 12 seconds; if you had picked 1 or 3 seconds, you get the quickest.
+
 ## 2.33.0
 
 - **Phone title pages need far less scrolling, like Netflix.** The picture is wide instead of tall, the story shows three lines (tap for the rest), and who's in it is one *Starring* line under it instead of a cast list at the very bottom. Episodes take two lines each and show their air date, so a whole season fits in about two swipes. Once the picture scrolls away, a solid bar with the title holds the back and cast buttons (they used to float over the episodes).
