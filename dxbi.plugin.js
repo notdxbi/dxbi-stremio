@@ -903,9 +903,15 @@
 
   // The top bar turns solid once the page is scrolled. It's marked on the bar itself: a class on
   // <body> restyles the whole page, and on a TV that took most of a second on every scroll.
+  // (called on every scroll event: the bars are only looked up again when something changed)
+  let scrolledState = null;
+  let scrolledNavs = [];
   function setScrolled(on) {
+    if (on === scrolledState && scrolledNavs.length && scrolledNavs.every((n) => n.isConnected)) return;
+    scrolledState = on;
     if (!IN_TV) document.body.classList.toggle("dx-scrolled", on);
-    for (const nav of document.querySelectorAll('#app [class*="main-nav-bars-container"] > nav[class*="horizontal-nav-bar"]')) {
+    scrolledNavs = [...document.querySelectorAll('#app [class*="main-nav-bars-container"] > nav[class*="horizontal-nav-bar"]')];
+    for (const nav of scrolledNavs) {
       if (nav.hasAttribute("data-dx-scrolled") !== on) nav.toggleAttribute("data-dx-scrolled", on);
     }
   }
@@ -2098,6 +2104,7 @@
         // around the card as a second, smaller frame
         document.querySelectorAll("[data-dx-covered]").forEach((n) => { if (n !== card) n.removeAttribute("data-dx-covered"); });
         card.setAttribute("data-dx-covered", "");
+        this.marked = true;
         this.applyPushes(pushes);
         sfx.play("pop", 0.9);
       });
@@ -2207,9 +2214,13 @@
       trailer.stop();
       this.token++;
       if (this.card && this._leave) this.card.removeEventListener("mouseleave", this._leave);
-      document.querySelectorAll("[data-dx-covered]").forEach((n) => n.removeAttribute("data-dx-covered"));
+      // (every scroll closes it: the page is only searched when a card has been marked)
+      if (this.marked) {
+        this.marked = false;
+        document.querySelectorAll("[data-dx-covered]").forEach((n) => n.removeAttribute("data-dx-covered"));
+        this.unpush();
+      }
       this.card = null;
-      this.unpush();
       if (!this.el || !this.el.classList.contains("is-open")) return;
       const el = this.el;
       el.classList.remove("is-open");
@@ -7356,9 +7367,37 @@
       if (currentRoute() === "detail" && streamRows.waiting()) {
         try { streamTools.ensure(); streamRows.ensure(); } catch (_) { /* next sync */ }
       }
+      // The profile menu gets dx.bi's entries in the frame it opens (a sync later, Stremio's short
+      // menu showed first and then grew)
+      if (records.some(menuOpened)) { try { navMenu.ensure(); } catch (_) { /* next sync */ } }
+      // A page (or a title's details) just went in: dx.bi's parts go in before it's painted, so
+      // Stremio's page never shows first and then shifts (Reviews/Hide buttons, Ends at, rows)
+      if (records.some(pageAdded)) syncBeforePaint();
       return;
     }
   });
+  // (one sync per frame at most; small changes like the player's clock keep the cheap delayed one)
+  let paintQueued = false;
+  function syncBeforePaint() {
+    if (paintQueued) return;
+    paintQueued = true;
+    requestAnimationFrame(() => {
+      paintQueued = false;
+      sync();
+    });
+  }
+  const pageAdded = (r) => {
+    for (const n of r.addedNodes) {
+      if (n.nodeType === 1 && n.childElementCount && n.getElementsByTagName("*").length > 40 && !(n.className && /(^|\s)dx/.test(n.className))) return true;
+    }
+    return false;
+  };
+  const menuOpened = (r) => {
+    for (const n of r.addedNodes) {
+      if (n.nodeType === 1 && (/nav-menu/.test(n.className) || n.querySelector('[class*="nav-menu-container"]'))) return true;
+    }
+    return false;
+  };
 
   const onResize = () => {
     preview.close(true);
@@ -14918,7 +14957,7 @@
     // Fill a dx.bi style element: sharpened from an earlier start when there's a copy for this exact
     // text and Stremio build, otherwise as it is (and sharpened shortly)
     fill(el, css) {
-      if (IN_TV) {
+      {
         try {
           const saved = JSON.parse(localStorage.getItem(`dxbi.sharp.${el.id}`) || "null");
           const main = this.stremioSheet();
@@ -14941,7 +14980,6 @@
     },
 
     soon() {
-      if (!IN_TV) return;
       clearTimeout(this.timer);
       this.timer = setTimeout(() => this.run(), 300);
     },
