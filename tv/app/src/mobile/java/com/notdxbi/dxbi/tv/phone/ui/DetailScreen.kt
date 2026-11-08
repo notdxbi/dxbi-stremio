@@ -210,7 +210,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     val info: LazyListScope.(Boolean) -> Unit = { withEpisodes ->
         item {
             // (sideways it's shorter, so Play stays on screen)
-            Box(Modifier.fillMaxWidth().aspectRatio(if (wide) 16f / 7f else 16f / 10f)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(if (wide) 16f / 7f else 16f / 9f)) {
                 AsyncImage(model = title.backdrop, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.3f to Color.Transparent, 0.65f to Color.Transparent, 1f to Dx.Background)))
                 // the title's logo names it, as on the desktop (its name in large type when it has none)
@@ -220,14 +220,14 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             }
         }
         item {
-            Header(title, details, onPlay = { start(details?.let { nextVideo(it)?.id }) }) {
+            Header(title, details, onSearch, onPlay = { start(details?.let { nextVideo(it)?.id }) }) {
                 if (type != "series") FilmDownload(savedOf(id), downloader.busy) { downloadVideos(listOf(id), "Film") }
             }
         }
         reviews?.scores?.takeIf { it.isNotEmpty() }?.let { scores -> item { ScoreBadges(scores) } }
         item {
             // (the buttons share the width: five don't fit side by side at a fixed spacing)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 val inList = details?.title?.inLibrary == true
                 val ready = details?.state == Load.Ready
                 Action(if (inList) Icons.Filled.Check else Icons.Filled.Add, if (inList) "In Library" else "Library", enabled = ready) { stremio.setInList(!inList) }
@@ -268,25 +268,17 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                     download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), "S${v.season} E${v.episode} · ${v.title}") } }) { start(v.id) }
             }
         }
-        if (details != null && details.cast.isNotEmpty()) item {
-            Column(Modifier.padding(horizontal = Gutter, vertical = 16.dp)) {
-                Text("Cast", style = MaterialTheme.typography.titleSmall, color = Dx.Text)
-                Spacer(Modifier.height(8.dp))
-                // a person's name searches for their other titles
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    details.cast.take(8).chunked(2).forEach { pair ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            pair.forEach { name -> Pill(selected = false, onClick = { onSearch(name) }) { Text(name, color = Dx.Text, style = MaterialTheme.typography.bodySmall) } }
-                        }
-                    }
-                }
-            }
-        }
     }
+
+    // upright: once the picture has scrolled away, a solid bar with the title takes the back and
+    // cast buttons (they floated over the episodes before)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pastHeader by remember { androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    val barAlpha by androidx.compose.animation.core.animateFloatAsState(if (pastHeader && !wide) 1f else 0f, label = "bar")
 
     Box(Modifier.fillMaxSize().background(Dx.Background)) {
         if (!wide) {
-            LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) { info(true) }
+            LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 40.dp)) { info(true) }
         } else {
             Row(Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.weight(1f).fillMaxHeight(), contentPadding = PaddingValues(bottom = 32.dp)) { info(false) }
@@ -318,11 +310,20 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             }
         }
 
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)),
-        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
-        if (!wide) CastButton(Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)))
+        Row(
+            Modifier.fillMaxWidth().background(Dx.Background.copy(alpha = barAlpha)).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.5f * (1f - barAlpha))),
+            ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
+            Text(
+                title.name, color = Dx.Text.copy(alpha = barAlpha), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            )
+            if (!wide) CastButton(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.5f * (1f - barAlpha))))
+        }
     }
 
     if (sheet && !wide) {
@@ -343,7 +344,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
 }
 
 @Composable
-private fun Header(t: Title, d: Details?, onPlay: () -> Unit, below: @Composable () -> Unit = {}) {
+private fun Header(t: Title, d: Details?, onSearch: (String) -> Unit, onPlay: () -> Unit, below: @Composable () -> Unit = {}) {
     Column(Modifier.padding(horizontal = Gutter)) {
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -387,15 +388,52 @@ private fun Header(t: Title, d: Details?, onPlay: () -> Unit, below: @Composable
                 Text("${((d.durationMs - d.resumeMs) / 60000).coerceAtLeast(1)}m left", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
+        // Three lines of the story (tap for the rest), then who's in it, as on Netflix: the page used
+        // to run on for the whole synopsis and a cast list at the very bottom
         t.description?.let {
-            Spacer(Modifier.height(14.dp))
-            Text(it, color = Dx.Text, style = MaterialTheme.typography.bodyMedium)
+            var whole by rememberSaveable(t.id) { mutableStateOf(false) }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                it, color = Dx.Text, style = MaterialTheme.typography.bodyMedium,
+                maxLines = if (whole) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable { whole = !whole },
+            )
+        }
+        if (d != null && d.cast.isNotEmpty()) {
+            var everyone by rememberSaveable(t.id) { mutableStateOf(false) }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Starring: ${d.cast.take(3).joinToString(", ")}${if (d.cast.size > 3 && !everyone) "… more" else ""}",
+                color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable { everyone = !everyone },
+            )
+            // the whole cast: a name finds their other titles
+            if (everyone) {
+                Spacer(Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    d.cast.take(12).chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            pair.forEach { name -> Pill(selected = false, onClick = { onSearch(name) }) { Text(name, color = Dx.Text, style = MaterialTheme.typography.bodySmall) } }
+                        }
+                    }
+                }
+            }
         }
         if (d != null && d.directors.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Text("Director: ${d.directors.joinToString(", ")}", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(4.dp))
+            Text("Director: ${d.directors.joinToString(", ")}", color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+/** An episode's air date ("2025-07-11T00:00:00Z") as "11 Jul 2025": every episode of a season showed the same year */
+fun airDate(released: String?): String? {
+    val iso = released?.take(10) ?: return null
+    // (SimpleDateFormat: java.time needs Android 8, and phones from Android 7 are supported)
+    return runCatching {
+        val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(iso)!!
+        java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault()).format(date)
+    }.getOrNull() ?: released.take(4)
 }
 
 /** "107 min" as "1h 47m" */
@@ -515,7 +553,7 @@ private fun FilmDownload(item: com.notdxbi.dxbi.tv.Downloads.Item?, busy: String
 @Composable
 private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatched: (watched: Boolean, upTo: Boolean) -> Unit, download: @Composable () -> Unit = {}, onPlay: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().combinedClickable(enabled = !v.upcoming, onLongClick = { menu = true }, onClick = onPlay).padding(horizontal = Gutter, vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().combinedClickable(enabled = !v.upcoming, onLongClick = { menu = true }, onClick = onPlay).padding(horizontal = Gutter, vertical = 8.dp)) {
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(if (v.watched) "Mark as unwatched" else "Mark as watched") }, onClick = { menu = false; onWatched(!v.watched, false) })
             if ((v.episode ?: 0) > 1) DropdownMenuItem(text = { Text("Mark up to here as watched") }, onClick = { menu = false; onWatched(true, true) })
@@ -536,7 +574,7 @@ private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatche
                     v.upcoming -> v.released?.take(10)?.let { "Coming $it" } ?: "Coming soon"
                     resumeHere -> if (inProgress) "Continue watching" else "Up next"
                     v.watched -> "Watched"
-                    else -> v.released?.take(4)
+                    else -> airDate(v.released)
                 }
                 note?.let { Text(it, color = if (resumeHere) Dx.Accent else Dx.Muted, style = MaterialTheme.typography.bodySmall) }
             }
@@ -544,8 +582,8 @@ private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatche
             download()
         }
         v.overview?.let {
-            Spacer(Modifier.height(8.dp))
-            Text(it, color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            Text(it, color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }

@@ -112,7 +112,9 @@ fun ProfileScreen(
         if (continueWatching.isNotEmpty()) item {
             PosterRow("Continue Watching", continueWatching.map { it.title }, onOpen = onOpen)
         }
-        item { PosterRow(myList.firstOrNull()?.name ?: "My List", myList.flatMap { it.items }, onMore = onLibrary, onOpen = onOpen) }
+        // (an empty My List was a heading over a blank gap: it shows once something's in it)
+        val listed = myList.flatMap { it.items }
+        if (listed.isNotEmpty()) item { PosterRow(myList.firstOrNull()?.name ?: "My List", listed, onMore = onLibrary, onOpen = onOpen) }
         item {
             Column(Modifier.padding(top = 6.dp)) {
                 Line(Icons.Filled.VideoLibrary, "Library", "Everything you've added or watched", onClick = onLibrary)
