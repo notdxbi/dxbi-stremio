@@ -2364,7 +2364,12 @@
       // Everything else: a list (streams, episodes…) steps one item at a time; otherwise the nearest
       // thing on screen that way. Reached without the browser's jump (it scrolled the billboard up
       // whenever one of its buttons took focus). Nothing found: Stremio's own navigation takes it.
-      if (!focused || focused === document.body) {
+      // (a whole page counts as nothing: when a dialog closes, Stremio can leave focus on its page
+      // container, and from a box the size of the screen there was nothing "that way" — the
+      // remote did nothing until the app was restarted)
+      const box0 = focused && focused !== document.body && focused.getBoundingClientRect();
+      const lost = !focused || focused === document.body || (box0 && box0.width >= window.innerWidth * 0.8 && box0.height >= window.innerHeight * 0.6);
+      if (lost) {
         // Nothing selected yet: start on the page itself (the billboard, or its first title), or in
         // whatever dialog is showing over it. Only what can actually be seen counts.
         // TV: the billboard's first button when it's in sight and nothing covers it, without
