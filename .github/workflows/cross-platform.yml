@@ -45,6 +45,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Theme and plugin integrity (CSS structure, bundled theme, versions, settings types)
+        run: node tools/integrity-test.mjs
+
       - name: Check configured metadata and banner language
         run: node tools/metadata-language-test.mjs
 
