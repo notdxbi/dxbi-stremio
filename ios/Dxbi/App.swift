@@ -75,7 +75,7 @@ struct RootView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 12)
-                    .glassEffect(.regular, in: .capsule)
+                    .dxGlass(in: .capsule)
                     .padding(.horizontal, 24)
                     .padding(.top, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -112,7 +112,7 @@ struct RootView: View {
                 Stack { SearchView() }
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .dxMinimizeTabBarOnScroll()
         .onChange(of: stremio.pendingSearch) { _, q in if q != nil { tab = .search } }
     }
 }
