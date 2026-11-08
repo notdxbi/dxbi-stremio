@@ -153,7 +153,7 @@ Good to know:
 
 ### On an iPhone
 
-dx.bi for iPhone (iOS 26 or later) has its own screens in Apple's style, Liquid Glass included, and a player that plays MKV, HEVC, Dolby and DTS sound with picture-in-picture and lock screen controls. Apple only allows App Store apps to install directly, so it's installed with a sideloading app and your own free Apple ID.
+dx.bi for iPhone (iOS 18 or later) has its own screens in Apple's style, Liquid Glass included on iOS 26, and a player that plays MKV, HEVC, Dolby and DTS sound with picture-in-picture and lock screen controls. Apple only allows App Store apps to install directly, so it's installed with a sideloading app and your own free Apple ID.
 
 **1. Get a sideloading app.** [SideStore](https://sidestore.io) (refreshes the app on the phone itself), [AltStore](https://altstore.io) or, from a computer, [Sideloadly](https://sideloadly.io). Set it up with your Apple ID as its site explains.
 
@@ -589,7 +589,7 @@ With the plugin, that comes from a preview build of Stremio Enhanced (the dx.bi 
 
 ### Does it work on my phone or TV?
 
-On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). Android phones and tablets have their own app, [dx.bi for Android](#on-an-android-phone), and iPhones have [dx.bi for iPhone](#on-an-iphone) (iOS 26 or later). LG (webOS) and Samsung (Tizen) TVs aren't supported.
+On Android TV, Google TV and Fire TV, yes: see [On a TV](#on-a-tv). Android phones and tablets have their own app, [dx.bi for Android](#on-an-android-phone), and iPhones have [dx.bi for iPhone](#on-an-iphone) (iOS 18 or later). LG (webOS) and Samsung (Tizen) TVs aren't supported.
 
 ### A friend can't connect to a party
 

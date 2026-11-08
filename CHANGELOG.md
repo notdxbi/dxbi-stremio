@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.34.0
+
+- **dx.bi for iPhone runs on iOS 18 and later** (it needed iOS 26). On iOS 18 to 25 the screens use frosted glass and standard buttons where iOS 26 has Liquid Glass; everything else is the same.
+
 ## 2.33.1
 
 - **Trailer delay works.** Every choice used to end up at about the same time: the trailer only began loading once the delay was over, then YouTube took a few seconds to start, and the countdown restarted when the title's details arrived. Trailers now load quietly as soon as the hover card opens and show exactly when you chose, from the beginning. The choices are *As soon as it's ready* (about 4 seconds, as fast as YouTube can start one), 5, 8 and 12 seconds; if you had picked 1 or 3 seconds, you get the quickest.
