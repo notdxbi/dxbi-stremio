@@ -40,6 +40,9 @@
   // ---------------------------------------------------------------------------
   const PHONE = (() => { try { return !!bridge.isPhone(); } catch (_) { return false; } })();
   tv.phone = PHONE;
+  // (Android phones download torrents themselves, with dx.bi's torrent engine: Downloads.kt. An
+  // iPhone has no engine, so no torrentUrl)
+  tv.torrentDownloads = PHONE && !!bridge.torrentUrl;
   // Words written for a TV, as a phone shows them
   const forDevice = (text) => (PHONE && typeof text === "string"
     ? text.replace(/ On a TV, only[^.]*\./, "").replace(/\bthis TV\b/g, "this phone").replace(/\bthis TV's\b/g, "this phone's")

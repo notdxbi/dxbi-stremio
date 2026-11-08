@@ -43,6 +43,9 @@ import kotlin.concurrent.thread
  * subtitles alongside, and plays from the phone in dx.bi's player, picking up where it was left.
  * dx.bi picks the stream (in the quality asked for: plugin api.phone.download), or it's the one
  * chosen from the list.
+ *
+ * Torrents download through dx.bi's own torrent engine (TorrentEngine), which the downloader reads
+ * from like any other link (dxbi-torrent://<hash>…, resolved to its local address each time).
  */
 @OptIn(UnstableApi::class)
 object Downloads {
@@ -133,9 +136,22 @@ object Downloads {
         m.maxParallelDownloads = 2
         m.requirements = requirements()
         m.addListener(object : DownloadManager.Listener {
-            override fun onDownloadChanged(manager: DownloadManager, download: Download, finalException: Exception?) = refresh()
+            override fun onDownloadChanged(manager: DownloadManager, download: Download, finalException: Exception?) {
+                // a torrent's own copy goes once the download has it all
+                if (download.state == Download.STATE_COMPLETED) TorrentEngine.hashOf(download.request.uri.toString())?.let { TorrentEngine.drop(app, it, torrentDir(app)) }
+                refresh()
+            }
             override fun onDownloadRemoved(manager: DownloadManager, download: Download) = refresh()
-            override fun onInitialized(manager: DownloadManager) = refresh()
+            override fun onInitialized(manager: DownloadManager) {
+                // (torrents left behind by downloads that have since gone)
+                val wanted = runCatching {
+                    manager.downloadIndex.getDownloads().use { c ->
+                        buildSet { while (c.moveToNext()) if (c.download.state != Download.STATE_COMPLETED) TorrentEngine.hashOf(c.download.request.uri.toString())?.let { add(it) } }
+                    }
+                }.getOrNull()
+                if (wanted != null) TorrentEngine.tidy(torrentDir(app), wanted)
+                refresh()
+            }
             override fun onRequirementsStateChanged(manager: DownloadManager, requirements: Requirements, notMetRequirements: Int) = refresh()
         })
         manager = m
@@ -145,10 +161,18 @@ object Downloads {
 
     private fun requirements() = Requirements(if (_settings.value.wifiOnly) Requirements.NETWORK_UNMETERED else Requirements.NETWORK)
 
+    /** Where torrents being downloaded keep their own copy until it's been saved */
+    private fun torrentDir(context: Context): File = File(folder(context).parentFile ?: context.filesDir, "torrent-parts")
+
     /** Addons can ask for headers on their links: kept per link, added to every request for it */
     private fun withHeaders(): DataSource.Factory = ResolvingDataSource.Factory(OkHttpDataSource.Factory(http)) { spec ->
-        val saved = prefs.getString("headers:${spec.uri}", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
-        if (saved == null) spec else spec.withAdditionalHeaders(saved.keys().asSequence().associateWith { saved.optString(it) })
+        val app = appContext
+        if (spec.uri.scheme == TorrentEngine.SCHEME) {
+            spec.withUri(TorrentEngine.resolveDownload(app ?: throw java.io.IOException("Downloads aren't set up"), spec.uri, torrentDir(app)))
+        } else {
+            val saved = prefs.getString("headers:${spec.uri}", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            if (saved == null) spec else spec.withAdditionalHeaders(saved.keys().asSequence().associateWith { saved.optString(it) })
+        }
     }
 
     /**
@@ -174,9 +198,17 @@ object Downloads {
         val app = context.applicationContext
         manager(app)
         val stream = JSONObject(json)
+        // a torrent: { infoHash, fileIdx, trackers[], name } (plugin api.phone.download / downloadOption)
+        stream.optJSONObject("magnet")?.takeIf { it.optString("infoHash").matches(Regex("(?i)[0-9a-f]{40}")) }?.let { m ->
+            val trackers = m.optJSONArray("trackers")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } } ?: emptyList()
+            stream.put("url", TorrentEngine.downloadUri(m.optString("infoHash"), m.optInt("fileIdx", -1), trackers, m.optString("name")))
+            stream.remove("magnet")
+            stream.put("torrent", false)
+        }
         val url = stream.optString("url")
         if (url.isEmpty() || stream.optBoolean("torrent")) {
-            Toast.makeText(app, "Only debrid and direct streams can be downloaded", Toast.LENGTH_LONG).show()
+            // (a torrent the page started playing: its address only lasts while it plays)
+            Toast.makeText(app, "Couldn't download that one. Try Download again from the stream's ⋮ menu.", Toast.LENGTH_LONG).show()
             return false
         }
         // (a stream played through the page names its title in its player address:
@@ -199,6 +231,8 @@ object Downloads {
         prefs.edit().remove("watched:$id").remove("pos:$id").apply()
         thread(name = "dxbi-download-prepare") {
             stream.optJSONObject("headers")?.takeIf { it.length() > 0 }?.let { prefs.edit().putString("headers:$url", it.toString()).apply() }
+            // (a torrent's copy from a failed try is picked up again: only a different one is dropped)
+            if (old != null) TorrentEngine.hashOf(old.stream.optString("url"))?.takeIf { it != TorrentEngine.hashOf(url) }?.let { TorrentEngine.drop(app, it, torrentDir(app)) }
             // subtitles are small: saved straight away (up to three, already ordered by language)
             val subs = stream.optJSONArray("subtitles") ?: JSONArray()
             val saved = JSONArray()
@@ -235,6 +269,7 @@ object Downloads {
 
     fun remove(context: Context, item: Item) {
         DownloadService.sendRemoveDownload(context.applicationContext, DownloadsService::class.java, item.id, false)
+        TorrentEngine.hashOf(item.stream.optString("url"))?.let { TorrentEngine.drop(context.applicationContext, it, torrentDir(context.applicationContext)) }
         File(context.applicationContext.filesDir, "download-subs/${item.id}").deleteRecursively()
         prefsOf(context).edit().remove("pos:${item.id}").remove("watched:${item.id}").apply()
     }
@@ -375,6 +410,8 @@ object Downloads {
         val gone = if (wait < 0) emptyList() else items.filter { it.done && it.watched && now - it.watchedAt >= wait }
         _items.value = items - gone.toSet()
         _waiting.value = m.notMetRequirements != 0 && items.any { !it.done && !it.failed && !it.paused }
+        // torrents fetch only while their download runs (not paused, or waiting for Wi-Fi)
+        TorrentEngine.keepRunning(m.currentDownloads.filter { it.state == Download.STATE_DOWNLOADING }.mapNotNull { TorrentEngine.hashOf(it.request.uri.toString()) }.toSet())
         appContext?.let { c -> if (gone.isNotEmpty()) handler.post { gone.forEach { remove(c, it) } } }
         handler.removeCallbacks(tick)
         if (m.currentDownloads.isNotEmpty()) handler.postDelayed(tick, 1000)
