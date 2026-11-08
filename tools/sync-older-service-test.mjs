@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(join(root, "dxbi.plugin.js"), "utf8");
+const source = readFileSync(join(root, "dxbi.plugin.js"), "utf8").replace(/\r\n/g, "\n");
 const pick = (from, to) => { const a = source.indexOf(from); const b = source.indexOf(to, a); assert.ok(a > 0 && b > a, from); return source.slice(a, b); };
 const consts = pick("  const SYNC_ENDPOINT", "  const syncMerge = {");
 const merge = pick("  const syncMerge = {", "  const cloudSync = {");
@@ -16,7 +16,7 @@ const sync = pick("  const cloudSync = {", "\n  // -----------------------------
 
 // The service as it was before it knew "progress:" keys
 const dir = mkdtempSync(join(tmpdir(), "dxbi-sync-"));
-const worker = readFileSync(join(root, "tools/profile-sync/worker.js"), "utf8").replace("|progress):", "):");
+const worker = readFileSync(join(root, "tools/profile-sync/worker.js"), "utf8").replace(/\r\n/g, "\n").replace("|progress):", "):");
 assert.ok(!/cwDismissed\|progress/.test(worker), "older service made");
 writeFileSync(join(dir, "worker.js"), worker);
 

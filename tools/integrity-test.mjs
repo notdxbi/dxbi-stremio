@@ -13,7 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const read = (p) => readFileSync(join(root, p), "utf8");
+// (Windows checks files out with \r\n line endings)
+const read = (p) => readFileSync(join(root, p), "utf8").replace(/\r\n/g, "\n");
 const css = read("dxbi.theme.css");
 const plugin = read("dxbi.plugin.js");
 let failures = 0;

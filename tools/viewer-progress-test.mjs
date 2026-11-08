@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(join(root, "dxbi.plugin.js"), "utf8");
+const source = readFileSync(join(root, "dxbi.plugin.js"), "utf8").replace(/\r\n/g, "\n");
 const start = source.indexOf("  const viewerProgress = {");
 const end = source.indexOf("  coreHook = (live) => {");
 const mStart = source.indexOf("  const syncMerge = {");
