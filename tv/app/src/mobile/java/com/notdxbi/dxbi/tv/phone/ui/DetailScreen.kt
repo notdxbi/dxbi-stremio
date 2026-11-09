@@ -92,7 +92,6 @@ import com.notdxbi.dxbi.tv.phone.Details
 import com.notdxbi.dxbi.tv.phone.AddonFile
 import com.notdxbi.dxbi.tv.phone.AddonFiles
 import com.notdxbi.dxbi.tv.phone.Load
-import com.notdxbi.dxbi.tv.phone.PhoneFilePlaylist
 import com.notdxbi.dxbi.tv.phone.Review
 import com.notdxbi.dxbi.tv.phone.Reviews
 import com.notdxbi.dxbi.tv.phone.Score
@@ -203,10 +202,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
         if (target == Phone.Target.Download && android.os.Build.VERSION.SDK_INT >= 33 &&
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        val playlist = if ((type == "other" || type == "series") && target == Phone.Target.Player && details != null) {
-            PhoneFilePlaylist(id, addonFiles, details.videoId ?: "", type)
-        } else null
-        stremio.play(option, target, playlist)
+        stremio.play(option, target)
     }
 
     fun start(videoId: String?) {
