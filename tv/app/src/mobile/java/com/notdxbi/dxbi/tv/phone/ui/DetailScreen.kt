@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,7 +55,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +65,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -84,13 +89,17 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.asPaddingValues
 import com.notdxbi.dxbi.tv.Phone
 import com.notdxbi.dxbi.tv.phone.Details
+import com.notdxbi.dxbi.tv.phone.AddonFile
+import com.notdxbi.dxbi.tv.phone.AddonFiles
 import com.notdxbi.dxbi.tv.phone.Load
+import com.notdxbi.dxbi.tv.phone.PhoneFilePlaylist
 import com.notdxbi.dxbi.tv.phone.Review
 import com.notdxbi.dxbi.tv.phone.Reviews
 import com.notdxbi.dxbi.tv.phone.Score
 import com.notdxbi.dxbi.tv.phone.Stremio
 import com.notdxbi.dxbi.tv.phone.Title
 import com.notdxbi.dxbi.tv.phone.Video
+import kotlinx.coroutines.launch
 
 /**
  * A title: art, what it is, Play, My List, reviews, and for a series its seasons and episodes.
@@ -106,14 +115,37 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     val all by stremio.details.collectAsState()
     // what's shown is this title's (the model can still hold the last title's for a moment)
     val details = all?.takeIf { it.metaId == id }
-    val title = details?.title ?: preview ?: Title(id, type, "")
     val context = LocalContext.current
+    val parsedAddonFiles = remember(details?.videos) { details?.videos.orEmpty().map(AddonFile::from) }
+    val addonFiles = parsedAddonFiles
+    val addonFileGroups = remember(addonFiles) { AddonFiles.groups(addonFiles) }
+    val seriesGroups = remember(details?.videos) {
+        details?.videos.orEmpty().groupBy { it.season }
+            .toSortedMap(compareBy<Int?> { it == null }.thenBy { it ?: Int.MAX_VALUE })
+    }
+    val title = details?.title ?: preview ?: Title(id, type, "")
     val config = LocalConfiguration.current
     val wide = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600
     var sheet by rememberSaveable { mutableStateOf(false) }
-    // sideways: whether the right side shows the streams (a film always does)
-    var paneStreams by rememberSaveable { mutableStateOf(type != "series") }
-    var season by rememberSaveable { mutableStateOf<Int?>(null) }
+    // sideways: whether the right side shows the streams or the episodes/files list
+    var paneStreams by rememberSaveable { mutableStateOf(type != "series" && type != "other") }
+    val initialSeason = details?.videos?.firstOrNull { it.id == details.videoId }?.season
+        ?: details?.videos?.firstOrNull { it.id == details.resumeVideoId }?.season
+        ?: details?.videos?.firstOrNull { (it.season ?: 0) > 0 && !it.upcoming }?.season
+        ?: details?.videos?.firstOrNull()?.season
+    val seasonKeys = remember(type, seriesGroups, addonFileGroups) {
+        orderedSeasonKeys(if (type == "series") seriesGroups.keys else addonFileGroups.map { it.season })
+    }
+    var selectedSeason by remember(type, id) { mutableStateOf(initialSeason) }
+    var videoSearch by rememberSaveable(type, id) { mutableStateOf("") }
+    LaunchedEffect(seasonKeys, initialSeason) {
+        if (selectedSeason !in seasonKeys) selectedSeason = initialSeason?.takeIf { it in seasonKeys } ?: seasonKeys.firstOrNull()
+    }
+    LaunchedEffect(details?.videoId, seasonKeys) {
+        details?.videos?.firstOrNull { it.id == details.videoId }?.season
+            ?.takeIf { it in seasonKeys }
+            ?.let { selectedSeason = it }
+    }
     var choices by remember(type, id) { mutableStateOf<StreamChoices?>(null) }
     // what Play was pressed for, while dx.bi's pick for it is worked out (Just press Play)
     var waitingFor by remember { mutableStateOf<String?>(null) }
@@ -129,26 +161,36 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     var reviewsOpen by rememberSaveable(type, id) { mutableStateOf(false) }
     LaunchedEffect(type, id) { reviews = stremio.reviews(type, id) }
 
-    /** What Play starts: the episode they're in the middle of, else the first one */
+    /** What Play starts: the current or first episode/file */
     fun nextVideo(d: Details): Video? {
+        if (type == "other") return d.videos.firstOrNull { it.id == d.videoId } ?: d.videos.firstOrNull()
         if (type != "series") return null
         // (the one picked first: the page moves it on to the next episode after one is finished)
         return d.videos.firstOrNull { it.id == d.videoId } ?: d.videos.firstOrNull { it.id == d.resumeVideoId } ?: d.videos.firstOrNull { (it.season ?: 0) > 0 && !it.upcoming } ?: d.videos.firstOrNull()
     }
 
-    // The streams for that episode, fetched before Play is pressed
+    // The streams for that episode or file, fetched before Play is pressed
     LaunchedEffect(details?.state, details?.metaId) {
-        if (details?.state == Load.Ready && type == "series" && details.videoId == null) nextVideo(details)?.let { stremio.open(type, id, it.id) }
+        if (details?.state == Load.Ready && (type == "series" || type == "other") && details.videoId == null) {
+            nextVideo(details)?.let { stremio.open(type, id, it.id) }
+        }
     }
     // dx.bi's reading of them, again as more addons answer
     LaunchedEffect(details) { if (details?.videoId != null) choices = stremio.streams() }
-    // the episode picked shows in its season (back from the player, the page picks the next one
-    // when the last was finished: dxbi-engine.js afterPlaying)
-    LaunchedEffect(details?.videoId) {
-        val d = details ?: return@LaunchedEffect
-        d.videos.firstOrNull { it.id == d.videoId }?.season?.let { season = it }
-    }
     val current = choices?.takeIf { details?.videoId != null && it.videoId == details.videoId }
+    val seriesEpisodes = seriesGroups[selectedSeason].orEmpty()
+    val visibleSeriesEpisodes = seriesEpisodes.filter { videoSearch.isBlank() || it.title.contains(videoSearch, ignoreCase = true) }
+    val missingSeasonEpisodes = seriesEpisodes.filterNot { it.upcoming }
+        .filter { savedOf(it.id)?.let { item -> item.failed } ?: true }
+    val seasonDownloadLabel = when {
+        seriesEpisodes.isEmpty() -> null
+        downloader.busy != null -> downloader.busy
+        missingSeasonEpisodes.isEmpty() -> "Downloaded"
+        else -> "Download ${seasonName(selectedSeason).lowercase()} (${missingSeasonEpisodes.size})"
+    }
+    val addonSeasonGroup = addonFileGroups.firstOrNull { it.season == selectedSeason }
+    val visibleAddonFiles = addonSeasonGroup?.files.orEmpty()
+        .filter { videoSearch.isBlank() || it.title.contains(videoSearch, ignoreCase = true) }
 
     // (Android 13 and later ask before an app shows notifications: downloads show their progress in one)
     val notifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
@@ -161,18 +203,21 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
         if (target == Phone.Target.Download && android.os.Build.VERSION.SDK_INT >= 33 &&
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        stremio.play(option, target)
+        val playlist = if ((type == "other" || type == "series") && target == Phone.Target.Player && details != null) {
+            PhoneFilePlaylist(id, addonFiles, details.videoId ?: "", type)
+        } else null
+        stremio.play(option, target, playlist)
     }
 
     fun start(videoId: String?) {
         val target = videoId ?: details?.videoId ?: id
-        if (type == "series" && videoId != null && videoId != details?.videoId) stremio.open(type, id, videoId)
+        if ((type == "series" || type == "other") && videoId != null && videoId != details?.videoId) stremio.open(type, id, videoId)
         downloadMode = false
         waitingFor = target
         if (wide) paneStreams = true else sheet = true
     }
 
-    // the stream list for one episode (or the film), where a tap downloads instead of playing
+    // the stream list for one episode, file or film, where a tap downloads instead of playing
     downloader.onChoose = { videoId ->
         if (type == "series" && videoId != details?.videoId) stremio.open(type, id, videoId)
         waitingFor = null
@@ -180,6 +225,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
         if (wide) paneStreams = true else sheet = true
     }
     fun downloadVideos(videoIds: List<String>, detail: String) = downloader.request(type, id, videoIds, title.name, detail)
+
 
     // Just press Play: dx.bi's pick plays as soon as it's sure (the stream chosen last time at once,
     // anything else once every addon has answered, or after 6 seconds)
@@ -205,12 +251,14 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     }
 
     val episode = details?.videos?.firstOrNull { it.id == details.videoId }
-    val episodeLine = episode?.let { "S${it.season} E${it.episode} · ${it.title}" }
+    val episodeLine = episode?.let {
+        if (type == "other") it.title else "S${it.season} E${it.episode} · ${it.title}"
+    }
 
     val info: LazyListScope.(Boolean) -> Unit = { withEpisodes ->
         item {
             // (sideways it's shorter, so Play stays on screen)
-            Box(Modifier.fillMaxWidth().aspectRatio(if (wide) 16f / 7f else 16f / 9f)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(if (wide) 16f / 7f else 16f / 10f)) {
                 AsyncImage(model = title.backdrop, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.3f to Color.Transparent, 0.65f to Color.Transparent, 1f to Dx.Background)))
                 // the title's logo names it, as on the desktop (its name in large type when it has none)
@@ -220,14 +268,14 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             }
         }
         item {
-            Header(title, details, onSearch, onPlay = { start(details?.let { nextVideo(it)?.id }) }) {
-                if (type != "series") FilmDownload(savedOf(id), downloader.busy) { downloadVideos(listOf(id), "Film") }
+            Header(title, details, onPlay = { start(details?.let { nextVideo(it)?.id }) }) {
+                if (type == "movie") FilmDownload(savedOf(id), downloader.busy) { downloadVideos(listOf(id), "Film") }
             }
         }
         reviews?.scores?.takeIf { it.isNotEmpty() }?.let { scores -> item { ScoreBadges(scores) } }
         item {
             // (the buttons share the width: five don't fit side by side at a fixed spacing)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 val inList = details?.title?.inLibrary == true
                 val ready = details?.state == Load.Ready
                 Action(if (inList) Icons.Filled.Check else Icons.Filled.Add, if (inList) "In Library" else "Library", enabled = ready) { stremio.setInList(!inList) }
@@ -260,70 +308,146 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
         }
         if (withEpisodes && details != null && type == "series" && details.videos.isNotEmpty()) {
-            val seasons = details.seasons
-            val shown = season ?: nextVideo(details)?.season ?: seasons.firstOrNull()
-            item { SeasonBar(seasons, shown, details.videos, ::savedOf, downloader.busy, { season = it }) { ids -> downloadVideos(ids, "${seasonName(shown)} · ${ids.size} episode${if (ids.size == 1) "" else "s"}") } }
-            items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
+            item(key = "series-season-controls") {
+                SeasonNavigation(
+                    seasons = seasonKeys,
+                    counts = seriesGroups.mapValues { it.value.size },
+                    selectedSeason = selectedSeason,
+                    downloadLabel = seasonDownloadLabel,
+                    canDownload = missingSeasonEpisodes.isNotEmpty() && downloader.busy == null,
+                    onSelect = { selectedSeason = it; videoSearch = "" },
+                    onDownload = { downloadVideos(missingSeasonEpisodes.map { it.id }, "${seasonName(selectedSeason)} · ${missingSeasonEpisodes.size} episode${if (missingSeasonEpisodes.size == 1) "" else "s"}") },
+                    search = videoSearch,
+                    onSearch = { videoSearch = it },
+                )
+            }
+            if (visibleSeriesEpisodes.isEmpty()) item {
+                Text(if (videoSearch.isBlank()) "No episodes in this season." else "No videos match your search.", color = Dx.Muted, modifier = Modifier.padding(Gutter))
+            } else items(visibleSeriesEpisodes, key = { it.id }) { v ->
                 Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) },
                     download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), "S${v.season} E${v.episode} · ${v.title}") } }) { start(v.id) }
             }
         }
+        if (withEpisodes && details != null && type == "other" && details.videos.isNotEmpty()) {
+            item(key = "addon-files-season-controls") {
+                SeasonNavigation(
+                    seasons = seasonKeys,
+                    counts = addonFileGroups.associate { it.season to it.files.size },
+                    selectedSeason = selectedSeason,
+                    downloadLabel = null,
+                    canDownload = false,
+                    onSelect = { selectedSeason = it; videoSearch = "" },
+                    onDownload = {},
+                    search = videoSearch,
+                    onSearch = { videoSearch = it },
+                )
+            }
+            if (visibleAddonFiles.isEmpty()) item {
+                Text(if (videoSearch.isBlank()) "No files in this season." else "No videos match your search.", color = Dx.Muted, modifier = Modifier.padding(Gutter))
+            } else items(visibleAddonFiles, key = { it.id }) { file ->
+                AddonFileRow(file.title, selected = file.id == details.videoId) { start(file.id) }
+            }
+        }
+        if (withEpisodes && details?.state == Load.Ready && type == "other" && details.videos.isEmpty()) {
+            item { Text("No playable files found.", color = Dx.Muted, modifier = Modifier.padding(Gutter)) }
+        }
+        if (details != null && details.cast.isNotEmpty()) item {
+            Column(Modifier.padding(horizontal = Gutter, vertical = 16.dp)) {
+                Text("Cast", style = MaterialTheme.typography.titleSmall, color = Dx.Text)
+                Spacer(Modifier.height(8.dp))
+                // a person's name searches for their other titles
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    details.cast.take(8).chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            pair.forEach { name -> Pill(selected = false, onClick = { onSearch(name) }) { Text(name, color = Dx.Text, style = MaterialTheme.typography.bodySmall) } }
+                        }
+                    }
+                }
+            }
+        }
     }
-
-    // upright: once the picture has scrolled away, a solid bar with the title takes the back and
-    // cast buttons (they floated over the episodes before)
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val pastHeader by remember { androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex > 0 } }
-    val barAlpha by androidx.compose.animation.core.animateFloatAsState(if (pastHeader && !wide) 1f else 0f, label = "bar")
 
     Box(Modifier.fillMaxSize().background(Dx.Background)) {
         if (!wide) {
-            LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 40.dp)) { info(true) }
+            LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) { info(true) }
         } else {
             Row(Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.weight(1f).fillMaxHeight(), contentPadding = PaddingValues(bottom = 32.dp)) { info(false) }
                 Column(Modifier.weight(1f).fillMaxHeight().background(Dx.Surface).windowInsetsPadding(WindowInsets.safeDrawing)) {
                     if (type == "series" && !paneStreams) {
-                        val seasons = details?.seasons.orEmpty()
-                        val shown = season ?: details?.let { nextVideo(it)?.season } ?: seasons.firstOrNull()
                         if (details != null && details.videos.isNotEmpty()) {
-                            SeasonBar(seasons, shown, details.videos, ::savedOf, downloader.busy, { season = it }) { ids -> downloadVideos(ids, "${seasonName(shown)} · ${ids.size} episode${if (ids.size == 1) "" else "s"}") }
                             LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
-                                items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
+                                item(key = "series-season-controls") {
+                                    SeasonNavigation(
+                                        seasons = seasonKeys,
+                                        counts = seriesGroups.mapValues { it.value.size },
+                                        selectedSeason = selectedSeason,
+                                        downloadLabel = seasonDownloadLabel,
+                                        canDownload = missingSeasonEpisodes.isNotEmpty() && downloader.busy == null,
+                                        onSelect = { selectedSeason = it; videoSearch = "" },
+                                        onDownload = { downloadVideos(missingSeasonEpisodes.map { it.id }, "${seasonName(selectedSeason)} · ${missingSeasonEpisodes.size} episode${if (missingSeasonEpisodes.size == 1) "" else "s"}") },
+                                        search = videoSearch,
+                                        onSearch = { videoSearch = it },
+                                    )
+                                }
+                                if (visibleSeriesEpisodes.isEmpty()) item {
+                                    Text(if (videoSearch.isBlank()) "No episodes in this season." else "No videos match your search.", color = Dx.Muted, modifier = Modifier.padding(Gutter))
+                                } else items(visibleSeriesEpisodes, key = { it.id }) { v ->
                                     Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) },
                                         download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), "S${v.season} E${v.episode} · ${v.title}") } }) { start(v.id) }
                                 }
                             }
                         } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
+                    } else if (type == "other" && !paneStreams) {
+                        val files = addonFiles
+                        when {
+                            details == null || details.state == Load.Loading ->
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
+                            files.isEmpty() -> Text("No playable files found.", color = Dx.Muted, modifier = Modifier.padding(Gutter))
+                            else -> {
+                                LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+                                    item(key = "addon-files-season-controls") {
+                                        SeasonNavigation(
+                                            seasons = seasonKeys,
+                                            counts = addonFileGroups.associate { it.season to it.files.size },
+                                            selectedSeason = selectedSeason,
+                                            downloadLabel = null,
+                                            canDownload = false,
+                                            onSelect = { selectedSeason = it; videoSearch = "" },
+                                            onDownload = {},
+                                            search = videoSearch,
+                                            onSearch = { videoSearch = it },
+                                        )
+                                    }
+                                    if (visibleAddonFiles.isEmpty()) item {
+                                        Text(if (videoSearch.isBlank()) "No files in this season." else "No videos match your search.", color = Dx.Muted, modifier = Modifier.padding(Gutter))
+                                    }
+                                    else items(visibleAddonFiles, key = { it.id }) { file ->
+                                        AddonFileRow(file.title, selected = file.id == details.videoId) { start(file.id) }
+                                    }
+                                }
+                            }
+                        }
                     } else {
-                        if (type == "series") Row(
+                        if (type == "series" || type == "other") Row(
                             Modifier.fillMaxWidth().clickable { paneStreams = false; waitingFor = null }.padding(horizontal = 8.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Dx.Text)
                             Spacer(Modifier.width(8.dp))
-                            Text("Episodes", color = Dx.Text, style = MaterialTheme.typography.labelLarge)
+                            Text(if (type == "series") "Episodes" else "Files", color = Dx.Text, style = MaterialTheme.typography.labelLarge)
                         }
-                        StreamPicker(current, if (type == "series") episodeLine else "Streams", if (downloadMode) "Tap a stream to download it" else null, onPlay = { play(it) }, modifier = Modifier.fillMaxSize(), onPlayIn = ::play, downloading = downloadMode)
+                        StreamPicker(current, episodeLine ?: "Streams", if (downloadMode) "Tap a stream to download it" else null, onPlay = { play(it) }, modifier = Modifier.fillMaxSize(), onPlayIn = ::play, downloading = downloadMode)
                     }
                 }
             }
         }
 
-        Row(
-            Modifier.fillMaxWidth().background(Dx.Background.copy(alpha = barAlpha)).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.5f * (1f - barAlpha))),
-            ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
-            Text(
-                title.name, color = Dx.Text.copy(alpha = barAlpha), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-            )
-            if (!wide) CastButton(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.5f * (1f - barAlpha))))
-        }
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)),
+        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
+        if (!wide) CastButton(Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)))
     }
 
     if (sheet && !wide) {
@@ -341,10 +465,11 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             )
         }
     }
+
 }
 
 @Composable
-private fun Header(t: Title, d: Details?, onSearch: (String) -> Unit, onPlay: () -> Unit, below: @Composable () -> Unit = {}) {
+private fun Header(t: Title, d: Details?, onPlay: () -> Unit, below: @Composable () -> Unit = {}) {
     Column(Modifier.padding(horizontal = Gutter)) {
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -388,52 +513,15 @@ private fun Header(t: Title, d: Details?, onSearch: (String) -> Unit, onPlay: ()
                 Text("${((d.durationMs - d.resumeMs) / 60000).coerceAtLeast(1)}m left", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
-        // Three lines of the story (tap for the rest), then who's in it, as on Netflix: the page used
-        // to run on for the whole synopsis and a cast list at the very bottom
         t.description?.let {
-            var whole by rememberSaveable(t.id) { mutableStateOf(false) }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                it, color = Dx.Text, style = MaterialTheme.typography.bodyMedium,
-                maxLines = if (whole) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { whole = !whole },
-            )
-        }
-        if (d != null && d.cast.isNotEmpty()) {
-            var everyone by rememberSaveable(t.id) { mutableStateOf(false) }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Starring: ${d.cast.take(3).joinToString(", ")}${if (d.cast.size > 3 && !everyone) "… more" else ""}",
-                color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { everyone = !everyone },
-            )
-            // the whole cast: a name finds their other titles
-            if (everyone) {
-                Spacer(Modifier.height(8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    d.cast.take(12).chunked(2).forEach { pair ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            pair.forEach { name -> Pill(selected = false, onClick = { onSearch(name) }) { Text(name, color = Dx.Text, style = MaterialTheme.typography.bodySmall) } }
-                        }
-                    }
-                }
-            }
+            Spacer(Modifier.height(14.dp))
+            Text(it, color = Dx.Text, style = MaterialTheme.typography.bodyMedium)
         }
         if (d != null && d.directors.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            Text("Director: ${d.directors.joinToString(", ")}", color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(8.dp))
+            Text("Director: ${d.directors.joinToString(", ")}", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
         }
     }
-}
-
-/** An episode's air date ("2025-07-11T00:00:00Z") as "11 Jul 2025": every episode of a season showed the same year */
-fun airDate(released: String?): String? {
-    val iso = released?.take(10) ?: return null
-    // (SimpleDateFormat: java.time needs Android 8, and phones from Android 7 are supported)
-    return runCatching {
-        val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(iso)!!
-        java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault()).format(date)
-    }.getOrNull() ?: released.take(4)
 }
 
 /** "107 min" as "1h 47m" */
@@ -455,57 +543,72 @@ private fun Action(icon: ImageVector, label: String, enabled: Boolean = true, on
     }
 }
 
-@Composable
-private fun SeasonPicker(seasons: List<Int>, current: Int?, onPick: (Int) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box(Modifier.padding(horizontal = Gutter, vertical = 12.dp)) {
-        Row(
-            Modifier.clip(RoundedCornerShape(6.dp)).background(Dx.Raised).clickable(enabled = seasons.size > 1) { open = true }.padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(seasonName(current), color = Dx.Text, style = MaterialTheme.typography.labelLarge)
-            if (seasons.size > 1) Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = Dx.Text)
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            seasons.forEach { s -> DropdownMenuItem(text = { Text(seasonName(s)) }, onClick = { open = false; onPick(s) }) }
-        }
-    }
-}
-
 private fun seasonName(s: Int?) = when (s) {
     null -> "Episodes"
     0 -> "Specials"
     else -> "Season $s"
 }
 
-/** The season picker, with Download season beside it (the episodes out so far that aren't saved yet) */
+private fun orderedSeasonKeys(seasons: Collection<Int?>): List<Int?> =
+    seasons.distinct().sortedWith(compareBy<Int?> { it == null }.thenBy { if (it == 0) Int.MAX_VALUE else it ?: Int.MAX_VALUE })
+
 @Composable
-private fun SeasonBar(
-    seasons: List<Int>, shown: Int?, videos: List<Video>, saved: (String) -> com.notdxbi.dxbi.tv.Downloads.Item?, busy: String?,
-    onPick: (Int) -> Unit, onDownload: (List<String>) -> Unit,
+private fun SeasonNavigation(
+    seasons: List<Int?>,
+    counts: Map<Int?, Int>,
+    selectedSeason: Int?,
+    downloadLabel: String?,
+    canDownload: Boolean,
+    onSelect: (Int?) -> Unit,
+    onDownload: () -> Unit,
+    search: String,
+    onSearch: (String) -> Unit,
 ) {
-    val out = videos.filter { it.season == shown && !it.upcoming }
-    val missing = out.filter { v -> saved(v.id)?.let { it.failed } ?: true }.map { it.id }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        SeasonPicker(seasons, shown, onPick)
-        Spacer(Modifier.weight(1f))
-        if (out.isNotEmpty()) Row(
-            Modifier.padding(end = Gutter).clip(RoundedCornerShape(50)).border(1.dp, Dx.Line, RoundedCornerShape(50))
-                .clickable(enabled = missing.isNotEmpty() && busy == null) { onDownload(missing) }.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(if (missing.isEmpty()) Icons.Filled.Check else Icons.Filled.Download, contentDescription = null, tint = Dx.Text, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(
-                when {
-                    busy != null -> busy
-                    missing.isEmpty() -> "Season downloaded"
-                    missing.size < out.size -> "Download the other ${missing.size}"
-                    else -> "Download season"
-                },
-                color = Dx.Text, style = MaterialTheme.typography.labelMedium, maxLines = 1,
-            )
+    if (seasons.isEmpty()) return
+    var menu by remember { mutableStateOf(false) }
+    val selectedIndex = seasons.indexOf(selectedSeason).coerceAtLeast(0)
+    Column(Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 4.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = { onSelect(seasons[selectedIndex - 1]) }, enabled = selectedIndex > 0) {
+                Text("< Prev", maxLines = 1)
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                TextButton(onClick = { menu = true }) {
+                    Text(seasonName(seasons[selectedIndex]), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    seasons.forEach { season ->
+                        DropdownMenuItem(
+                            text = { Text("${seasonName(season)} · ${counts[season] ?: 0}") },
+                            onClick = { menu = false; onSelect(season) },
+                        )
+                    }
+                }
+            }
+            TextButton(onClick = { onSelect(seasons[selectedIndex + 1]) }, enabled = selectedIndex < seasons.lastIndex) {
+                Text("Next >", maxLines = 1)
+            }
         }
+        if (downloadLabel != null) {
+            Button(
+                onClick = onDownload,
+                enabled = canDownload,
+                colors = ButtonDefaults.buttonColors(containerColor = Dx.Raised, contentColor = Dx.Text),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(if (downloadLabel == "Downloaded") Icons.Filled.Check else Icons.Filled.Download, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(downloadLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        OutlinedTextField(
+            value = search,
+            onValueChange = onSearch,
+            label = { Text("Search videos") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -548,12 +651,34 @@ private fun FilmDownload(item: com.notdxbi.dxbi.tv.Downloads.Item?, busy: String
     }
 }
 
+/** An addon's file entry (as used by StremThru Store): selecting it loads its streams */
+@Composable
+private fun AddonFileRow(title: String, selected: Boolean, onPlay: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onPlay).padding(horizontal = Gutter, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(38.dp).clip(CircleShape).background(if (selected) Color.White else Dx.Raised),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = "Play $title", tint = if (selected) Color.Black else Dx.Text)
+        }
+
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title.ifEmpty { "Video file" }, color = Dx.Text, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(if (selected) "Selected · tap to play" else "Tap to play", color = if (selected) Dx.Accent else Dx.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
 /** An episode: tap to play it; hold for watched, unwatched, or watched up to here */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatched: (watched: Boolean, upTo: Boolean) -> Unit, download: @Composable () -> Unit = {}, onPlay: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().combinedClickable(enabled = !v.upcoming, onLongClick = { menu = true }, onClick = onPlay).padding(horizontal = Gutter, vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().combinedClickable(enabled = !v.upcoming, onLongClick = { menu = true }, onClick = onPlay).padding(horizontal = Gutter, vertical = 10.dp)) {
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(if (v.watched) "Mark as unwatched" else "Mark as watched") }, onClick = { menu = false; onWatched(!v.watched, false) })
             if ((v.episode ?: 0) > 1) DropdownMenuItem(text = { Text("Mark up to here as watched") }, onClick = { menu = false; onWatched(true, true) })
@@ -574,7 +699,7 @@ private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatche
                     v.upcoming -> v.released?.take(10)?.let { "Coming $it" } ?: "Coming soon"
                     resumeHere -> if (inProgress) "Continue watching" else "Up next"
                     v.watched -> "Watched"
-                    else -> airDate(v.released)
+                    else -> v.released?.take(4)
                 }
                 note?.let { Text(it, color = if (resumeHere) Dx.Accent else Dx.Muted, style = MaterialTheme.typography.bodySmall) }
             }
@@ -582,8 +707,8 @@ private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatche
             download()
         }
         v.overview?.let {
-            Spacer(Modifier.height(6.dp))
-            Text(it, color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
     }
 }
