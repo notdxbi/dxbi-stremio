@@ -16764,31 +16764,330 @@
           missing: [!settings.tmdbKey.trim() && "tmdb", !settings.mdblistKey.trim() && "mdblist"].filter(Boolean),
         };
       },
-      // The streams for the title open in details, read the way the stream list reads them, and the one
+      // Library addons (StremThru Store and the like) keep whole season packs under their own "other"
+      // ids: the file in one of them for the episode open in details, offered beside the addons' streams
+      libraryCache: new Map(),
+      libraryMetaCache: new Map(),
+
+      fileDetails(video) {
+        let fileId = String(video.id || "").split(":").pop() || "";
+        try { fileId = decodeURIComponent(fileId); } catch (_) { /* use the encoded id as-is */ }
+        const seasonFolder = /^(?:season|series|s)[ ._-]*(\d\d?)(?:\b.*)?$/i;
+        const seasonEpisode = /(?:^|[^a-z0-9])s(\d\d?)[ ._-]*e(\d\d?\d?)(?:[^0-9]|$)/i;
+        const crossSeasonEpisode = /(?:^|[^0-9])(\d\d?)x(\d\d?\d?)(?:[^0-9]|$)/i;
+        const namedEpisode = /(?:^|[\s._-]|\[|\u0028)(?:episode|ep|e)[\s._-]*(\d\d?\d?)(?=$|[\s._-]|\]|\u0029)/i;
+        const standaloneEpisode = /(?:^|[-_.]|\[|\u0028)\s*(\d\d?\d?)(?=$|[\s._-]|\]|\u0029)/i;
+        const extraMarker = /(?:^|[\s._\-]|\[|\u0028)(?:NCED|NCOP|OVA|OAD|SP|PV|MENU|PREVIEW|EXTRAS|SPECIALS?)(?=$|[\s._\-\d]|\]|\u0029)/i;
+        const isolatedOpeningEnding = /(?:^|[\s._\-]|\[|\u0028)(?:OP|ED)\s*\d*(?=$|[\s._\-]|\]|\u0029)/i;
+        const extraFolder = /^(?:specials?|ovas?|oads?|extras?)$/i;
+        let folderSeason = null;
+        let inSeasonFolder = false;
+        let inExtraFolder = false;
+        let detectedSeason = null;
+        let detectedEpisode = null;
+        let isExtra = false;
+
+        for (const path of [String(video.title || ""), fileId]) {
+          const parts = path.split(/[\\/]/);
+          const leaf = parts.at(-1) || "";
+          for (const folder of parts.slice(0, -1)) {
+            if (extraFolder.test(folder.trim())) inExtraFolder = true;
+            const found = seasonFolder.exec(folder.trim());
+            if (found) {
+              folderSeason = Number(found[1]);
+              inSeasonFolder = true;
+            }
+          }
+
+          if (extraMarker.test(leaf) || inExtraFolder) {
+            isExtra = true;
+            continue;
+          }
+
+          const se = seasonEpisode.exec(leaf);
+          const cross = crossSeasonEpisode.exec(leaf);
+          let episode = null;
+          if (se) {
+            detectedSeason = Number(se[1]);
+            episode = Number(se[2]);
+          } else if (cross) {
+            detectedSeason = Number(cross[1]);
+            episode = Number(cross[2]);
+          } else {
+            const named = namedEpisode.exec(leaf);
+            const standalone = standaloneEpisode.exec(leaf);
+            episode = named ? Number(named[1]) : standalone ? Number(standalone[1]) : null;
+          }
+          if (episode !== null) {
+            detectedEpisode = episode;
+            break;
+          }
+          if (isolatedOpeningEnding.test(leaf) && !se && !cross) isExtra = true;
+        }
+
+        const season = isExtra ? 0
+          : detectedSeason !== null ? detectedSeason
+            : inSeasonFolder ? folderSeason
+              : video.season == null ? null : Number(video.season);
+        const episode = isExtra ? null : detectedEpisode !== null ? detectedEpisode
+          : video.episode == null ? null : Number(video.episode);
+        const title = String(video.title || video.name || fileId).split(/[\\/]/).pop() || fileId;
+        return { season, episode, title, id: video.id, path: String(video.title || video.name || fileId) };
+      },
+
+      async libraryStreams(state, items) {
+        const selected = state && state.selected && state.selected.streamPath;
+        const metaResult = state && state.metaItem && state.metaItem.content;
+        const meta = metaResult && metaResult.type === "Ready" && metaResult.content;
+        if (!meta || !selected || !selected.id || !["movie", "series"].includes(meta.type)) return [];
+        await metadataSource.refresh();
+        const targetVideo = (meta.videos || []).find((video) => video.id === selected.id);
+        if (meta.type === "series" && !targetVideo) return [];
+
+        const normalize = (value) => {
+          const text = String(value || "").normalize("NFKC")
+            .toLowerCase()
+            .replace(/\b(19|20)\d{2}\b/g, " ")
+            .replace(/\b(2160p|1080p|720p|480p|4k|hdr|web[- ]?dl|blu[- ]?ray)\b/g, " ")
+            .trim();
+          return text.replace(/[^a-z0-9]+/g, " ").trim() || text;
+        };
+        const titleValues = (value) => {
+          if (typeof value === "string") return [value];
+          if (Array.isArray(value)) return value.flatMap(titleValues);
+          if (!value || typeof value !== "object") return [];
+          return Object.values(value).flatMap(titleValues);
+        };
+        const titleFields = [
+          "name", "originalName", "originalTitle", "original_name", "original_title", "canonicalTitle",
+          "english", "englishName", "romaji", "nativeName", "aliases", "alternativeTitles", "alternative_titles",
+          "alternative_names", "aka", "akaTitles", "aka_titles", "titles", "names",
+        ];
+        const titleAliases = (item) => [...new Set(titleFields.flatMap((key) => titleValues(item && item[key])
+          .map((value) => value.trim()).filter(Boolean)))];
+        const collectIds = (item) => {
+          const ids = new Set();
+          const add = (value) => {
+            if (typeof value !== "string") return;
+            const text = value.trim();
+            const imdb = text.match(/tt\d+/i);
+            if (imdb) ids.add(imdb[0].toLowerCase());
+            const kitsu = text.match(/(?:kitsu[:_/.-]?|kitsu\.io\/anime\/)(\d+)/i);
+            if (kitsu) {
+              ids.add(`kitsu:${kitsu[1]}`);
+              ids.add(kitsu[1]);
+            }
+          };
+          const addKitsu = (value) => {
+            if (value == null || !/^\d+$/.test(String(value))) return;
+            ids.add(`kitsu:${value}`);
+            ids.add(String(value));
+          };
+          if (!item || typeof item !== "object") return ids;
+          add(item.id);
+          add(item.imdbId);
+          add(item.imdb_id);
+          addKitsu(item.kitsuId);
+          addKitsu(item.kitsu_id);
+          for (const [source, value] of Object.entries(item.ids || {})) {
+            if (/kitsu/i.test(source)) addKitsu(value);
+            else add(String(value));
+          }
+          for (const link of Array.isArray(item.links) ? item.links : []) {
+            if (link && typeof link === "object") {
+              add(link.name);
+              add(link.url);
+            }
+          }
+          return ids;
+        };
+        const aliases = titleAliases(meta);
+        const wanted = [...new Set(aliases.map(normalize).filter(Boolean))];
+        const ids = collectIds(meta);
+        const searchTerms = [...new Set([...aliases, ...ids])];
+        if (!wanted.length && !ids.size) return [];
+        const titleMatches = (item) => titleAliases(item).some((value) => {
+          const text = value.trim();
+          const tagEnd = text.startsWith("[") ? text.indexOf("] ") : -1;
+          const name = normalize(tagEnd >= 0 ? text.slice(tagEnd + 2) : text);
+          return wanted.some((title) => name && (name === title || name.startsWith(`${title} `) || title.startsWith(`${name} `)));
+        });
+        const identityMatches = (item) => [...collectIds(item)].some((id) => ids.has(id));
+        const servesOther = (addon, resource) => (addon.manifest.resources || []).some((entry) => {
+          const name = typeof entry === "string" ? entry : entry && entry.name;
+          const types = (typeof entry === "object" && entry.types) || addon.manifest.types || [];
+          return name === resource && types.includes("other");
+        });
+        const addons = metadataSource.addons.filter((addon) =>
+          servesOther(addon, "meta") && servesOther(addon, "stream")
+          && (addon.manifest.catalogs || []).some((catalog) => catalog && catalog.type === "other"));
+
+        const candidates = [];
+        await Promise.all(addons.map(async (addon) => {
+          const catalogs = (addon.manifest.catalogs || [])
+            .filter((catalog) => catalog && catalog.type === "other" && (catalog.extra || []).some((extra) => extra && extra.name === "search"));
+          await Promise.all(catalogs.flatMap((catalog) => searchTerms.map(async (term) => {
+            const query = normalize(term);
+            if (!query) return;
+            const key = `${metadataSource.generation}:${addon.transportUrl}:${catalog.id}:${query}`;
+            let entry = this.libraryCache.get(key);
+            if (!entry || Date.now() - entry.at > 5 * 60 * 1000) {
+              entry = { at: Date.now(), promise: null };
+              entry.promise = (async () => {
+                const base = metadataSource.url(addon, "catalog", "other", catalog.id);
+                if (!base) return [];
+                const url = new URL(base);
+                url.pathname = url.pathname.replace(/\.json$/, `/search=${encodeURIComponent(term)}.json`);
+                const response = await fetch(url.href, { signal: AbortSignal.timeout(6000) });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const body = await response.json();
+                return Array.isArray(body.metas) ? body.metas.filter((result) => {
+                  if (!result || typeof result.id !== "string" || (result.type && result.type !== "other")) return false;
+                  return titleMatches(result) || identityMatches(result);
+                }) : [];
+              })().catch((error) => {
+                console.warn("[dx.bi] library catalog lookup failed", (addon.manifest && addon.manifest.name) || "library addon", error);
+                return [];
+              });
+              this.libraryCache.set(key, entry);
+              if (this.libraryCache.size > 80) this.libraryCache.delete(this.libraryCache.keys().next().value);
+            }
+            for (const result of await entry.promise) candidates.push({ addon, result });
+          })));
+        }));
+
+        const uniqueCandidates = [...new Map(candidates.map((candidate) =>
+          [`${candidate.addon.transportUrl}:${candidate.result.id}`, candidate])).values()];
+        const matches = [];
+        await Promise.all(uniqueCandidates.map(async ({ addon, result }) => {
+          const key = `${metadataSource.generation}:${addon.transportUrl}:meta:${result.id}`;
+          let entry = this.libraryMetaCache.get(key);
+          if (!entry || Date.now() - entry.at > (entry.failed ? 30_000 : 2 * 60 * 1000)) {
+            entry = { at: Date.now(), failed: false, promise: null };
+            entry.promise = (async () => {
+              const url = metadataSource.url(addon, "meta", "other", result.id);
+              if (!url) return null;
+              const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const body = await response.json();
+              return body && body.meta;
+            })().catch((error) => {
+              entry.failed = true;
+              console.warn("[dx.bi] library metadata lookup failed", (addon.manifest && addon.manifest.name) || "library addon", error);
+              return null;
+            });
+            this.libraryMetaCache.set(key, entry);
+            if (this.libraryMetaCache.size > 100) this.libraryMetaCache.delete(this.libraryMetaCache.keys().next().value);
+          }
+          const pack = await entry.promise;
+          if (!pack || !Array.isArray(pack.videos) || !pack.videos.length) return;
+          const files = pack.videos.map((video) => this.fileDetails(video));
+          let selectedFile;
+          if (meta.type === "series") {
+            const target = this.fileDetails(targetVideo);
+            const targetSeason = target.season == null
+              ? targetVideo.season == null ? null : Number(targetVideo.season)
+              : target.season;
+            const targetEpisode = target.episode == null
+              ? targetVideo.episode == null ? null : Number(targetVideo.episode)
+              : target.episode;
+            selectedFile = files.find((file) => file.season === targetSeason && file.episode === targetEpisode);
+            if (!selectedFile && targetEpisode != null) {
+              const episodeName = normalize(targetVideo.title);
+              selectedFile = files.find((file) => file.episode === targetEpisode && normalize(file.title) === episodeName);
+            }
+            if (!selectedFile && Number.isFinite(targetEpisode) && targetEpisode > 0
+              && (!Number.isFinite(targetSeason) || targetSeason > 0)) {
+              const priorSeasonEpisodes = new Map();
+              for (const video of meta.videos || []) {
+                const details = this.fileDetails(video);
+                const season = details.season == null ? Number(video.season) : details.season;
+                const episode = details.episode == null ? Number(video.episode) : details.episode;
+                if (Number.isFinite(season) && season > 0 && season < targetSeason && Number.isFinite(episode)) {
+                  priorSeasonEpisodes.set(season, Math.max(priorSeasonEpisodes.get(season) || 0, episode));
+                }
+              }
+              const priorCount = [...priorSeasonEpisodes.values()].reduce((sum, count) => sum + count, 0);
+              const absoluteEpisode = Number(targetVideo.absoluteEpisode || targetVideo.absolute || targetVideo.number)
+                || (targetEpisode > priorCount ? targetEpisode : priorCount + targetEpisode);
+              selectedFile = files.find((file) => file.season == null && file.episode === absoluteEpisode);
+            }
+          } else {
+            selectedFile = files.find((file) => wanted.includes(normalize(file.title))) || (files.length === 1 ? files[0] : null);
+          }
+          if (selectedFile) matches.push({ addon, pack, result, files, selectedFile });
+        }));
+
+
+        return matches.map(({ addon, pack, result, files, selectedFile }, index) => {
+          const episode = selectedFile.season == null ? "" : selectedFile.season === 0
+            ? "Specials"
+            : `S${String(selectedFile.season).padStart(2, "0")}${selectedFile.episode == null ? "" : `E${String(selectedFile.episode).padStart(2, "0")}`}`;
+          return {
+            index: items.length + index,
+            play: "",
+            addon: (addon.manifest && addon.manifest.name) || "Library addon",
+            filename: selectedFile.title,
+            label: [episode, "Library file"].filter(Boolean).join(" · "),
+            torrent: false,
+            provider: (addon.manifest && addon.manifest.name) || "Library addon",
+            site: "",
+            codec: "",
+            instant: true,
+            pending: false,
+            lesser: false,
+            res: 0,
+            hdr: false,
+            dv: false,
+            size: 0,
+            seeds: -1,
+            source: "Library",
+            langs: [],
+            library: {
+              type: "other",
+              metaId: pack.id || result.id,
+              fileId: selectedFile.id,
+              packTitle: pack.name || result.name || "Library file",
+              files,
+            },
+          };
+        });
+      },
+
       // Just press Play would pick (what this viewer chose last, else the best that's ready to play)
-      async streams() {
-        const state = await core().getState("meta_details").catch(() => null);
+
+      // The streams for the title open in details, read the way the stream list reads them, and the one
+      // Just press Play would pick (what this viewer chose last, else the best that's ready to play).
+      // Files from library addons' season packs come after them
+      async streams(field = "meta_details") {
+        const state = await core().getState(field).catch(() => null);
         const groups = state && Array.isArray(state.streams) ? state.streams : [];
         const metaId = state && state.selected && state.selected.metaPath && state.selected.metaPath.id;
         const items = groups.flatMap((g) => (g && g.content && g.content.type === "Ready" && Array.isArray(g.content.content)
           ? g.content.content.map((st) => ({ st, addon: (g.addon && g.addon.manifest && g.addon.manifest.name) || "" })) : []))
           .filter((x) => x.st && x.st.deepLinks && x.st.deepLinks.player && !x.st.ytId)
           .map((x) => ({ ...x, torrent: !!x.st.infoHash && !x.st.url, hint: watchParty.streamHints(x.st), d: describeStream(String(x.st.name || ""), `${x.st.name || ""}\n${x.st.description || x.st.title || ""}`) }));
-        const server = await core().getState("streaming_server").catch(() => null);
+        const [server, library] = await Promise.all([
+          core().getState("streaming_server").catch(() => null),
+          this.libraryStreams(state, items).catch(() => []),
+        ]);
         const options = {
           limit: streamChoice.limit(settings.quickPlayQuality),
           fallback: settings.quickPlayFallback,
           torrents: !!(server && server.settings && server.settings.type === "Ready") || (IN_TV && settings.tvTorrents),
         };
         const choice = items.length ? streamChoice.choose(items, metaId ? quickPlay.memory(metaId) : null, options) : null;
-        phoneStreams = { items, options };
+        phoneStreams = { items, options, library, state };
+        // (settled: the title's details are in and no addon is still answering)
+        const meta = state && state.metaItem && state.metaItem.content;
+        const settled = !!meta && meta.type !== "Loading" && !groups.some((g) => g && g.content && g.content.type === "Loading");
         return {
           justPlay: settings.quickPlay,
-          settled: groups.length > 0 && !groups.some((g) => g && g.content && g.content.type === "Loading"),
+          settled,
           videoId: (state && state.selected && state.selected.streamPath && state.selected.streamPath.id) || null,
-          pick: choice ? items.indexOf(choice.item) : -1,
-          how: choice ? choice.how : null,
-          items: items.map((x) => ({
+          pick: choice ? items.indexOf(choice.item) : library.length ? items.length : -1,
+          how: choice ? choice.how : library.length ? "library" : null,
+          items: [...items.map((x) => ({
             play: x.st.deepLinks.player,
             addon: x.addon,
             // the file's own name: what tells two 1080p streams apart
@@ -16796,17 +17095,42 @@
             label: quickPlay.label(x.d),
             torrent: x.torrent,
             ...x.d,
-          })),
+          })), ...library.map(({ library: _files, ...item }) => item)],
         };
       },
-      // Playing one of those: like Just press Play, the next best are kept in case it won't play
-      play(index) {
+      // Playing one of those: like Just press Play, the next best are kept in case it won't play.
+      // A library file: its stream from the library addon, played as this episode (so its progress
+      // and Continue Watching are the show's)
+      async play(index) {
         const item = phoneStreams && phoneStreams.items[index];
-        if (!item) return null;
-        quickPlay.from = location.hash;
-        quickPlay.spares = streamChoice.spares(phoneStreams.items, item, phoneStreams.options);
-        quickPlay.play(item);
-        return item.st.deepLinks.player;
+        if (item) {
+          quickPlay.from = location.hash;
+          quickPlay.spares = streamChoice.spares(phoneStreams.items, item, phoneStreams.options);
+          quickPlay.play(item);
+          return item.st.deepLinks.player;
+        }
+        const file = phoneStreams && phoneStreams.library && phoneStreams.library[index - phoneStreams.items.length];
+        return file ? this.libraryLink(file, phoneStreams.state).catch((err) => { log("library file", err && err.message); return null; }) : null;
+      },
+      async libraryLink(file, state) {
+        const addon = metadataSource.addons.find((a) => a.manifest && a.manifest.name === file.addon) || null;
+        const url = addon && metadataSource.url(addon, "stream", file.library.type, file.library.fileId);
+        if (!url) return null;
+        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json();
+        const stream = (body && Array.isArray(body.streams) ? body.streams : []).find((s) => s && (s.url || s.infoHash));
+        if (!stream) return null;
+        const sel = state && state.selected;
+        const metaPath = sel && sel.metaPath;
+        const videoId = sel && sel.streamPath && sel.streamPath.id;
+        const metaItem = state && state.metaItem;
+        const metaTransport = (metaItem && metaItem.addon && metaItem.addon.transportUrl) || (metaItem && metaItem.request && metaItem.request.base) || null;
+        const parts = [await downloads.encode(stream), addon.transportUrl];
+        // (as the episode: else as the pack's own file)
+        if (metaTransport && metaPath && videoId) parts.push(metaTransport, metaPath.type, metaPath.id, videoId);
+        else parts.push(addon.transportUrl, file.library.type, file.library.metaId, file.library.fileId);
+        return `#/player/${parts.map((p) => encodeURIComponent(p)).join("/")}`;
       },
       // Watch party (see watchParty.phone)
       party: watchParty.phone,

@@ -83,6 +83,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.asPaddingValues
 import com.notdxbi.dxbi.tv.Phone
+import com.notdxbi.dxbi.tv.phone.AddonFiles
 import com.notdxbi.dxbi.tv.phone.Details
 import com.notdxbi.dxbi.tv.phone.Load
 import com.notdxbi.dxbi.tv.phone.Review
@@ -105,14 +106,19 @@ import com.notdxbi.dxbi.tv.phone.Video
 fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, play: Boolean, onBack: () -> Unit, onSearch: (String) -> Unit) {
     val all by stremio.details.collectAsState()
     // what's shown is this title's (the model can still hold the last title's for a moment)
-    val details = all?.takeIf { it.metaId == id }
+    // (a library addon's season pack, type "other": its files as seasons and episodes, read from their names)
+    val details = remember(all, id, type) {
+        all?.takeIf { it.metaId == id }?.let { d -> if (type == "other" && d.videos.isNotEmpty()) d.copy(videos = AddonFiles.asEpisodes(d.videos)) else d }
+    }
+    // what has episodes to pick from: a series, or a pack
+    val episodic = type == "series" || type == "other"
     val title = details?.title ?: preview ?: Title(id, type, "")
     val context = LocalContext.current
     val config = LocalConfiguration.current
     val wide = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600
     var sheet by rememberSaveable { mutableStateOf(false) }
     // sideways: whether the right side shows the streams (a film always does)
-    var paneStreams by rememberSaveable { mutableStateOf(type != "series") }
+    var paneStreams by rememberSaveable { mutableStateOf(!episodic) }
     var season by rememberSaveable { mutableStateOf<Int?>(null) }
     var choices by remember(type, id) { mutableStateOf<StreamChoices?>(null) }
     // what Play was pressed for, while dx.bi's pick for it is worked out (Just press Play)
@@ -131,14 +137,14 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
 
     /** What Play starts: the episode they're in the middle of, else the first one */
     fun nextVideo(d: Details): Video? {
-        if (type != "series") return null
+        if (!episodic) return null
         // (the one picked first: the page moves it on to the next episode after one is finished)
         return d.videos.firstOrNull { it.id == d.videoId } ?: d.videos.firstOrNull { it.id == d.resumeVideoId } ?: d.videos.firstOrNull { (it.season ?: 0) > 0 && !it.upcoming } ?: d.videos.firstOrNull()
     }
 
     // The streams for that episode, fetched before Play is pressed
     LaunchedEffect(details?.state, details?.metaId) {
-        if (details?.state == Load.Ready && type == "series" && details.videoId == null) nextVideo(details)?.let { stremio.open(type, id, it.id) }
+        if (details?.state == Load.Ready && episodic && details.videoId == null) nextVideo(details)?.let { stremio.open(type, id, it.id) }
     }
     // dx.bi's reading of them, again as more addons answer
     LaunchedEffect(details) { if (details?.videoId != null) choices = stremio.streams() }
@@ -166,7 +172,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
 
     fun start(videoId: String?) {
         val target = videoId ?: details?.videoId ?: id
-        if (type == "series" && videoId != null && videoId != details?.videoId) stremio.open(type, id, videoId)
+        if (episodic && videoId != null && videoId != details?.videoId) stremio.open(type, id, videoId)
         downloadMode = false
         waitingFor = target
         if (wide) paneStreams = true else sheet = true
@@ -174,7 +180,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
 
     // the stream list for one episode (or the film), where a tap downloads instead of playing
     downloader.onChoose = { videoId ->
-        if (type == "series" && videoId != details?.videoId) stremio.open(type, id, videoId)
+        if (episodic && videoId != details?.videoId) stremio.open(type, id, videoId)
         waitingFor = null
         downloadMode = true
         if (wide) paneStreams = true else sheet = true
@@ -205,7 +211,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     }
 
     val episode = details?.videos?.firstOrNull { it.id == details.videoId }
-    val episodeLine = episode?.let { "S${it.season} E${it.episode} · ${it.title}" }
+    val episodeLine = episode?.let { if (it.episode == null) it.title else "S${it.season} E${it.episode} · ${it.title}" }
 
     val info: LazyListScope.(Boolean) -> Unit = { withEpisodes ->
         item {
@@ -221,7 +227,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
         }
         item {
             Header(title, details, onSearch, onPlay = { start(details?.let { nextVideo(it)?.id }) }) {
-                if (type != "series") FilmDownload(savedOf(id), downloader.busy) { downloadVideos(listOf(id), "Film") }
+                if (!episodic) FilmDownload(savedOf(id), downloader.busy) { downloadVideos(listOf(id), "Film") }
             }
         }
         reviews?.scores?.takeIf { it.isNotEmpty() }?.let { scores -> item { ScoreBadges(scores) } }
@@ -259,7 +265,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
         if (details == null || details.state == Load.Loading) item {
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
         }
-        if (withEpisodes && details != null && type == "series" && details.videos.isNotEmpty()) {
+        if (withEpisodes && details != null && episodic && details.videos.isNotEmpty()) {
             val seasons = details.seasons
             val shown = season ?: nextVideo(details)?.season ?: seasons.firstOrNull()
             item { SeasonBar(seasons, shown, details.videos, ::savedOf, downloader.busy, { season = it }) { ids -> downloadVideos(ids, "${seasonName(shown)} · ${ids.size} episode${if (ids.size == 1) "" else "s"}") } }
@@ -283,7 +289,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             Row(Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.weight(1f).fillMaxHeight(), contentPadding = PaddingValues(bottom = 32.dp)) { info(false) }
                 Column(Modifier.weight(1f).fillMaxHeight().background(Dx.Surface).windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    if (type == "series" && !paneStreams) {
+                    if (episodic && !paneStreams) {
                         val seasons = details?.seasons.orEmpty()
                         val shown = season ?: details?.let { nextVideo(it)?.season } ?: seasons.firstOrNull()
                         if (details != null && details.videos.isNotEmpty()) {
@@ -296,7 +302,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                             }
                         } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
                     } else {
-                        if (type == "series") Row(
+                        if (episodic) Row(
                             Modifier.fillMaxWidth().clickable { paneStreams = false; waitingFor = null }.padding(horizontal = 8.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -304,7 +310,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                             Spacer(Modifier.width(8.dp))
                             Text("Episodes", color = Dx.Text, style = MaterialTheme.typography.labelLarge)
                         }
-                        StreamPicker(current, if (type == "series") episodeLine else "Streams", if (downloadMode) "Tap a stream to download it" else null, onPlay = { play(it) }, modifier = Modifier.fillMaxSize(), onPlayIn = ::play, downloading = downloadMode)
+                        StreamPicker(current, if (episodic) episodeLine else "Streams", if (downloadMode) "Tap a stream to download it" else null, onPlay = { play(it) }, modifier = Modifier.fillMaxSize(), onPlayIn = ::play, downloading = downloadMode)
                     }
                 }
             }
