@@ -15,7 +15,7 @@ const cut = (from, to) => {
   return source.slice(a, b);
 };
 const homePack = cut("  const HOME_PACK = [", "  const addonTools = {");
-const starter = cut("  const STARTER_ADDONS = [", "  // ---------------------------------------------------------------------------\n  // Saved data.");
+const starter = cut("  const STARTER_ADDONS = [", "  // Saved data.");
 
 // A stand-in for Stremio's core: a profile, and InstallAddon appending to it
 const storage = new Map();
