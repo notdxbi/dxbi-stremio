@@ -182,7 +182,7 @@ dx.bi keeps itself up to date. On Windows and Linux it downloads new versions in
 ## Read this first
 
 > [!IMPORTANT]
-> DX.BI is built on Stremio's open-source web app and uses your Stremio account and addons. It doesn't add any movies, shows or streams of its own: everything comes from the addons you install.
+> DX.BI is built on Stremio's open-source web app and uses your Stremio account and addons. It doesn't add any movies, shows or streams of its own: everything comes from the addons you install. Until you sign in, DX.BI starts with a few free ones (catalogs for Home and Torrentio), so you can look around first.
 >
 > If an addon has nothing for a title, DX.BI won't either.
 

@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.36.1
+ * @version 2.37.0
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.36.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.37.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -9219,6 +9219,8 @@
       try { if (localStorage.getItem("dxbi.packOffered")) return; } catch (_) { return; }
       const profile = await this.profile().catch(() => null);
       if (!profile || !Array.isArray(profile.addons)) return;
+      // Signed out, the starter addons already cover it (asked once signed in instead)
+      if (!profile.auth) return;
       const missing = this.missingPack(profile.addons);
       if (missing.length < HOME_PACK.length) {
         try { localStorage.setItem("dxbi.packOffered", "1"); } catch (_) { /* ignore */ }
@@ -9287,6 +9289,93 @@
         if (ok === 0) await this.apply(addons, `Restored ${addons.length} addons from the backup.`);
       });
       input.click();
+    },
+  };
+
+  // ---- Starter addons: signed out (a new install, the web page, after signing out), dx.bi starts
+  // with the same addons as dx.bi's own setup, so Home has rows and titles have streams before anyone
+  // makes an account. Each is added once per signed-out stretch: one the visitor removes stays
+  // removed. Signing in swaps in the account's own addons (none of these are pushed to it), and
+  // signing out again starts over. No keys: Torrentio is the plain, unconfigured one.
+  const STARTER_ADDONS = [
+    HOME_PACK[2].url, // TMDB Collections
+    // (Ratings v3 and Cast Search, on dx.bi's own account too, are left out: both answered 404 in
+    // November 2026)
+    // Anime Catalogs with top airing too (the Home pack leaves it out)
+    "https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/%7B%22search%22%3A%22on%22%2C%22myanimelist_top-airing%22%3A%22on%22%2C%22myanimelist_top-series%22%3A%22on%22%2C%22myanimelist_top-movies%22%3A%22on%22%7D/manifest.json",
+    "https://torrentio.strem.fun/manifest.json",
+    HOME_PACK[0].url, // Streaming Catalogs
+  ];
+
+  const starterAddons = {
+    KEY: "dxbi.starterAddons", // hosts already added (or found) while signed out
+    busy: false,
+    timer: null,
+
+    host(url) {
+      try { return new URL(url).host; } catch (_) { return ""; }
+    },
+
+    // Pure: which starter URLs to add, given the profile's addon URLs and the hosts already handled
+    plan(starter, have, done) {
+      const haveHosts = new Set(have.map((u) => this.host(u)));
+      return starter.filter((u) => !haveHosts.has(this.host(u)) && !done.includes(this.host(u)));
+    },
+
+    done() {
+      try { const d = JSON.parse(localStorage.getItem(this.KEY) || "[]"); return Array.isArray(d) ? d : []; } catch (_) { return []; }
+    },
+
+    remember(hosts) {
+      try { localStorage.setItem(this.KEY, JSON.stringify([...new Set([...this.done(), ...hosts])])); } catch (_) { /* tried again next start */ }
+    },
+
+    // Returns false while Stremio's core isn't ready yet
+    async apply() {
+      if (this.busy) return true;
+      const { getState, dispatch } = core();
+      if (!getState || !dispatch) return false;
+      const ctx = await getState("ctx").catch(() => null);
+      const profile = ctx && ctx.profile;
+      if (!profile || !Array.isArray(profile.addons)) return false;
+      if (profile.auth) {
+        // Signed in: the account's addons are in charge. Forget, so signing out sets them up again.
+        try { localStorage.removeItem(this.KEY); } catch (_) { /* ignore */ }
+        return true;
+      }
+      const have = profile.addons.map((a) => a.transportUrl || "");
+      const already = STARTER_ADDONS.filter((u) => have.some((h) => this.host(h) === this.host(u))).map((u) => this.host(u));
+      if (already.length) this.remember(already);
+      const todo = this.plan(STARTER_ADDONS, have, this.done());
+      if (!todo.length) return true;
+      this.busy = true;
+      try {
+        const manifests = await Promise.all(todo.map((u) => fetch(u, { signal: AbortSignal.timeout(15000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
+        const added = [];
+        todo.forEach((u, i) => {
+          const manifest = manifests[i];
+          if (!manifest || typeof manifest.id !== "string") return; // unreachable now: tried again next start
+          dispatch({ action: "Ctx", args: { action: "InstallAddon", args: { manifest, transportUrl: u, flags: { official: false, protected: false } } } });
+          added.push(this.host(u));
+        });
+        if (added.length) {
+          this.remember(added);
+          log(`starter addons added: ${added.join(", ")}`);
+        }
+      } finally {
+        this.busy = false;
+      }
+      return true;
+    },
+
+    start() {
+      let tries = 0;
+      const attempt = () => this.apply().then((ready) => {
+        if (!ready && ++tries < 20) setTimeout(attempt, 1500);
+      }).catch(() => { /* next check */ });
+      setTimeout(attempt, 1500);
+      // Signing out happens without a reload: check again now and then
+      if (!this.timer) this.timer = setInterval(() => { this.apply().catch(() => { /* next check */ }); }, 60000);
     },
   };
 
@@ -15550,6 +15639,7 @@
     fixThemeLink();
     builtInTheme.ensure();
     hwConvert.start();
+    starterAddons.start();
     // Offer the Home pack after the intro (and the viewer picker), never on top of them
     setTimeout(() => { if (currentRoute() === "board" && !document.querySelector(".dxe-who")) addonTools.offerPack().catch(() => { /* core not ready */ }); }, 7000);
     // Prepare the sounds after the intro so they never compete with it
