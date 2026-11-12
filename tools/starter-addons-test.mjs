@@ -36,32 +36,54 @@ const sandbox = {
   core: () => ({
     getState: async (what) => (what === "ctx" ? { profile: state.profile } : null),
     dispatch: (msg) => {
-      assert.equal(msg.args.action, "InstallAddon");
-      state.profile.addons.push({ transportUrl: msg.args.args.transportUrl, manifest: msg.args.args.manifest });
+      const { action, args } = msg.args;
+      if (action === "UninstallAddon") {
+        assert.ok(!(args.flags && args.flags.protected), "never removes a protected addon");
+        state.profile.addons = state.profile.addons.filter((a) => a.transportUrl !== args.transportUrl);
+        return;
+      }
+      assert.equal(action, "InstallAddon");
+      state.profile.addons.push({ transportUrl: args.transportUrl, manifest: args.manifest, flags: args.flags });
     },
   }),
 };
 const { starterAddons, STARTER_ADDONS } = vm.runInNewContext(`${homePack}${starter}({ starterAddons, STARTER_ADDONS })`, sandbox);
 const hosts = () => state.profile.addons.map((a) => new URL(a.transportUrl).host);
+// Stremio's own addons for a visitor, as a fresh web page has them
+const official = (url, prot) => ({ transportUrl: url, manifest: { id: url }, flags: { official: true, protected: prot } });
 const defaults = () => [
-  { transportUrl: "https://v3-cinemeta.strem.io/manifest.json" },
-  { transportUrl: "https://opensubtitles-v3.strem.io/manifest.json" },
-  { transportUrl: "http://127.0.0.1:11470/local-addon/manifest.json" },
+  official("https://v3-cinemeta.strem.io/manifest.json", true),
+  official("https://v3-channels.strem.io/manifest.json", false),
+  official("https://watchhub.strem.io/manifest.json", false),
+  official("https://caching.stremio.net/publicdomainmovies.now.sh/manifest.json", false),
+  official("https://opensubtitles-v3.strem.io/manifest.json", false),
+  official("http://127.0.0.1:11470/local-addon/manifest.json", true),
 ];
+const dxbiOrder = ["v3-cinemeta.strem.io", "127.0.0.1:11470", "61ab9c85a149-tmdb-collections.baby-beamup.club", "1fe84bc728af-stremio-anime-catalogs.baby-beamup.club", "torrentio.strem.fun", "opensubtitles-v3.strem.io", "7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club"];
 
 // No keys or debrid settings in anything handed to every visitor
 for (const u of STARTER_ADDONS) assert.ok(!/realdebrid|alldebrid|premiumize|debridlink|torbox|apikey|api_key|token/i.test(decodeURIComponent(u)), `no keys in ${u}`);
 assert.ok(STARTER_ADDONS.includes("https://torrentio.strem.fun/manifest.json"));
 console.log("PASS starter addons carry no keys; Torrentio is the plain one");
 
-// Fresh, signed out: all of them, in order, after Stremio's defaults
+// Fresh, signed out: Stremio's extras gone, dx.bi's addons in dx.bi's order (Cinemeta and Local
+// Files can't move, so they stay first)
 state.profile = { auth: null, addons: defaults() };
 assert.equal(await starterAddons.apply(), true);
-assert.equal(JSON.stringify(hosts().slice(3)), JSON.stringify(STARTER_ADDONS.map((u) => new URL(u).host)));
-const once = state.profile.addons.length;
+assert.equal(JSON.stringify(hosts()), JSON.stringify(dxbiOrder));
 await starterAddons.apply();
-assert.equal(state.profile.addons.length, once, "not added twice");
-console.log("PASS signed out: added once, in order");
+assert.equal(JSON.stringify(hosts()), JSON.stringify(dxbiOrder), "nothing changes the second time");
+console.log("PASS signed out: YouTube, WatchHub and Public Domain out; dx.bi's addons in order, once");
+
+// A visitor from 2.37.0 (starter addons appended after Stremio's defaults): arranged the same way
+storage.clear();
+state.profile = { auth: null, addons: defaults() };
+storage.set(starterAddons.SETUP, "1");
+await starterAddons.apply();
+storage.delete(starterAddons.SETUP);
+await starterAddons.apply();
+assert.equal(JSON.stringify(hosts()), JSON.stringify(dxbiOrder));
+console.log("PASS a 2.37.0 visitor's addons get put in order too");
 
 // Removed by the visitor: stays removed
 state.profile.addons = state.profile.addons.filter((a) => !a.transportUrl.includes("torrentio"));
@@ -72,8 +94,9 @@ console.log("PASS a removed starter addon stays removed");
 // Signed in: nothing is added to the account, and the record is cleared
 state.profile = { auth: { key: "k", user: { _id: "u" } }, addons: defaults() };
 await starterAddons.apply();
-assert.equal(state.profile.addons.length, 3);
+assert.equal(state.profile.addons.length, 6);
 assert.equal(storage.has(starterAddons.KEY), false);
+assert.equal(storage.has(starterAddons.SETUP), false);
 console.log("PASS signed in: the account's addons are left alone");
 
 // Signed out again: set up again; an addon that can't be reached is tried next time
@@ -81,7 +104,7 @@ state.profile = { auth: null, addons: defaults() };
 state.fail.add("anime-catalogs");
 await starterAddons.apply();
 assert.ok(!hosts().includes("1fe84bc728af-stremio-anime-catalogs.baby-beamup.club"));
-assert.equal(hosts().length, 3 + STARTER_ADDONS.length - 1);
+assert.equal(hosts().length, dxbiOrder.length - 1);
 state.fail.clear();
 await starterAddons.apply();
 assert.ok(hosts().includes("1fe84bc728af-stremio-anime-catalogs.baby-beamup.club"));
