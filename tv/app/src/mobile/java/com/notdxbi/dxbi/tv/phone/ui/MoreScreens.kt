@@ -195,7 +195,7 @@ fun AddonsScreen(stremio: Stremio) {
             onDismissRequest = { removing = null },
             containerColor = Dx.Surface,
             title = { Text("Uninstall ${a.name}?") },
-            text = { Text("Its catalogs and streams will be gone from dx.bi and Stremio on all your devices.", color = Dx.Muted) },
+            text = { Text("Its catalogs and streams will be gone from dx.bi on all your devices.", color = Dx.Muted) },
             confirmButton = { TextButton(onClick = { removing = null; act(a, install = false) }) { Text("Uninstall", color = Dx.Accent) } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
         )
@@ -332,7 +332,7 @@ fun PlaybackSettingsScreen(stremio: Stremio, onBack: () -> Unit) {
             title = { Text("Streaming server") },
             text = {
                 Column {
-                    Text("Stremio or dx.bi on a computer on your network runs one, at http://<its address>:11470/", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("dx.bi on a computer on your network runs one, at http://<its address>:11470/", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(url, { url = it }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                 }

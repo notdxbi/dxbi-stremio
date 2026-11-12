@@ -287,7 +287,7 @@
   // server the choice to let this TV play it is still there
   async function findServer(playHere) {
     for (;;) {
-      toast("Looking for dx.bi or Stremio on your network…", 6000);
+      toast("Looking for dx.bi on your network…", 6000);
       const urls = await scanForServers();
       document.querySelectorAll(".dxtv-toast").forEach((n) => n.remove());
       if (!urls.length) {
@@ -447,7 +447,7 @@
     problem.addEventListener("click", reportProblem);
     const server = document.createElement("button");
     server.className = "dxtv-row dxtv-settings-entry";
-    server.innerHTML = forDevice(`<span>Streaming server for torrents<small>Torrents play through dx.bi or Stremio running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`);
+    server.innerHTML = forDevice(`<span>Streaming server for torrents<small>Torrents play through dx.bi running on a computer on your network, or on this TV if you switch on Play torrents on this TV (dx.bi settings). Debrid streams don't need either</small></span><b>Find</b>`);
     server.addEventListener("click", () => findServer());
     const who = document.createElement("button");
     who.className = "dxtv-row dxtv-settings-entry";
@@ -656,13 +656,21 @@
       handoff = null;
       if (location.hash === hash) history.back();
       toast(server
-        ? `Couldn't reach your streaming server (${server.replace(/^https?:\/\/|\/$/g, "")}). Check that Stremio or dx.bi is running there, and that this iPhone is on the same network (or the same VPN, like Tailscale).`
+        ? `Couldn't reach your streaming server (${server.replace(/^https?:\/\/|\/$/g, "")}). Check that dx.bi is running there, and that this iPhone is on the same network (or the same VPN, like Tailscale).`
         : "This is a torrent, and it needs a streaming server: set one in Settings, or pick a debrid stream.", 9000);
       return;
     }
     if (!url && stream.infoHash) {
       let onTv = playHereOnce === hash || readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents === true;
       playHereOnce = null;
+      // The phone app's screens cover the page, so the question below would be asked where nobody
+      // can see it (the video just never started): say what's needed instead
+      if (!onTv && PHONE) {
+        handoff = null;
+        if (location.hash === hash) history.back();
+        toast("This is a torrent, and it needs a streaming server. Pick a debrid stream, set a streaming server in Profile → Playback, or turn on dx.bi settings → Player → Play torrents on this phone.", 9000);
+        return;
+      }
       if (!onTv) {
         const choice = await dialog({
           title: "This stream needs a streaming server",
@@ -690,9 +698,15 @@
       }
     }
     if (!url && stream.externalUrl) {
-      native.openExternal(stream.externalUrl);
       handoff = null;
-      history.back();
+      // A link to another of Stremio's own pages ("detail/movie/tt…", stremio:///detail/…): that page,
+      // in place of this player screen. It used to go to Android as an outside link and open nothing
+      const inside = /^(?:stremio:\/\/\/?|#?\/?)((?:detail|discover|library|search|addons)\/.*)$/.exec(stream.externalUrl);
+      if (inside) location.replace(`#/${inside[1]}`);
+      else {
+        native.openExternal(stream.externalUrl);
+        history.back();
+      }
       return;
     }
     if (!url) { handoff = null; return; }

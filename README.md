@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  <b>A Netflix-style Stremio app for Windows, macOS, Linux and TVs.</b><br>
+  <b>A Netflix-style streaming app for Windows, macOS, Linux, TVs, phones and the web.</b><br>
   Download, sign in, done. Works with your existing addons. Nothing to configure.<br>
   <sub>Also available as a plugin for Stremio Enhanced.</sub>
 </p>
 
 <p align="center">
-  <a href="#install"><b>⬇ Download dx.bi for Windows, Mac, Linux or your TV</b></a>
+  <a href="#install"><b>⬇ Download dx.bi for your computer, TV or phone</b></a>
   &nbsp;·&nbsp;
   <a href="https://discord.gg/nnVBjqZ84F"><b>💬 Join the dx.bi Discord</b></a>
   &nbsp;·&nbsp;
@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/notdxbi/dxbi-stremio/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/notdxbi/dxbi-stremio?label=release&color=e50914&style=flat-square"></a>
-  <img alt="Windows · macOS · Linux · Android TV · Fire TV · Android · iPhone" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV%20·%20Fire%20TV%20·%20Android%20·%20iPhone-222?style=flat-square">
+  <img alt="Windows · macOS · Linux · Android TV · Fire TV · Android · iPhone · Web" src="https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux%20·%20Android%20TV%20·%20Fire%20TV%20·%20Android%20·%20iPhone%20·%20Web-222?style=flat-square">
   <a href="NOTICE.md"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-222?style=flat-square"></a>
   <a href="https://discord.gg/nnVBjqZ84F"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
   <a href="https://buymeacoffee.com/notdxbi"><img alt="Buy Me a Coffee" src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=black"></a>
@@ -50,11 +50,12 @@ Pick your device below. It takes about two minutes.
 | Android TV, Google TV, Fire TV | [**See the TV steps**](#on-a-tv) |
 | Android phone or tablet | [**Download for Android**](https://github.com/notdxbi/dxbi-stremio/releases/latest/download/dxbi-mobile.apk) · [steps](#on-an-android-phone) |
 | iPhone | [**See the iPhone steps**](#on-an-iphone) |
+| Any browser | [**Open dx.bi on the web**](https://notdxbi.github.io/dxbi-web/) (debrid and direct streams; torrents need the app) |
 
 Not sure which Mac you have? Click the Apple menu  → *About This Mac*. "Chip: Apple M…" means an Apple chip; "Processor: Intel" means Intel.
 
 > [!TIP]
-> You'll sign in with a Stremio account. If you don't have one yet, it's free: create it in the app when it asks, or at [stremio.com](https://www.stremio.com).
+> dx.bi signs in with a Stremio account, so your addons, library and progress come with you. If you don't have one yet, it's free: create it in the app when it asks, or at [stremio.com](https://www.stremio.com).
 
 ### On Windows
 
@@ -181,9 +182,9 @@ dx.bi keeps itself up to date. On Windows and Linux it downloads new versions in
 ## Read this first
 
 > [!IMPORTANT]
-> DX.BI is a Stremio app: it uses your Stremio account and addons. It doesn't add any movies, shows or streams of its own, and it doesn't make anything play on its own.
+> DX.BI is built on Stremio's open-source web app and uses your Stremio account and addons. It doesn't add any movies, shows or streams of its own: everything comes from the addons you install.
 >
-> Titles play the way they do in Stremio. If nothing plays in your Stremio today, nothing will play in DX.BI either.
+> If an addon has nothing for a title, DX.BI won't either.
 
 <br>
 

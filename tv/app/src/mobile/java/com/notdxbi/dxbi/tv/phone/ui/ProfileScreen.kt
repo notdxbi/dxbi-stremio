@@ -233,7 +233,7 @@ fun SignInScreen(stremio: Stremio) {
         }
         Spacer(Modifier.height(16.dp))
         TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.stremio.com/register"))) }) {
-            Text("New to Stremio? Create a free account", color = Dx.Muted)
+            Text("No account yet? Create a free Stremio account", color = Dx.Muted)
         }
         TextButton(onClick = { stremio.continueAsGuest() }) {
             Text("Continue without an account", color = Dx.Faint)

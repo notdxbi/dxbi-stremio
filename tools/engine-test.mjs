@@ -199,7 +199,7 @@ assert.deepEqual(dispatched.at(-1).action.args, { action: "InstallAddon", args: 
 states.ctx.profile.addons = [cinemeta, extra];
 await ask(32, "addonUninstall", { transportUrl: "https://x/manifest.json" });
 assert.equal(dispatched.at(-1).action.args.action, "UninstallAddon");
-assert.match((await ask(33, "addonUninstall", { transportUrl: "https://c/manifest.json" })).error, /Stremio needs/);
+assert.match((await ask(33, "addonUninstall", { transportUrl: "https://c/manifest.json" })).error, /dx\.bi needs/);
 states.addon_details = { remoteAddon: { content: { type: "Ready", content: extra } } };
 const fromLink = await ask(34, "addonFromUrl", { url: "stremio://x/manifest.json" });
 assert.equal(fromLink.data, "Extra");

@@ -300,7 +300,7 @@ class Stremio(context: Context, val engine: Engine, private val scope: Coroutine
         ask("signIn", JSONObject().put("email", email).put("password", password))
         val answer = withTimeoutOrNull(20_000) {
             engine.events.filter { it.first == "UserAuthenticated" || it.first == "Error" }.first()
-        } ?: return "Stremio didn't answer. Check your connection and try again."
+        } ?: return "dx.bi couldn't connect. Check your connection and try again."
         if (answer.first == "UserAuthenticated") return null
         return answer.second?.optJSONObject("error")?.text("message") ?: "That email and password didn't work."
     }

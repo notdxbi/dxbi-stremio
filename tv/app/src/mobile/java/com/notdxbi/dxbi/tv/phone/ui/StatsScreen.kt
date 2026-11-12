@@ -132,7 +132,7 @@ private fun StatsList(s: JSONObject) {
             val hour = if (s.isNull("hour")) null else s.optInt("hour")
             Fact("Favourite time", hour?.let { "%02d:00–%02d:00".format(it, (it + 1) % 24) } ?: "–")
             Fact("Busiest day", s.text("day") ?: "–")
-            Fact("In your Stremio library", "${s.optInt("movies")} films · ${s.optInt("series")} series")
+            Fact("In your Library", "${s.optInt("movies")} films · ${s.optInt("series")} series")
         }
         item {
             Text("Stats stay on this phone (saved with dx.bi's data). Only time spent actually playing counts.", color = Dx.Faint, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))

@@ -1,7 +1,7 @@
 {
 	"name": "dxbi",
-	"version": "2.36.0",
-	"description": "dx.bi: a Netflix-style desktop app for Stremio, with the dx.bi experience built in.",
+	"version": "2.36.1",
+	"description": "dx.bi: a Netflix-style streaming app for your Stremio addons.",
 	"main": "./dist/main.js",
 	"scripts": {
 		"dist": "node ./copyComponents.js --plugin-only && tsc && node ./copyComponents.js",
