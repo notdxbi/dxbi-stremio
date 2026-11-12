@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.37.1
+
+- **Signed out, dx.bi's addons come in dx.bi's order.** TMDB Collections, Anime Catalogs, Torrentio, OpenSubtitles and Streaming Catalogs, as on dx.bi's own account, and Stremio's other visitor addons (YouTube, WatchHub, Public Domain Movies) are taken out. Cinemeta and Local Files stay first: Stremio doesn't let them move. Visitors from 2.37.0 get the same tidy-up once.
+- **Torrents on the web say what they need.** A browser can't download torrents, so on dx.bi on the web torrent streams are marked *Needs the app or debrid*, and picking one explains the two ways to watch it (the dx.bi app, or a debrid service in Torrentio) instead of failing in the player. The apps play torrents as before.
+
 ## 2.37.0
 
 - **dx.bi works before you make an account.** Signed out (a new install, dx.bi on the web, or after signing out), dx.bi now sets itself up with the same addons as dx.bi's own setup: TMDB Collections, Anime Catalogs and Streaming Catalogs for Home's rows, and Torrentio for streams. No keys or debrid accounts are included. Each is added once, so one you remove stays removed. Signing in uses your account's own addons as before (none of these are added to it), and signing out sets them up again. Torrents play in the dx.bi app on computers, on TVs with *Play torrents on this TV*, and on phones with *Play torrents on this phone* or a streaming server; in a browser they need a streaming server.

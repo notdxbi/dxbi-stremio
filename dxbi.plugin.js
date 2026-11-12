@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.37.0
+ * @version 2.37.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.37.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.37.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -7477,7 +7477,7 @@
       ? [updateRoute, brandTitle, () => addonTools.ensure(), () => watchParty.ensure(), communitySync]
       : [updateRoute, brandTitle, () => player.ensure(), () => playerClock.ensure(), () => { convert.ensure().catch(() => { /* player state not ready */ }); }, () => convert.confirmHevc(), () => externalDefault.ensure(), () => placeholder.ensure(), () => playbackHelp.ensure(), () => scrub.ensure(), () => enhance.ensure(), () => watchParty.ensure(), () => skip.ensure(), () => tune.ensure(), () => streamInfo.ensure(), () => addonTools.ensure(), communitySync];
     steps.push(() => { titleColour.ensure().catch(() => { /* next sync */ }); }, () => webSettings.ensure());
-    if (currentRoute() === "detail") steps.push(() => streamTools.ensure(), () => streamRows.ensure(), () => quickPlay.ensure());
+    if (currentRoute() === "detail") steps.push(() => streamTools.ensure(), () => streamRows.ensure(), () => quickPlay.ensure(), () => webTorrents.ensure());
     if (!IN_TV) steps.push(() => downloads.ensure());
     steps.push(() => { quickPlay.note().catch(() => { /* next sync */ }); });
     steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { endsAt.ensure().catch(() => { /* next sync */ }); }, () => { calendarFill.ensure().catch(() => { /* next sync */ }); }, () => { restrict.guard().catch(() => { /* next sync */ }); });
@@ -7608,6 +7608,11 @@
   .dxe-btn:hover, .dxe-btn:focus-visible { background: rgba(255,255,255,.17); }
   .dxe-btn.is-primary { background: var(--dx-accent, #e50914); }
   .dxe-btn:disabled { opacity: .4; cursor: default; }
+  .dxe-text { padding: 0 1.4rem; color: rgba(255,255,255,.75); }
+  .dxe-text p { margin: 0 0 .7rem; font: 500 .92rem/1.55 Inter, system-ui, sans-serif !important; }
+  .dxe-text b { color: #fff; font-weight: 700 !important; }
+  [data-dx-needs-app] { opacity: .65; }
+  [data-dx-needs-app] .dxv-top::after { content: "Needs the app or debrid"; margin-left: .5rem; padding: .1rem .45rem; border-radius: .3rem; background: rgba(255,255,255,.14); color: #fff; font: 700 .7rem/1.4 Inter, system-ui, sans-serif; white-space: nowrap; }
   .dx-row-off { display: none !important; }
   [data-dx-ordered] { display: flex; flex-direction: column; }
   [data-dx-ordered] > * { flex: none; }
@@ -9293,9 +9298,10 @@
   };
 
   // ---- Starter addons: signed out (a new install, the web page, after signing out), dx.bi starts
-  // with the same addons as dx.bi's own setup, so Home has rows and titles have streams before anyone
-  // makes an account. Each is added once per signed-out stretch: one the visitor removes stays
-  // removed. Signing in swaps in the account's own addons (none of these are pushed to it), and
+  // with dx.bi's own addons, in dx.bi's order, so Home has rows and titles have streams before
+  // anyone makes an account. Stremio's other defaults for visitors (YouTube, WatchHub, Public Domain
+  // Movies) are taken out. It's set up once per signed-out stretch: an addon the visitor removes
+  // stays removed. Signing in swaps in the account's own addons (none of these are pushed to it), and
   // signing out again starts over. No keys: Torrentio is the plain, unconfigured one.
   const STARTER_ADDONS = [
     HOME_PACK[2].url, // TMDB Collections
@@ -9304,11 +9310,16 @@
     // Anime Catalogs with top airing too (the Home pack leaves it out)
     "https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/%7B%22search%22%3A%22on%22%2C%22myanimelist_top-airing%22%3A%22on%22%2C%22myanimelist_top-series%22%3A%22on%22%2C%22myanimelist_top-movies%22%3A%22on%22%7D/manifest.json",
     "https://torrentio.strem.fun/manifest.json",
+    "https://opensubtitles-v3.strem.io/manifest.json", // Stremio's own: kept, moved into place
     HOME_PACK[0].url, // Streaming Catalogs
   ];
+  // Kept where they are, wherever that is: Stremio won't let Cinemeta or Local Files be removed or moved
+  const STARTER_KEEP_ONLY = new Set(["opensubtitles-v3.strem.io"]); // never installed by dx.bi, only reordered
+  const STARTER_DROP = new Set(["v3-channels.strem.io", "watchhub.strem.io", "caching.stremio.net"]);
 
   const starterAddons = {
     KEY: "dxbi.starterAddons", // hosts already added (or found) while signed out
+    SETUP: "dxbi.starterSetup", // set once the visitor's addons were arranged
     busy: false,
     timer: null,
 
@@ -9316,10 +9327,30 @@
       try { return new URL(url).host; } catch (_) { return ""; }
     },
 
-    // Pure: which starter URLs to add, given the profile's addon URLs and the hosts already handled
+    // Pure: which starter URLs to fetch and add, given the profile's addon URLs and the hosts handled
     plan(starter, have, done) {
       const haveHosts = new Set(have.map((u) => this.host(u)));
-      return starter.filter((u) => !haveHosts.has(this.host(u)) && !done.includes(this.host(u)));
+      return starter.filter((u) => !STARTER_KEEP_ONLY.has(this.host(u)) && !haveHosts.has(this.host(u)) && !done.includes(this.host(u)));
+    },
+
+    // Pure: the first setup. From the profile's addons and the manifests fetched for missing starter
+    // addons ({url: manifest}), what to remove and what to install, in order. Starter addons already
+    // there are removed and installed again: Stremio puts an installed addon last, so that's how
+    // they get into dx.bi's order.
+    arrange(addons, fetched) {
+      const byHost = new Map(addons.map((a) => [this.host(a.transportUrl), a]));
+      const remove = addons.filter((a) => !(a.flags && a.flags.protected) && STARTER_DROP.has(this.host(a.transportUrl)));
+      const install = [];
+      for (const u of STARTER_ADDONS) {
+        const present = byHost.get(this.host(u));
+        if (present && !(present.flags && present.flags.protected)) {
+          remove.push(present);
+          install.push({ manifest: present.manifest, transportUrl: present.transportUrl, flags: present.flags || { official: false, protected: false } });
+        } else if (!present && fetched[u]) {
+          install.push({ manifest: fetched[u], transportUrl: u, flags: { official: false, protected: false } });
+        }
+      }
+      return { remove, install };
     },
 
     done() {
@@ -9328,6 +9359,13 @@
 
     remember(hosts) {
       try { localStorage.setItem(this.KEY, JSON.stringify([...new Set([...this.done(), ...hosts])])); } catch (_) { /* tried again next start */ }
+    },
+
+    async fetchAll(urls) {
+      const manifests = await Promise.all(urls.map((u) => fetch(u, { signal: AbortSignal.timeout(15000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
+      const out = {};
+      urls.forEach((u, i) => { if (manifests[i] && typeof manifests[i].id === "string") out[u] = manifests[i]; });
+      return out;
     },
 
     // Returns false while Stremio's core isn't ready yet
@@ -9340,28 +9378,35 @@
       if (!profile || !Array.isArray(profile.addons)) return false;
       if (profile.auth) {
         // Signed in: the account's addons are in charge. Forget, so signing out sets them up again.
-        try { localStorage.removeItem(this.KEY); } catch (_) { /* ignore */ }
+        try { localStorage.removeItem(this.KEY); localStorage.removeItem(this.SETUP); } catch (_) { /* ignore */ }
         return true;
       }
+      let setUp = true;
+      try { setUp = !!localStorage.getItem(this.SETUP); } catch (_) { /* no storage: just add */ }
       const have = profile.addons.map((a) => a.transportUrl || "");
-      const already = STARTER_ADDONS.filter((u) => have.some((h) => this.host(h) === this.host(u))).map((u) => this.host(u));
+      const starterHosts = STARTER_ADDONS.filter((u) => !STARTER_KEEP_ONLY.has(this.host(u))).map((u) => this.host(u));
+      const already = starterHosts.filter((h) => have.some((u) => this.host(u) === h));
       if (already.length) this.remember(already);
       const todo = this.plan(STARTER_ADDONS, have, this.done());
-      if (!todo.length) return true;
+      if (setUp && !todo.length) return true;
       this.busy = true;
       try {
-        const manifests = await Promise.all(todo.map((u) => fetch(u, { signal: AbortSignal.timeout(15000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
-        const added = [];
-        todo.forEach((u, i) => {
-          const manifest = manifests[i];
-          if (!manifest || typeof manifest.id !== "string") return; // unreachable now: tried again next start
-          dispatch({ action: "Ctx", args: { action: "InstallAddon", args: { manifest, transportUrl: u, flags: { official: false, protected: false } } } });
-          added.push(this.host(u));
-        });
-        if (added.length) {
-          this.remember(added);
-          log(`starter addons added: ${added.join(", ")}`);
+        const fetched = await this.fetchAll(todo);
+        const addons = (await getState("ctx").catch(() => null))?.profile?.addons || profile.addons;
+        const uninstall = (a) => dispatch({ action: "Ctx", args: { action: "UninstallAddon", args: a } });
+        const install = (x) => dispatch({ action: "Ctx", args: { action: "InstallAddon", args: x } });
+        let added = Object.keys(fetched);
+        if (!setUp) {
+          const { remove, install: list } = this.arrange(addons, fetched);
+          for (const a of remove) await uninstall(a);
+          for (const x of list) await install(x);
+          try { localStorage.setItem(this.SETUP, "1"); } catch (_) { /* arranged again next start */ }
+          log(`starter addons arranged: ${list.map((x) => this.host(x.transportUrl)).join(", ")}`);
+        } else {
+          for (const u of todo) if (fetched[u]) await install({ manifest: fetched[u], transportUrl: u, flags: { official: false, protected: false } });
         }
+        added = added.map((u) => this.host(u));
+        if (added.length) this.remember(added);
       } finally {
         this.busy = false;
       }
@@ -14730,6 +14775,100 @@
       }
       for (const el of list.querySelectorAll(":scope > [data-dx-best]")) if (el !== best) el.removeAttribute("data-dx-best");
       if (best && !best.hasAttribute("data-dx-best")) best.setAttribute("data-dx-best", "");
+    },
+  };
+
+  // ---- Torrents on the web. A browser has no streaming server, so a torrent can't play there (the
+  // apps have one built in, and debrid streams are ordinary links that play anywhere). On the web
+  // page, torrent streams say so, and picking one explains what to do instead of a dead player.
+  const webTorrents = {
+    on: !API && !IN_APP && !IN_TV,
+    hrefs: new Set(),
+    serverUp: true,
+    checked: 0,
+    busy: false,
+
+    norm: (h) => String(h || "").replace(/^[^#]*#/, ""),
+
+    async refresh() {
+      if (this.busy) return;
+      this.busy = true;
+      try {
+        const [md, server] = await Promise.all([core().getState("meta_details").catch(() => null), core().getState("streaming_server").catch(() => null)]);
+        this.serverUp = !!(server && server.settings && server.settings.type === "Ready");
+        const set = new Set();
+        for (const g of (md && Array.isArray(md.streams) ? md.streams : [])) {
+          const list = g && g.content && g.content.type === "Ready" && Array.isArray(g.content.content) ? g.content.content : [];
+          for (const st of list) if (st && st.infoHash && !st.url && st.deepLinks && st.deepLinks.player) set.add(this.norm(st.deepLinks.player));
+        }
+        this.hrefs = set;
+        this.checked = Date.now();
+      } finally {
+        this.busy = false;
+      }
+      this.mark();
+    },
+
+    needsApp(el) {
+      return !this.serverUp && this.hrefs.has(this.norm(el.getAttribute("href")));
+    },
+
+    mark() {
+      for (const el of document.querySelectorAll('[class*="streams-list-container"] [class*="stream-container"]')) {
+        const want = this.needsApp(el);
+        if (el.hasAttribute("data-dx-needs-app") !== want) el.toggleAttribute("data-dx-needs-app", want);
+      }
+    },
+
+    ensure() {
+      if (!this.on || currentRoute() !== "detail") return;
+      if (!this.wired) {
+        this.wired = true;
+        document.addEventListener("click", (e) => this.onClick(e), true);
+      }
+      ensureExtrasStyle();
+      if (Date.now() - this.checked > 1500) this.refresh().catch(() => { /* next sync */ });
+      else this.mark();
+    },
+
+    onClick(e) {
+      const el = e.target.closest && e.target.closest('[class*="streams-list-container"] [class*="stream-container"]');
+      if (!el || !this.needsApp(el)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.explain();
+    },
+
+    explain() {
+      if (document.querySelector(".dxe-modal.dxw-torrent")) return;
+      const modal = document.createElement("div");
+      modal.className = "dxe-modal dxw-torrent";
+      modal.innerHTML = `
+        <div class="dxe-sheet" role="dialog" aria-label="Torrents need the dx.bi app or a debrid service">
+          <div class="dxe-head"><b>This needs the dx.bi app or a debrid service<small>It's a torrent, and a browser can't download torrents.</small></b></div>
+          <div class="dxe-text">
+            <p><b>Get the dx.bi app</b> for Windows, Mac, Linux, TV or your phone: torrents play there, nothing else needed.</p>
+            <p><b>Or add a debrid service</b> (Real-Debrid, TorBox, AllDebrid…) to Torrentio: its streams then play right here in the browser.</p>
+          </div>
+          <div class="dxe-foot">
+            <span class="dxe-spacer"></span>
+            <button class="dxe-btn" data-act="close">Close</button>
+            <button class="dxe-btn" data-act="debrid">Set up Torrentio</button>
+            <button class="dxe-btn is-primary" data-act="app">Get the app</button>
+          </div>
+        </div>`;
+      const close = () => modal.remove();
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) return close();
+        const act = e.target.closest("[data-act]");
+        if (!act) return;
+        if (act.dataset.act === "app") window.open("https://github.com/notdxbi/dxbi-stremio#install", "_blank", "noopener");
+        if (act.dataset.act === "debrid") window.open("https://torrentio.strem.fun/configure", "_blank", "noopener");
+        close();
+      });
+      for (const type of ["keydown", "keyup", "keypress"]) modal.addEventListener(type, (e) => { e.stopPropagation(); if (e.key === "Escape") close(); });
+      document.body.append(modal);
+      modal.querySelector('[data-act="app"]').focus();
     },
   };
 
