@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.37.0
+
+- **dx.bi works before you make an account.** Signed out (a new install, dx.bi on the web, or after signing out), dx.bi now sets itself up with the same addons as dx.bi's own setup: TMDB Collections, Anime Catalogs and Streaming Catalogs for Home's rows, and Torrentio for streams. No keys or debrid accounts are included. Each is added once, so one you remove stays removed. Signing in uses your account's own addons as before (none of these are added to it), and signing out sets them up again. Torrents play in the dx.bi app on computers, on TVs with *Play torrents on this TV*, and on phones with *Play torrents on this phone* or a streaming server; in a browser they need a streaming server.
+
 ## 2.36.1
 
 - **Season packs from library addons on phones.** With a library addon like StremThru Store, an episode's stream list now also offers the matching file from your saved season packs, and it plays as that episode (your progress and Continue Watching stay the show's). A pack's own page lists its files as seasons and episodes, with extras under Specials. Thanks to @wsddssz (#82).
