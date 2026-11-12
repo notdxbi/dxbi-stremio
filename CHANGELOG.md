@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.36.0
+
+- **The phone's tab bar fits the screen.** dx.bi runs full screen on phones, so the tab bar sat right on the bottom edge, where rounded screen corners and the swipe-up strip cut into Home and Profile. It now keeps clear of both.
+- **Library can be a tab on phones.** Turn on *Library in the tab bar* in dx.bi settings → Browsing & library, and Library sits beside Home, Discover and Search (also on the side when the phone is turned). It's off unless you switch it on; Profile → Library still works either way. (#90)
+- **Every subtitle language on TV and phones.** The TV and phone player only got 45 subtitle files, so with lots of languages whole languages (Bulgarian, for one) were missing where the computer had them. Now every language is there: three files in your language and English, two in each other. It also waits for slower subtitle addons until the list stops growing (at most 4 seconds), even when subtitles start off. (#95)
+
 ## 2.35.1
 
 - **dx.bi on the web has its settings.** In a browser (https://notdxbi.github.io/dxbi-web/), Settings now starts with dx.bi's own settings, grouped like the apps' and saved in that browser. Changes take effect straight away.
