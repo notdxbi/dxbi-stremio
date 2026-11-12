@@ -429,7 +429,7 @@ fun CustomiseHomeScreen(stremio: Stremio, onBack: () -> Unit) {
 // Library: everything added or watched
 
 @Composable
-fun LibraryScreen(stremio: Stremio, onBack: () -> Unit, onOpen: (Title) -> Unit) {
+fun LibraryScreen(stremio: Stremio, onBack: (() -> Unit)?, onOpen: (Title) -> Unit) {
     var type by rememberSaveable { mutableStateOf(0) }
     val items by stremio.library.collectAsState()
     LaunchedEffect(type) { stremio.loadLibrary(listOf(null, "movie", "series")[type]) }

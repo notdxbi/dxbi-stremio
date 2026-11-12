@@ -319,6 +319,14 @@ class Stremio(context: Context, val engine: Engine, private val scope: Coroutine
         cache.edit().putBoolean("playInOtherApp", on).apply()
     }
 
+    /** dx.bi settings → Library in the tab bar: a Library tab beside Home, Discover… (off: it's under Profile) */
+    val libraryTab = MutableStateFlow(cache.getBoolean("libraryTab", false))
+
+    fun setLibraryTab(on: Boolean) {
+        libraryTab.value = on
+        cache.edit().putBoolean("libraryTab", on).apply()
+    }
+
     /** Browsing without an account (Stremio allows it: no sync, no library on other devices) */
     val guest = MutableStateFlow(cache.getBoolean("guest", false))
 
