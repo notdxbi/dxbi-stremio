@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.36.1
+
+- **Season packs from library addons on phones.** With a library addon like StremThru Store, an episode's stream list now also offers the matching file from your saved season packs, and it plays as that episode (your progress and Continue Watching stay the show's). A pack's own page lists its files as seasons and episodes, with extras under Specials. Thanks to @wsddssz (#82).
+- **Torrents on phones explain themselves.** Without a streaming server, a torrent used to ask a question nobody could see, so the video just never started. The phone now says what's needed (a debrid stream, a streaming server, or *Play torrents on this phone*).
+- **Links to another title play nowhere: they now open it.** Some addons list "streams" that are really links to another title's page. On TV they open that page, and phones leave them out of the stream list.
+- **Customise Home covers every row Home shows**, including rows from addons with their own types when *Video rows only* is off.
+- **Safer links on computers.** Links on title pages only leave the app as web or mail links, and the app window always stays on dx.bi.
+- dx.bi says dx.bi: messages that named Stremio when they meant the app now say dx.bi. Stremio is still named where you sign in, since that's the account you use.
+
 ## 2.36.0
 
 - **The phone's tab bar fits the screen.** dx.bi runs full screen on phones, so the tab bar sat right on the bottom edge, where rounded screen corners and the swipe-up strip cut into Home and Profile. It now keeps clear of both.

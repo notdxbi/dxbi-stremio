@@ -25,7 +25,7 @@ export function watchLoad(win: BrowserWindow): void {
         const { response } = await dialog.showMessageBox(win, {
             type: "warning",
             title: "dx.bi",
-            message: "Stremio is taking a long time to load",
+            message: "dx.bi is taking a long time to load",
             detail: "It's downloaded from web.stremio.com, which is slow or not answering on this connection. A VPN, a firewall or antivirus, or your network can cause this.\n\nIt may still finish if you keep waiting.",
             buttons: ["Keep waiting", "Try again"],
             defaultId: 0,

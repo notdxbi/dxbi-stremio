@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.36.0
+ * @version 2.36.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.36.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.36.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -263,7 +263,7 @@
       key: "subtitleStyle",
       type: "select",
       label: "Subtitle style",
-      description: "Size and position stay on Stremio's own subtitle settings. Original ASS styling, when enabled, and picture-based subtitles keep their own appearance.",
+      description: "Size and position stay on the subtitle settings in Settings → Player. Original ASS styling, when enabled, and picture-based subtitles keep their own appearance.",
       defaultValue: DEFAULTS.subtitleStyle,
       options: [
         { label: "Stremio default", value: "stremio" },
@@ -302,12 +302,12 @@
       key: "convertVideo",
       type: "select",
       label: "Convert videos this PC can't play",
-      description: "Many releases are HEVC/x265, 10-bit or Dolby Vision, which a lot of PCs (especially Windows 10 without HEVC support) can't decode, so Stremio says \"Video is not supported\". Auto has Stremio's streaming server convert those, and retries any video that fails.",
+      description: "Many releases are HEVC/x265, 10-bit or Dolby Vision, which a lot of PCs (especially Windows 10 without HEVC support) can't decode, so Stremio says \"Video is not supported\". Auto has the streaming server convert those, and retries any video that fails.",
       defaultValue: DEFAULTS.convertVideo,
       options: [
         { label: "Auto", value: "auto" },
         { label: "Always convert", value: "always" },
-        { label: "Never (Stremio's default)", value: "off" },
+        { label: "Never (the default)", value: "off" },
       ],
     },
     {
@@ -318,7 +318,7 @@
       defaultValue: DEFAULTS.subtitlesStart,
       options: [
         { label: "Off", value: "off" },
-        { label: "On, in my Stremio subtitle language", value: "stremio" },
+        { label: "On, in my subtitle language (Settings → Player)", value: "stremio" },
       ],
     },
     {
@@ -339,7 +339,7 @@
       key: "watchedTitles",
       type: "select",
       label: "Watched titles in Discover, Search & Home",
-      description: "Uses Stremio's own watched marks. Continue Watching and Library are never changed.",
+      description: "Uses your watched marks. Continue Watching and Library are never changed.",
       defaultValue: DEFAULTS.watchedTitles,
       options: [
         { label: "Show", value: "show" },
@@ -376,7 +376,7 @@
         { label: "10 seconds", value: "10" },
         { label: "15 seconds", value: "15" },
         { label: "20 seconds", value: "20" },
-        { label: "Off (Stremio's own popup)", value: "off" },
+        { label: "Off (the standard popup)", value: "off" },
       ],
     },
     { key: "fillerGuide", type: "toggle", label: "Anime filler guide", description: "Marks filler and mixed episodes in long anime (from animefillerlist.com) and dims filler in the episode list.", defaultValue: DEFAULTS.fillerGuide },
@@ -8253,7 +8253,7 @@
     // Stremio has already said "opened in external player" by now: say so when it can't be
     missing(type) {
       const name = type === "vlc" ? "VLC" : type === "iina" ? "IINA" : "mpv";
-      window.StremioEnhancedAPI.showAlert?.("warning", `${name} wasn't found`, `Install ${name}, or change the external player in Stremio's Settings → Player.`, ["OK"]);
+      window.StremioEnhancedAPI.showAlert?.("warning", `${name} wasn't found`, `Install ${name}, or change the external player in Settings → Player.`, ["OK"]);
     },
 
     // Where the viewer told Enhanced the player is (Settings → External player), if anywhere
@@ -8309,7 +8309,7 @@
           document.querySelector('[class*="player-container"] video')?.pause();
           history.back();
           const result = await window.StremioEnhancedAPI.launchExternalPlayer(which, url, this.customPath(which)).catch(() => null);
-          log(result && result.success ? `opened in ${which} (Stremio's external player setting)` : `couldn't open ${which}`);
+          log(result && result.success ? `opened in ${which} (your external player setting)` : `couldn't open ${which}`);
         })
         .catch(() => { /* core not ready */ });
     },
@@ -9074,7 +9074,7 @@
             <span class="dxe-spacer"></span>
             <button class="dxe-btn" data-act="close">Close</button>
             <button class="dxe-btn is-primary" data-act="save" disabled>Save order</button>
-            <div class="dxe-msg">${this.signedIn ? "Backups include your addon links, which can contain debrid keys: keep the file private." : "Sign in to Stremio to change the order: it's saved to your account."}</div>
+            <div class="dxe-msg">${this.signedIn ? "Backups include your addon links, which can contain debrid keys: keep the file private." : "Sign in to change the order: it's saved to your account."}</div>
           </div>
         </div>`;
       for (const type of ["keydown", "keyup", "keypress"]) modal.addEventListener(type, (e) => e.stopPropagation());
@@ -9235,10 +9235,10 @@
     // Replace the account's addon collection, keeping the previous one so it can be undone
     async apply(addons, done, isUndo) {
       const valid = addons.every((a) => a && typeof a.transportUrl === "string" && a.manifest && typeof a.manifest.id === "string");
-      if (!valid || !addons.length) return this.say("That list doesn't look like Stremio addons, so nothing was changed.", "bad");
+      if (!valid || !addons.length) return this.say("That list doesn't look like addons, so nothing was changed.", "bad");
       const profile = await this.profile().catch(() => null);
       const authKey = profile && profile.auth && profile.auth.key;
-      if (!authKey) return this.say("Sign in to Stremio first: addons are saved to your account.", "bad");
+      if (!authKey) return this.say("Sign in first: addons are saved to your account.", "bad");
       this.say("Saving…");
       try {
         if (!isUndo) localStorage.setItem("dxbi.addonBackup", JSON.stringify({ t: Date.now(), addons: profile.addons }));
@@ -9257,7 +9257,7 @@
         this.render();
         this.say(done, "good");
       } catch (err) {
-        this.say(`Stremio didn't accept the change (${err.message}). Nothing was changed.`, "bad");
+        this.say(`Your account didn't accept the change (${err.message}). Nothing was changed.`, "bad");
       }
     },
 
@@ -12175,7 +12175,9 @@
     async read() {
       const { getState } = core();
       const board = getState ? await getState("board") : null;
-      this.catalogs = board && Array.isArray(board.catalogs) ? board.catalogs.filter((c) => c && VIDEO_TYPES.has(String(c.type).toLowerCase())) : [];
+      // (every row Home shows: other types too, unless "video rows only" hides them. Rows from addons
+      // with their own types couldn't be moved or renamed)
+      this.catalogs = board && Array.isArray(board.catalogs) ? board.catalogs.filter((c) => c && (!settings.videoRowsOnly || VIDEO_TYPES.has(String(c.type).toLowerCase()))) : [];
       this.byLink = new Map(this.catalogs.filter((c) => c.deepLinks && c.deepLinks.discover).map((c) => [c.deepLinks.discover.replace(/\?$/, ""), this.key(c)]));
     },
 
@@ -14089,7 +14091,7 @@
         .sort((a, b) => a[1].localeCompare(b[1]));
       const zoomNote = p.zoom === "auto"
         ? (frame.unreadable.has(this.video) ? "This stream can't be measured." : frame.samples < 2 ? "Measuring the picture…" : frame.crop().t || frame.crop().l ? "Black bars removed." : "No black bars found in the picture.")
-        : "Stremio's Fit / Crop / Stretch button still works on top.";
+        : "The player's Fit / Crop / Stretch button still works on top.";
       const soundNote = sound.unreadable.has(this.video)
         ? "Not available for this stream."
         : { normal: "As the stream comes.", dialogue: "Raises voices and the centre speaker, and softens booming lows.", night: "Evens out loud and quiet scenes so you can keep the volume down." }[p.audio];
@@ -17065,7 +17067,8 @@
         const metaId = state && state.selected && state.selected.metaPath && state.selected.metaPath.id;
         const items = groups.flatMap((g) => (g && g.content && g.content.type === "Ready" && Array.isArray(g.content.content)
           ? g.content.content.map((st) => ({ st, addon: (g.addon && g.addon.manifest && g.addon.manifest.name) || "" })) : []))
-          .filter((x) => x.st && x.st.deepLinks && x.st.deepLinks.player && !x.st.ytId)
+          // (not links to another page, an addon's "see this title" entries: the player can't play them)
+          .filter((x) => x.st && x.st.deepLinks && x.st.deepLinks.player && !x.st.ytId && (x.st.url || x.st.infoHash || !x.st.externalUrl))
           .map((x) => ({ ...x, torrent: !!x.st.infoHash && !x.st.url, hint: watchParty.streamHints(x.st), d: describeStream(String(x.st.name || ""), `${x.st.name || ""}\n${x.st.description || x.st.title || ""}`) }));
         const [server, library] = await Promise.all([
           core().getState("streaming_server").catch(() => null),

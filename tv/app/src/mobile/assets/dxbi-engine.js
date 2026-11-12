@@ -316,7 +316,7 @@
       const ctx = await core().getState("ctx");
       const found = ((ctx && ctx.profile && ctx.profile.addons) || []).find((a) => a.transportUrl === transportUrl);
       if (!found) throw new Error("that addon isn't installed");
-      if (found.flags && found.flags.protected) throw new Error("Stremio needs this addon");
+      if (found.flags && found.flags.protected) throw new Error("dx.bi needs this addon");
       await core().dispatch({ action: "Ctx", args: { action: "UninstallAddon", args: found } });
       push("installed_addons");
       push("remote_addons");

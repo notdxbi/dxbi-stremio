@@ -182,7 +182,7 @@ private fun Starting(onDownloads: () -> Unit) {
             CircularProgressIndicator(color = Dx.Accent, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
             if (slow) {
                 Spacer(Modifier.height(28.dp))
-                Text("Can't reach Stremio? Your downloads play without internet.", color = Dx.Muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 32.dp))
+                Text("Can't connect? Your downloads play without internet.", color = Dx.Muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 32.dp))
                 Spacer(Modifier.height(12.dp))
                 androidx.compose.material3.Button(
                     onClick = onDownloads,
