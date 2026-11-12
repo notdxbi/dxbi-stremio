@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +36,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
@@ -95,12 +98,46 @@ private enum class Tab(val route: String, val label: String, val on: ImageVector
     Home("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),
     Discover("discover", "Discover", Icons.Filled.Explore, Icons.Outlined.Explore),
     Search("search", "Search", Icons.Filled.Search, Icons.Outlined.Search),
+    // (only with dx.bi settings → Library in the tab bar: Profile → Library otherwise)
+    Library("library", "Library", Icons.Filled.VideoLibrary, Icons.Outlined.VideoLibrary),
     Addons("addons", "Addons", Icons.Filled.Extension, Icons.Outlined.Extension),
     Profile("profile", "Profile", Icons.Filled.Person, Icons.Outlined.Person),
 }
 
-/** How much of the screen's bottom the tab bar covers (screens leave this much room) */
+/** How much of the screen's bottom the tab bar covers, above [barBottom] (screens leave this much room) */
 private val BarSpace = 96.dp
+
+/**
+ * The room under the tab bar's labels. dx.bi runs full screen, so with the system bars hidden their
+ * inset is 0 and the bar sat on the very edge, where the gesture strip and the screen's rounded corners
+ * cut into it (Home and Profile most). It keeps clear of where the navigation bar would be (up to a
+ * gesture strip's height, not the 48 dp of three-button navigation) and of the rounded corners.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun barBottom(): androidx.compose.ui.unit.Dp {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val shown = WindowInsets.navigationBars.getBottom(density)
+    val hidden = WindowInsets.navigationBarsIgnoringVisibility.getBottom(density)
+    val corner = roundedCorner()
+    return with(density) {
+        maxOf(shown.toDp(), minOf(hidden.toDp(), 24.dp), corner * 0.3f, 10.dp)
+    }
+}
+
+/** The radius of the screen's bottom corners (0 where Android doesn't say: before Android 12) */
+@Composable
+private fun roundedCorner(): androidx.compose.ui.unit.Dp {
+    if (android.os.Build.VERSION.SDK_INT < 31) return 0.dp
+    val view = androidx.compose.ui.platform.LocalView.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val insets = view.rootWindowInsets ?: return 0.dp
+    val r = maxOf(
+        insets.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_LEFT)?.radius ?: 0,
+        insets.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_RIGHT)?.radius ?: 0,
+    )
+    return with(density) { r.toDp() }
+}
 
 private const val CINEMETA = "https://v3-cinemeta.strem.io/manifest.json"
 
@@ -177,16 +214,19 @@ private fun Screens(stremio: Stremio) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route.orEmpty()
-    val tab = Tab.entries.firstOrNull { route.substringBefore('?') == it.route }
+    val libraryTab by stremio.libraryTab.collectAsState()
+    val tabs = Tab.entries.filter { it != Tab.Library || libraryTab }
+    val tab = tabs.firstOrNull { route.substringBefore('?') == it.route }
     val haze = remember { HazeState() }
     val config = LocalConfiguration.current
     // on its side, the tabs go down the left: the screen's height is too precious for a bar
     val sideways = config.screenWidthDp > config.screenHeightDp
 
     Row(Modifier.fillMaxSize().background(Dx.Background)) {
-    if (tab != null && sideways) TabRail(tab) { nav.switchTo(it) }
+    if (tab != null && sideways) TabRail(tabs, tab) { nav.switchTo(it) }
     Box(Modifier.weight(1f).fillMaxHeight()) {
-        CompositionLocalProvider(LocalBarSpace provides if (tab != null && !sideways) BarSpace else 0.dp) {
+        val bottom = barBottom()
+        CompositionLocalProvider(LocalBarSpace provides if (tab != null && !sideways) BarSpace + bottom else 0.dp) {
             NavHost(
                 nav,
                 startDestination = Tab.Home.route,
@@ -235,7 +275,7 @@ private fun Screens(stremio: Stremio) {
                     ProfileScreen(
                         stremio,
                         onOpen = { nav.openTitle(it) },
-                        onLibrary = { nav.navigate("library") },
+                        onLibrary = { if (libraryTab) nav.switchTo(Tab.Library) else nav.navigate("library") },
                         onDownloads = { nav.navigate("downloads") },
                         onCustomiseHome = { nav.navigate("customise") },
                         onSettings = { nav.navigate("settings") },
@@ -276,7 +316,8 @@ private fun Screens(stremio: Stremio) {
                     DiscoverScreen(stremio, title, onBack = { nav.popBackStack() }, onOpen = { nav.openTitle(it) })
                 }
                 composable("downloads") { com.notdxbi.dxbi.tv.phone.ui.DownloadsScreen(onBack = { nav.popBackStack() }) }
-                composable("library") { LibraryScreen(stremio, onBack = { nav.popBackStack() }, onOpen = { nav.openTitle(it) }) }
+                // (a tab of its own, or opened from Profile)
+                composable("library") { LibraryScreen(stremio, onBack = if (tab == Tab.Library) null else ({ nav.popBackStack() }), onOpen = { nav.openTitle(it) }) }
                 composable("customise") { CustomiseHomeScreen(stremio, onBack = { nav.popBackStack() }) }
                 composable("settings") { SettingsScreen(stremio, onBack = { nav.popBackStack() }) }
                 composable("playback") { PlaybackSettingsScreen(stremio, onBack = { nav.popBackStack() }) }
@@ -284,7 +325,7 @@ private fun Screens(stremio: Stremio) {
             }
         }
 
-        if (tab != null && !sideways) TabBar(tab, haze, Modifier.align(Alignment.BottomCenter)) { nav.switchTo(it) }
+        if (tab != null && !sideways) TabBar(tabs, tab, haze, bottom, Modifier.align(Alignment.BottomCenter)) { nav.switchTo(it) }
     }
     }
 }
@@ -295,7 +336,7 @@ private fun Screens(stremio: Stremio) {
  * screen, rounded only at the top: a display's own rounded corners would cut into a floating bar's.
  */
 @Composable
-private fun TabBar(current: Tab, haze: HazeState, modifier: Modifier, onSelect: (Tab) -> Unit) {
+private fun TabBar(tabs: List<Tab>, current: Tab, haze: HazeState, bottom: androidx.compose.ui.unit.Dp, modifier: Modifier, onSelect: (Tab) -> Unit) {
     val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
     Row(
         modifier
@@ -303,12 +344,12 @@ private fun TabBar(current: Tab, haze: HazeState, modifier: Modifier, onSelect: 
             .clip(shape)
             .hazeChild(haze, style = HazeStyle(backgroundColor = Dx.Background, tint = HazeTint(Color(0xB3141418)), blurRadius = 24.dp, noiseFactor = 0f))
             .border(1.dp, Color.White.copy(alpha = 0.08f), shape)
-            .padding(horizontal = 6.dp)
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(top = 8.dp, bottom = 6.dp),
+            // (clear of the rounded corners at the sides too)
+            .padding(horizontal = maxOf(6.dp, roundedCorner() * 0.15f))
+            .padding(top = 8.dp, bottom = bottom),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Tab.entries.forEach { t ->
+        tabs.forEach { t ->
             val on = t == current
             Column(
                 Modifier.weight(1f).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(t) }.padding(vertical = 4.dp),
@@ -319,7 +360,8 @@ private fun TabBar(current: Tab, haze: HazeState, modifier: Modifier, onSelect: 
                 Text(
                     t.label,
                     color = if (on) Dx.Text else Dx.Muted,
-                    style = MaterialTheme.typography.labelMedium,
+                    // (six tabs: smaller, so "Discover" still fits on a narrow phone)
+                    style = if (tabs.size > 5) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
                 )
@@ -330,13 +372,13 @@ private fun TabBar(current: Tab, haze: HazeState, modifier: Modifier, onSelect: 
 
 /** The tabs down the left side, for a phone on its side */
 @Composable
-private fun TabRail(current: Tab, onSelect: (Tab) -> Unit) {
+private fun TabRail(tabs: List<Tab>, current: Tab, onSelect: (Tab) -> Unit) {
     Column(
         Modifier.fillMaxHeight().width(84.dp).background(Dx.Surface).windowInsetsPadding(WindowInsets.safeDrawing),
         verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Tab.entries.forEach { t ->
+        tabs.forEach { t ->
             val on = t == current
             Column(
                 Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(t) }.padding(vertical = 8.dp),

@@ -106,6 +106,10 @@ fun SettingsScreen(stremio: Stremio, onBack: () -> Unit) {
     val other by stremio.playInOtherApp.collectAsState()
     val playIn = Setting("playIn", "select", "Play videos in", "dx.bi's player, or another app on this phone (VLC, mpv, MX Player…).",
         "Player", listOf(false to "dx.bi's player", true to "External player (ask which)"), other)
+    // and the tab bar's Library tab leads Browsing & library
+    val libraryTabOn by stremio.libraryTab.collectAsState()
+    val libraryTab = Setting("libraryTab", "toggle", "Library in the tab bar", "A Library tab beside Home and Discover. Off, Library is under Profile.",
+        "Browsing & library", emptyList(), libraryTabOn)
 
     Column(Modifier.fillMaxSize().background(Dx.Background).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -117,8 +121,8 @@ fun SettingsScreen(stremio: Stremio, onBack: () -> Unit) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
             return@Column
         }
-        val groups = (listOf("Player") + items.map { it.group.ifEmpty { "More" } }).distinct()
-        fun inGroup(g: String) = (if (g == "Player") listOf(playIn) else emptyList()) + items.filter { it.group.ifEmpty { "More" } == g }
+        val groups = (listOf("Player") + items.map { it.group.ifEmpty { "More" } } + "Browsing & library").distinct()
+        fun inGroup(g: String) = (if (g == "Player") listOf(playIn) else if (g == "Browsing & library") listOf(libraryTab) else emptyList()) + items.filter { it.group.ifEmpty { "More" } == g }
         val open = section
         if (open == null) {
             LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 32.dp)) {
@@ -142,6 +146,7 @@ fun SettingsScreen(stremio: Stremio, onBack: () -> Unit) {
             LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 32.dp)) {
                 items(inGroup(open), key = { it.key }) { s ->
                     if (s.key == "playIn") SettingRow(s, onToggle = {}, onPick = { stremio.setPlayInOtherApp(it == true) }, onEdit = {})
+                    else if (s.key == "libraryTab") SettingRow(s, onToggle = { stremio.setLibraryTab(it) }, onPick = {}, onEdit = {})
                     else SettingRow(s, onToggle = { save(s, it) }, onPick = { save(s, it) }, onEdit = { editing = s })
                 }
             }
