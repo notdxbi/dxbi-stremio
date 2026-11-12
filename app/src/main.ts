@@ -13,6 +13,7 @@ import { BrowserWindow, shell } from "electron";
 import { watchLoad } from "./core/LoadWatch";
 import StreamingServer from "./utils/StreamingServer";
 import Helpers from "./utils/Helpers";
+import { keepOnStremio } from "./utils/SafeLinks";
 import StremioService from "./utils/StremioService";
 import { setupPluginSettingsAPI } from "./controllers/api/SettingsApiController";
 import { setupPluginAlertAPI } from "./controllers/api/AlertApiController";
@@ -143,11 +144,8 @@ async function createWindow() {
         });
     }
     
-    // Opens links in external browser instead of opening them in the Electron app.
-    mainWindow.webContents.setWindowOpenHandler((edata:any) => {
-        shell.openExternal(edata.url);
-        return { action: "deny" };
-    });
+    // Links open in the browser (web and mail links only), and the window stays on Stremio's page
+    keepOnStremio(mainWindow);
     
     // Devtools flag
     if(process.argv.includes("--devtools")) { 

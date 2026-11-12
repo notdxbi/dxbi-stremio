@@ -1,7 +1,8 @@
-import { BrowserWindow, ipcMain, screen, shell } from "electron";
+import { BrowserWindow, ipcMain, screen } from "electron";
 import { join } from "path";
 import { IPC_CHANNELS, URLS } from "../constants";
 import { getLogger } from "../utils/logger";
+import { keepOnStremio } from "../utils/SafeLinks";
 
 const logger = getLogger("MiniPlayer");
 
@@ -59,10 +60,7 @@ function open(main: BrowserWindow, hash: string, at: number) {
     // above full-screen apps too, like the system's own picture-in-picture
     win.setAlwaysOnTop(true, "floating");
     if (process.platform === "darwin") win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    win.webContents.setWindowOpenHandler(({ url }) => {
-        shell.openExternal(url);
-        return { action: "deny" };
-    });
+    keepOnStremio(win);
     win.on("closed", () => {
         if (mini === win) mini = null;
         tellMain(main);
