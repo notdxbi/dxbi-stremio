@@ -62,7 +62,7 @@ class AddonFilesTest {
     }
 
     @Test
-    fun arcNamesKeepStandaloneEpisodeNumbersAvailableForRemapping() {
+    fun arcNamesKeepTheirStandaloneEpisodeNumbers() {
         val arcEpisode = AddonFile.from(video("Diamond is Unbreakable - 01.mkv"))
         assertEquals(null, arcEpisode.season)
         assertEquals(1, arcEpisode.episode)
@@ -73,24 +73,6 @@ class AddonFilesTest {
     }
 
     @Test
-    fun savedSeasonRemapsAssignSelectedFilesAndPreserveDetectedEpisodeNumbers() {
-        val files = listOf(
-            AddonFile("pack:arc-01", "Diamond is Unbreakable - 01.mkv", null, 1),
-            AddonFile("pack:arc-02", "Diamond is Unbreakable - 02.mkv", null, 2),
-        )
-        val remap = SeasonRemap("cached-pack", "Diamond is Unbreakable", 4, mapOf("pack:arc-01" to 1, "pack:arc-02" to 2))
-        val mapped = AddonFiles.applyRemaps(files, listOf(remap))
-        assertEquals(listOf(4 to 1, 4 to 2), mapped.map { it.season to it.episode })
-
-        val refreshedId = files.first().copy(id = "new-pack:arc-01")
-        val patternRemap = remap.copy(
-            episodes = mapOf("old-pack:arc-01" to 1),
-            filePatterns = mapOf("old-pack:arc-01" to refreshedId.title),
-        )
-        assertEquals(4, AddonFiles.applyRemaps(listOf(refreshedId), listOf(patternRemap)).single().season)
-    }
-
-    @Test
     fun canonicalEpisodeMarkerWinsOverAdjacentOpeningEndingToken() {
         val episode = AddonFile.from(video("Season 1/Show S01E01 OP.mkv"))
         assertEquals(1, episode.season)
@@ -98,16 +80,17 @@ class AddonFilesTest {
     }
 
     @Test
-    fun libraryPlaylistNextSkipsSpecialsAndStaysInsideItsPack() {
-        val files = listOf(
-            AddonFile.from(video("Specials/NCOP.mkv")),
-            AddonFile.from(video("Season 1/S01E01.mkv")),
-            AddonFile.from(video("Season 1/S01E02.mkv")),
-            AddonFile.from(video("Season 2/S02E01.mkv")),
+    fun packFilesBecomeSeasonsWithSpecialsLastAndLooseFilesInSeasonOne() {
+        val episodes = AddonFiles.asEpisodes(listOf(
+            video("Specials/NCOP.mkv"),
+            video("Season 2/S02E01.mkv"),
+            video("Season 1/S01E10.mkv"),
+            video("Season 1/S01E02.mkv"),
+            video("Diamond is Unbreakable - 03.mkv"),
+        ))
+        assertEquals(
+            listOf(1 to 2, 1 to 3, 1 to 10, 2 to 1, 0 to null),
+            episodes.map { it.season to it.episode },
         )
-        val playlist = PhoneFilePlaylist("cached-pack", files, "pack:Season 1/S01E02.mkv")
-        assertEquals("pack:Season 2/S02E01.mkv", playlist.nextEpisode()?.id)
-        assertEquals(null, playlist.copy(currentFileId = "pack:Season 2/S02E01.mkv").nextEpisode())
-        assertEquals("pack:Season 2/S02E01.mkv", playlist.copy(type = "series").nextEpisode()?.id)
     }
 }

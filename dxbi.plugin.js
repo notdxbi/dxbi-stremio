@@ -22,13 +22,11 @@
   const PLUGIN_VERSION = "2.36.0"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
-  const debugLog = window.__dxbiTv ? !!window.__dxbiTv.debug : true;
   const remember = (list, text) => {
     list.push(`${new Date().toISOString().slice(11, 19)} ${String(text).slice(0, 400)}`);
     if (list.length > 60) list.shift();
   };
   const log = (...args) => {
-    if (!debugLog) return;
     console.log("[dx.bi]", ...args);
     remember(recent.logs, args.map((a) => (a instanceof Error ? a.message : typeof a === "object" ? (() => { try { return JSON.stringify(a); } catch (_) { return String(a); } })() : String(a))).join(" "));
   };
@@ -16766,226 +16764,8 @@
           missing: [!settings.tmdbKey.trim() && "tmdb", !settings.mdblistKey.trim() && "mdblist"].filter(Boolean),
         };
       },
-      // The streams for the title open in details, read the way the stream list reads them, and the one
-            seasonRemaps(packId) {
-        const saved = JSON.parse(localStorage.getItem("dxbi.phone.season-remaps") || "[]");
-        if (!Array.isArray(saved)) throw new Error("Saved season remaps are invalid");
-        return saved.filter((rule) => rule && rule.packId === packId);
-      },
-      saveSeasonRemap(remap) {
-        const packId = typeof remap?.packId === "string" ? remap.packId.trim() : "";
-        const matchPattern = typeof remap?.matchPattern === "string" ? remap.matchPattern.trim() : "";
-        const season = Number(remap?.season);
-        const rawFiles = Array.isArray(remap?.files) ? remap.files : [];
-        const files = rawFiles.map((file, idx) => {
-          const id = typeof file?.id === "string" && file.id ? file.id : (typeof file?.pattern === "string" && file.pattern ? file.pattern : `file-${idx}`);
-          const epMatch = typeof file?.pattern === "string" ? file.pattern.match(/(?:^|[^0-9])(\d{1,3})(?:[^0-9]|$)/) : null;
-          const extractedEp = epMatch ? Number(epMatch[1]) : (idx + 1);
-          const episode = Number.isInteger(Number(file?.episode)) && Number(file.episode) > 0 ? Number(file.episode) : extractedEp;
-          const pattern = typeof file?.pattern === "string" ? file.pattern : "";
-          return { id, episode, pattern };
-        }).filter((f) => f.id && f.episode > 0);
-        if (!packId || !Number.isInteger(season) || season < 1 || season > 99 || !files.length) {
-          throw new Error("Choose a season and at least one numbered file");
-        }
-        const uniqueFiles = [...new Map(files.map((file, i) => [`${file.id || ''}:${file.pattern || ''}:${i}`, file])).values()];
-        const saved = JSON.parse(localStorage.getItem("dxbi.phone.season-remaps") || "[]");
-        const list = Array.isArray(saved) ? saved : [];
-        const identity = matchPattern.toLocaleLowerCase();
-        const updated = list.filter((rule) => !rule || rule.packId !== packId || String(rule.matchPattern || "").toLocaleLowerCase() !== identity);
-        updated.push({ packId, matchPattern, season, files: uniqueFiles });
-        localStorage.setItem("dxbi.phone.season-remaps", JSON.stringify(updated));
-        return { ok: true, count: uniqueFiles.length };
-      },
-      // Downloads (Downloads.kt): the stream to save for one film or episode in a quality ("best",
-      // "2160", "1080", "720", "small"), picked straight from the addons as the computer does, in
-      // the shape the player hand-off has. { stream } or { error }
-      async download(type, metaId, videoId, quality) {
-        const r = await downloads.spec(type, metaId, videoId || metaId, quality || "best");
-        if (!r.spec) return { error: r.error || "Couldn't find a stream to download." };
-        const s = r.spec;
-        return {
-          stream: {
-            url: s.url,
-            headers: s.headers,
-            subtitles: s.subtitles.map((x, i) => ({ url: x.url, lang: x.lang, label: x.lang, start: i === 0 })),
-            title: s.name || "dx.bi",
-            subtitle: s.episode,
-            background: s.background,
-            poster: s.poster,
-            type, metaId, videoId: videoId || metaId,
-            season: s.season, number: s.number,
-            quality: s.quality, provider: s.provider, filename: s.filename, size: s.size,
-          },
-        };
-      },
-      // Your stats, for the app's own screen (null when Watch stats is off)
-      stats() {
-        if (!settings.watchStats) return null;
-        stats.flush();
-        const x = stats.summary();
-        return {
-          year: x.year,
-          since: stats.data.since || Date.now(),
-          total: x.total,
-          tiles: x.tiles.map(([label, sec]) => ({ label: String(label), sec })),
-          streak: x.streak,
-          days: x.bars.map((b) => ({ day: dayKey(b.day), sec: b.sec })),
-          top: x.top.map((t) => ({ id: t.id, name: t.n || "Untitled", type: t.type, poster: t.p && /^https:/.test(t.p) ? t.p : null, sec: t.ys })),
-          genres: x.genres.map(([name, sec]) => ({ name, sec })),
-          hour: x.hourPeak ? Number(x.hourPeak[0]) : null,
-          day: x.dayPeak ? x.dayPeak[0] : null,
-          movies: x.movies,
-          series: x.series,
-        };
-      },
-      // The cast with their photos: TMDB's (with a TMDB key in dx.bi settings), and Wikipedia's for anyone
-      // TMDB has none of, or for everyone without a key. [names]: the title's cast and directors as Stremio
-      // lists them ({name, role}), used when TMDB has nothing
-      async cast(type, imdb, names) {
-        const fromTmdb = settings.tmdbKey.trim() && /^tt\d+$/.test(imdb || "") ? await this.castFromTmdb(type, imdb).catch(() => null) : null;
-        const list = (fromTmdb && fromTmdb.length ? fromTmdb : (Array.isArray(names) ? names : []).map((n) => ({ name: String(n.name || n), role: n.role || "" })))
-          .map((p) => ({ name: p.name, role: p.role || "", photo: p.photo || null }));
-        const missing = list.filter((p) => !p.photo).slice(0, 16);
-        const photos = await Promise.all(missing.map((p) => this.wikipediaPhoto(p.name)));
-        missing.forEach((p, i) => { p.photo = photos[i]; });
-        return list;
-      },
-      async castFromTmdb(type, imdb) {
-        const token = settings.tmdbKey.trim();
-        const key = `cast:${type}:${imdb}`;
-        const cached = readCached(key);
-        if (cached !== undefined) return cached;
-        const bearer = token.startsWith("eyJ");
-        const get = (path) => fetch(`https://api.themoviedb.org/3${path}${bearer ? "" : `${path.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(token)}`}`, {
-          headers: bearer ? { authorization: `Bearer ${token}` } : {},
-          signal: AbortSignal.timeout(10000),
-        }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-        const kind = type === "movie" ? "movie" : "tv";
-        const found = await get(`/find/${encodeURIComponent(imdb)}?external_source=imdb_id`);
-        const first = found && found[`${kind}_results`] && found[`${kind}_results`][0];
-        if (!first) return null;
-        // (a series: everyone across its seasons, with their main character)
-        const credits = await get(kind === "tv" ? `/tv/${first.id}/aggregate_credits` : `/movie/${first.id}/credits`);
-        if (!credits) return null;
-        const photo = (p) => (p ? `https://image.tmdb.org/t/p/w185${p}` : null);
-        const crew = (credits.crew || []).filter((c) => c.job === "Director" || (c.jobs || []).some((j) => j.job === "Director"));
-        const result = [
-          ...crew.slice(0, 2).map((c) => ({ name: c.name, role: "Director", photo: photo(c.profile_path) })),
-          ...(credits.cast || []).slice(0, 20).map((c) => ({ name: c.name, role: c.character || (c.roles && c.roles[0] && c.roles[0].character) || "", photo: photo(c.profile_path) })),
-        ];
-        writeCached(key, result);
-        return result;
-      },
-      // A person's picture from Wikipedia: only from a page about someone in film or TV (a name can
-      // belong to anyone)
-      async wikipediaPhoto(name) {
-        const key = `person:${name}`;
-        const cached = readCached(key);
-        if (cached !== undefined) return cached;
-        const screen = /\b(actor|actress|director|filmmaker|comedian|screenwriter|producer|presenter|voice|television|film)\b/i;
-        let photo = null;
-        try {
-          const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name.replace(/ /g, "_"))}?redirect=true`, { signal: AbortSignal.timeout(8000) });
-          const j = r.ok ? await r.json() : null;
-          if (j && j.type === "standard" && screen.test(j.description || "") && j.thumbnail && /^https:/.test(j.thumbnail.source)) photo = j.thumbnail.source;
-        } catch (_) {
-          return null; // offline: try again another time
-        }
-        writeCached(key, photo);
-        return photo;
-      },
-      async billboard() {
-        if (!settings.billboard) return [];
-        const items = hero.items.length ? hero.items : await hero.load();
-        return items.map((m) => ({
-          id: m.id,
-          type: m.type,
-          name: m.name,
-          description: m.description || "",
-          background: hero.background(m),
-          logo: artworkUrl(m.logo) || (isImdb(m.id) && metadataSource.englishArtFits(m._configuredMeta || !m._stock) ? art.logo(m.id) : null),
-          year: m.releaseInfo ? String(m.releaseInfo) : "",
-          runtime: formatRuntime(m.runtime),
-          genres: (m.genres || m.genre || []).slice(0, 3),
-          imdb: m.imdbRating || null,
-        }));
-      },
-      myList() {
-        if (settings.myList === "off") return [];
-        return myList.groups().map(([name, list]) => ({
-          name,
-          items: list.map((i) => ({ id: i._id, type: i.type, name: i.name, poster: i.poster || (isImdb(i._id) ? `https://images.metahub.space/poster/small/${i._id}/img` : null) })),
-        }));
-      },
-      // null while it's still being worked out (ask again shortly)
-      forYou() {
-        if (!settings.forYou || viewers.current().kids) return { items: [] };
-        const seed = forYou.seed();
-        if (!seed) return { items: [] };
-        const sig = `${viewers.current().id}|${seed._id}`;
-        const data = forYou.saved(sig);
-        if (!data) {
-          if (forYou.loading !== sig) {
-            forYou.loading = sig;
-            forYou.load(seed, sig).catch(() => { forYou.loading = null; });
-          }
-          return null;
-        }
-        return { name: `Because you watched ${data.name}`, items: data.list.map((i) => ({ id: i._id, type: i.type, name: i.name, poster: i.poster || null })) };
-      },
-      // Airing this week: each show's next episode (or the one just out), soonest first
-      airing() {
-        if (!settings.airingRow) return [];
-        episodes.refresh();
-        const byShow = new Map();
-        for (const [id, e] of episodes.index) {
-          const eps = e.upcoming || [];
-          if (!eps.length) continue;
-          const key = String(e.name || id).toLowerCase().replace(/[^a-z0-9]+/g, "");
-          const prev = byShow.get(key);
-          if (!prev || eps[0].t < prev.ep.t) byShow.set(key, { id, e, ep: eps[0], more: eps.length - 1 });
-        }
-        return [...byShow.values()].sort((a, b) => a.ep.t - b.ep.t).slice(0, 12).map(({ id, e, ep, more }) => ({
-          id,
-          name: e.name || "",
-          background: e.background || (isImdb(id) ? art.backgroundMedium(id) : e.poster || null),
-          still: ep.t <= Date.now() ? ep.th || null : null,
-          season: ep.s,
-          episode: ep.e,
-          title: ep.n && !/^episode\s*\d+$/i.test(ep.n) ? ep.n : "",
-          more,
-          time: ep.t,
-          when: whenText(ep.t),
-          countdown: countdownText(ep.t),
-          out: ep.t <= Date.now(),
-        }));
-      },
-      // Customise Home, for this viewer: rows by `${addon id}/${type}/${catalog id}`
-      layout() {
-        const { order, hidden, names } = homeLayout.data();
-        return { order, hidden, names };
-      },
-      // A title's scores (MDBList with a key, else Wikidata), what critics said (Wikipedia) and audience
-      // reviews (TMDB, with a key): what the Reviews sheet shows
-      async reviews(type, id) {
-        if (!settings.reviews) return null;
-        const t = { type, id, key: `${type}:${id}` };
-        const data = reviews.data.get(t.key) || (await reviews.load(t));
-        const [wiki, tmdb] = await Promise.all([
-          data.article ? reviews.wikipedia(data.article).catch(() => null) : null,
-          settings.tmdbKey.trim() && (data.ids.imdb || data.ids.tmdb) ? reviews.tmdb(data.ids).catch((err) => ({ error: err.message })) : null,
-        ]);
-        return {
-          scores: (data.scores || []).map((s) => ({ source: s.source, name: s.name, note: s.note || "", value: String(s.value), votes: s.votes || 0, url: s.url || null })),
-          scoresFrom: data.fromMdblist ? "MDBList" : data.scores && data.scores.length ? "Wikidata" : null,
-          mdbError: data.mdbError || null,
-          critics: wiki && wiki.text && wiki.text.length ? { text: wiki.text, url: wiki.url } : null,
-          audience: tmdb ? { reviews: tmdb.reviews || [], total: tmdb.total || 0, url: tmdb.url || null, error: tmdb.error || null } : null,
-          missing: [!settings.tmdbKey.trim() && "tmdb", !settings.mdblistKey.trim() && "mdblist"].filter(Boolean),
-        };
-      },
-      // The streams for the title open in details, read the way the stream list reads them, and the one
+      // Library addons (StremThru Store and the like) keep whole season packs under their own "other"
+      // ids: the file in one of them for the episode open in details, offered beside the addons' streams
       libraryCache: new Map(),
       libraryMetaCache: new Map(),
 
@@ -17201,25 +16981,7 @@
           }
           const pack = await entry.promise;
           if (!pack || !Array.isArray(pack.videos) || !pack.videos.length) return;
-          const packId = String(result.id);
-          const remaps = this.seasonRemaps(packId);
-          const files = pack.videos.map((video) => {
-           const file = this.fileDetails(video);
-           const fileText = `${file.title} ${file.path}`.toLocaleLowerCase();
-           const remap = remaps.slice().reverse().find((rule) => {
-             const byPattern = rule.matchPattern && fileText.includes(rule.matchPattern.toLocaleLowerCase());
-             const byFile = (rule.files || []).some((selection) =>
-               selection && (selection.id === file.id || (selection.pattern && fileText.includes(selection.pattern.toLocaleLowerCase()))));
-             return byPattern || byFile;
-           });
-           if (!remap || !Number.isInteger(Number(remap.season)) || Number(remap.season) < 1) return file;
-           const selectedFile = (remap.files || []).find((selection) =>
-             selection && (selection.id === file.id || (selection.pattern && fileText.includes(selection.pattern.toLocaleLowerCase()))));
-           const epFromTitle = (file.title.match(/(?:^|[^0-9])(\d{1,3})(?:[^0-9]|$)/) || [])[1];
-           const episode = Number(selectedFile?.episode || (epFromTitle ? Number(epFromTitle) : file.episode));
-           if (!Number.isInteger(episode) || episode < 1) return file;
-           return { ...file, season: Number(remap.season), episode };
-          });
+          const files = pack.videos.map((video) => this.fileDetails(video));
           let selectedFile;
           if (meta.type === "series") {
             const target = this.fileDetails(targetVideo);
@@ -17293,37 +17055,38 @@
       },
 
       // Just press Play would pick (what this viewer chose last, else the best that's ready to play)
+
+      // The streams for the title open in details, read the way the stream list reads them, and the one
+      // Just press Play would pick (what this viewer chose last, else the best that's ready to play).
+      // Files from library addons' season packs come after them
       async streams(field = "meta_details") {
-        let state = await core().getState(field).catch(() => null);
-        const library = await this.libraryStreams(state, []);
-        let groups = state && Array.isArray(state.streams) ? state.streams : [];
-        for (let i = 0; groups.length === 0 && i < 10; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 150));
-          state = await core().getState(field).catch(() => state);
-          groups = state && Array.isArray(state.streams) ? state.streams : [];
-        }
+        const state = await core().getState(field).catch(() => null);
+        const groups = state && Array.isArray(state.streams) ? state.streams : [];
         const metaId = state && state.selected && state.selected.metaPath && state.selected.metaPath.id;
         const items = groups.flatMap((g) => (g && g.content && g.content.type === "Ready" && Array.isArray(g.content.content)
           ? g.content.content.map((st) => ({ st, addon: (g.addon && g.addon.manifest && g.addon.manifest.name) || "" })) : []))
           .filter((x) => x.st && x.st.deepLinks && x.st.deepLinks.player && !x.st.ytId)
           .map((x) => ({ ...x, torrent: !!x.st.infoHash && !x.st.url, hint: watchParty.streamHints(x.st), d: describeStream(String(x.st.name || ""), `${x.st.name || ""}\n${x.st.description || x.st.title || ""}`) }));
-        const libraryItems = library.map((item, index) => ({ ...item, index: items.length + index }));
-        const server = await core().getState("streaming_server").catch(() => null);
+        const [server, library] = await Promise.all([
+          core().getState("streaming_server").catch(() => null),
+          this.libraryStreams(state, items).catch(() => []),
+        ]);
         const options = {
           limit: streamChoice.limit(settings.quickPlayQuality),
           fallback: settings.quickPlayFallback,
           torrents: !!(server && server.settings && server.settings.type === "Ready") || (IN_TV && settings.tvTorrents),
         };
         const choice = items.length ? streamChoice.choose(items, metaId ? quickPlay.memory(metaId) : null, options) : null;
-        phoneStreams = { items, options };
-        const metaLoading = !state || (state.content && state.content.type === "Loading") || (state.selected && !state.selected.streamPath);
-        const settled = !metaLoading && groups.length > 0 && !groups.some((g) => g && g.content && g.content.type === "Loading");
+        phoneStreams = { items, options, library, state };
+        // (settled: the title's details are in and no addon is still answering)
+        const meta = state && state.metaItem && state.metaItem.content;
+        const settled = !!meta && meta.type !== "Loading" && !groups.some((g) => g && g.content && g.content.type === "Loading");
         return {
           justPlay: settings.quickPlay,
           settled,
           videoId: (state && state.selected && state.selected.streamPath && state.selected.streamPath.id) || null,
-          pick: choice ? items.indexOf(choice.item) : (libraryItems.length ? items.length : -1),
-          how: choice ? choice.how : libraryItems.length ? "library" : null,
+          pick: choice ? items.indexOf(choice.item) : library.length ? items.length : -1,
+          how: choice ? choice.how : library.length ? "library" : null,
           items: [...items.map((x) => ({
             play: x.st.deepLinks.player,
             addon: x.addon,
@@ -17332,18 +17095,42 @@
             label: quickPlay.label(x.d),
             torrent: x.torrent,
             ...x.d,
-          })), ...libraryItems],
+          })), ...library.map(({ library: _files, ...item }) => item)],
         };
       },
-      // Playing one of those: like Just press Play, the next best are kept in case it won't play
-    // Playing one of those: like Just press Play, the next best are kept in case it won't play
-      play(index) {
+      // Playing one of those: like Just press Play, the next best are kept in case it won't play.
+      // A library file: its stream from the library addon, played as this episode (so its progress
+      // and Continue Watching are the show's)
+      async play(index) {
         const item = phoneStreams && phoneStreams.items[index];
-        if (!item) return null;
-        quickPlay.from = location.hash;
-        quickPlay.spares = streamChoice.spares(phoneStreams.items, item, phoneStreams.options);
-        quickPlay.play(item);
-        return item.st.deepLinks.player;
+        if (item) {
+          quickPlay.from = location.hash;
+          quickPlay.spares = streamChoice.spares(phoneStreams.items, item, phoneStreams.options);
+          quickPlay.play(item);
+          return item.st.deepLinks.player;
+        }
+        const file = phoneStreams && phoneStreams.library && phoneStreams.library[index - phoneStreams.items.length];
+        return file ? this.libraryLink(file, phoneStreams.state).catch((err) => { log("library file", err && err.message); return null; }) : null;
+      },
+      async libraryLink(file, state) {
+        const addon = metadataSource.addons.find((a) => a.manifest && a.manifest.name === file.addon) || null;
+        const url = addon && metadataSource.url(addon, "stream", file.library.type, file.library.fileId);
+        if (!url) return null;
+        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json();
+        const stream = (body && Array.isArray(body.streams) ? body.streams : []).find((s) => s && (s.url || s.infoHash));
+        if (!stream) return null;
+        const sel = state && state.selected;
+        const metaPath = sel && sel.metaPath;
+        const videoId = sel && sel.streamPath && sel.streamPath.id;
+        const metaItem = state && state.metaItem;
+        const metaTransport = (metaItem && metaItem.addon && metaItem.addon.transportUrl) || (metaItem && metaItem.request && metaItem.request.base) || null;
+        const parts = [await downloads.encode(stream), addon.transportUrl];
+        // (as the episode: else as the pack's own file)
+        if (metaTransport && metaPath && videoId) parts.push(metaTransport, metaPath.type, metaPath.id, videoId);
+        else parts.push(addon.transportUrl, file.library.type, file.library.metaId, file.library.fileId);
+        return `#/player/${parts.map((p) => encodeURIComponent(p)).join("/")}`;
       },
       // Watch party (see watchParty.phone)
       party: watchParty.phone,

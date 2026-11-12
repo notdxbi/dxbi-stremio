@@ -14,14 +14,6 @@ const tv = read("tv/app/src/main/assets/dxbi-tv.js");
 const engine = read("tv/app/src/mobile/assets/dxbi-engine.js");
 const bridge = read("tv/app/src/main/java/com/notdxbi/dxbi/tv/Bridge.kt");
 const main = read("tv/app/src/main/java/com/notdxbi/dxbi/tv/MainActivity.kt");
-const playerActivity = read("tv/app/src/main/java/com/notdxbi/dxbi/tv/PlayerActivity.kt");
-const playbackBus = read("tv/app/src/main/java/com/notdxbi/dxbi/tv/PlaybackBus.kt");
-const mobilePhone = read("tv/app/src/mobile/java/com/notdxbi/dxbi/tv/Phone.kt");
-const detail = read("tv/app/src/mobile/java/com/notdxbi/dxbi/tv/phone/ui/DetailScreen.kt");
-const playerActivitySource = read("tv/app/src/main/java/com/notdxbi/dxbi/tv/PlayerActivity.kt");
-const addonFiles = read("tv/app/src/mobile/java/com/notdxbi/dxbi/tv/phone/AddonFiles.kt");
-const torrentEngine = read("tv/app/src/main/java/com/notdxbi/dxbi/tv/TorrentEngine.kt");
-const proguard = read("tv/app/proguard-rules.pro");
 
 // The text between `opening` and the bracket that closes it (the first `opening` that ends its line, when `multiline`)
 function block(text, opening, multiline = false) {
@@ -45,11 +37,12 @@ for (const name of ["settings", "viewers", "whoIsWatching", "homeLayout", "episo
 assert.match(plugin, /window\.__dxbi = api/, "the api is window.__dxbi");
 // the phone app's own entry (Home's billboard and rows as data), and what it builds on
 const phone = block(api, "    phone: {");
-for (const name of ["billboard", "myList", "forYou", "airing", "layout", "viewers", "reviews", "streams", "play", "seasonRemaps", "saveSeasonRemap"]) {
+for (const name of ["billboard", "myList", "forYou", "airing", "layout", "viewers", "reviews", "streams", "play"]) {
   assert.match(phone, new RegExp(`\\n\\s+(async\\s+)?${name}\\(`), `api.phone.${name}`);
 }
 assert.match(phone, /async streams\(field = "meta_details"\)/, "phone streams can read a separate Stremio detail model");
-assert.match(phone, /await this\.libraryStreams\(state, \[\]\)/, "regular detail streams include matched library files");
+assert.match(phone, /this\.libraryStreams\(state, items\)/, "regular detail streams include matched library files");
+assert.match(phone, /\n\s+async libraryLink\(/, "a library file plays through a player link");
 for (const [owner, method] of [["hero", "load"], ["hero", "background"], ["myList", "groups"], ["forYou", "seed"], ["forYou", "saved"], ["forYou", "load"],
   ["episodes", "refresh"], ["homeLayout", "data"], ["homeLayout", "save"], ["viewers", "current"], ["viewers", "list"], ["viewers", "select"],
   ["reviews", "load"], ["reviews", "wikipedia"], ["reviews", "tmdb"], ["quickPlay", "memory"], ["quickPlay", "play"], ["streamChoice", "choose"], ["streamChoice", "spares"]]) {
@@ -117,12 +110,6 @@ const libraryPacks = {
       { id: "pack:03.mkv", title: "03.mkv" },
     ],
   },
-  "arc-pack": {
-    id: "arc-pack", name: "Example Show", videos: [
-      { id: "arc-pack:Diamond is Unbreakable - 01.mkv", title: "Diamond is Unbreakable - 01.mkv" },
-      { id: "arc-pack:Diamond is Unbreakable - 02.mkv", title: "Diamond is Unbreakable - 02.mkv" },
-    ],
-  },
 };
 const libraryPhone = vm.runInNewContext(`({${phone}})`, {
   AbortSignal: { timeout: () => undefined },
@@ -134,6 +121,8 @@ const libraryPhone = vm.runInNewContext(`({${phone}})`, {
   localStorage,
   metadataSource,
   watchParty: { phone: {} },
+  downloads: { encode: async (stream) => `ENC(${stream.url})` },
+  log() {},
   fetch: async (address) => {
     const url = new URL(address);
     requested.push(url.pathname);
@@ -146,9 +135,11 @@ const libraryPhone = vm.runInNewContext(`({${phone}})`, {
         { id: "imdb-pack", type: "other", name: "Unrelated Pack", links: libraryPacks["imdb-pack"].links },
         { id: "kitsu-pack", type: "other", name: "Unrelated Anime Store Pack", links: libraryPacks["kitsu-pack"].links },
         { id: "absolute-pack", type: "other", name: "Example Show" },
-        { id: "arc-pack", type: "other", name: "Example Show" },
         ] : [] }),
       };
+    }
+    if (url.pathname.includes("/stream/")) {
+      return { ok: true, json: async () => ({ streams: [{ url: "https://store.test/file.mkv", name: "Store" }] }) };
     }
     if (url.pathname.includes("/meta/")) {
       const packId = decodeURIComponent(url.pathname.split("/").pop().replace(/\.json$/, ""));
@@ -157,12 +148,6 @@ const libraryPhone = vm.runInNewContext(`({${phone}})`, {
     return { ok: false, status: 404 };
   },
 }).phone;
-const savedRemap = libraryPhone.saveSeasonRemap({
-  packId: "arc-pack",
-  matchPattern: "Diamond is Unbreakable",
-  season: 4,
-  files: [{ id: "old-pack-id:Diamond is Unbreakable - 01.mkv", episode: 1, pattern: "Diamond is Unbreakable - 01.mkv" }],
-});
 const libraryMatches = await libraryPhone.libraryStreams({
   selected: { streamPath: { id: "tt123:1:1" } },
   metaItem: { content: { type: "Ready", content: {
@@ -196,22 +181,15 @@ const absoluteMatches = await libraryPhone.libraryStreams({
   } } },
 }, []);
 assert.deepEqual(JSON.parse(JSON.stringify(absoluteMatches.map((match) => match.library.metaId))), ["absolute-pack"], "matches season-two episodes stored by absolute number");
-const remappedMatches = await libraryPhone.libraryStreams({
-  selected: { streamPath: { id: "tt123:4:1" } },
-  metaItem: { content: { type: "Ready", content: {
-    id: "tt123", type: "series", name: "Example Show", aliases: { romaji: "Example Romaji" }, imdbId: "tt123", kitsuId: "42",
-    videos: [
-      { id: "tt123:1:1", title: "Pilot", season: 1, episode: 1 },
-      { id: "tt123:1:2", title: "Episode 2", season: 1, episode: 2 },
-      { id: "tt123:2:1", title: "Season 2 opener", season: 2, episode: 1 },
-      { id: "tt123:3:1", title: "Season 3 opener", season: 3, episode: 1 },
-      { id: "tt123:4:1", title: "Diamond is Unbreakable", season: 4, episode: 1 },
-    ],
-  } } },
-}, []);
-assert.deepEqual(JSON.parse(JSON.stringify(remappedMatches.map((match) => [match.library.metaId, match.library.fileId, match.library.files[0].season, match.library.files[0].episode]))), [
-  ["arc-pack", "arc-pack:Diamond is Unbreakable - 01.mkv", 4, 1],
-], "local season remaps feed the catalog resolver");
+// A library file plays as the episode open in details (its progress is the show's)
+const libraryState = {
+  selected: { metaPath: { type: "series", id: "tt123" }, streamPath: { id: "tt123:1:1" } },
+  metaItem: { addon: { transportUrl: "https://cinemeta.test/manifest.json" }, content: { type: "Ready", content: {} } },
+};
+const link = await libraryPhone.libraryLink(primaryMatch, libraryState);
+assert.equal(link, `#/player/${["ENC(https://store.test/file.mkv)", libraryAddon.transportUrl, "https://cinemeta.test/manifest.json", "series", "tt123", "tt123:1:1"].map(encodeURIComponent).join("/")}`);
+assert.ok(requested.some((path) => path === `/stream/other/${encodeURIComponent("pack:Season 1/S01E01.mkv")}.json`), "asks the library addon for that file's stream");
+console.log("PASS a library file plays as the episode");
 for (const marker of ["NCED", "NCOP", "OVA", "OAD", "SP", "PV", "MENU", "PREVIEW", "EXTRAS", "SPECIALS"]) {
   const parsed = libraryPhone.fileDetails({ id: `pack:Season 1/JoJo - S01 ${marker} 01.mkv`, title: `Season 1/JoJo - S01 ${marker} 01.mkv`, season: 1, episode: 0 });
   assert.equal(parsed.season, 0, `${marker} is routed to Specials`);
@@ -234,12 +212,6 @@ for (const [title, season, episode] of [
   const parsed = libraryPhone.fileDetails({ id: `pack:${title}`, title });
   assert.deepEqual([parsed.season, parsed.episode], [season, episode], title);
 }
-assert.equal(savedRemap.ok, true, "valid season remaps save");
-assert.deepEqual(JSON.parse(JSON.stringify(libraryPhone.seasonRemaps("arc-pack"))), [{
-  packId: "arc-pack", matchPattern: "Diamond is Unbreakable", season: 4,
-  files: [{ id: "old-pack-id:Diamond is Unbreakable - 01.mkv", episode: 1, pattern: "Diamond is Unbreakable - 01.mkv" }],
-}], "season remaps persist by pack and match pattern");
-assert.throws(() => libraryPhone.saveSeasonRemap({ packId: "arc-pack", season: 0, files: [] }), /Choose a season/);
 console.log("PASS catalog episodes match files in library-addon season packs");
 console.log("PASS addon file parsing routes extras safely and protects canon episodes");
 
