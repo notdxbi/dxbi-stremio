@@ -14782,7 +14782,9 @@
   // apps have one built in, and debrid streams are ordinary links that play anywhere). On the web
   // page, torrent streams say so, and picking one explains what to do instead of a dead player.
   const webTorrents = {
-    on: !API && !IN_APP && !IN_TV,
+    get on() {
+      return !API && !IN_APP && !IN_TV;
+    },
     hrefs: new Set(),
     serverUp: true,
     checked: 0,
