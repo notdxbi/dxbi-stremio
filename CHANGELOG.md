@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.37.2
+
+- **The intro shows on every computer.** On some graphics cards (seen with NVIDIA on Linux) the intro film played as four seconds of black, most noticeably on dx.bi on the web. dx.bi now checks the picture as the name should appear, and if the film comes out blank it shows the animated DX.BI instead. Everyone else still gets the film.
+
 ## 2.37.1
 
 - **Signed out, dx.bi's addons come in dx.bi's order.** TMDB Collections, Anime Catalogs, Torrentio, OpenSubtitles and Streaming Catalogs, as on dx.bi's own account, and Stremio's other visitor addons (YouTube, WatchHub, Public Domain Movies) are taken out. Cinemeta and Local Files stay first: Stremio doesn't let them move. Visitors from 2.37.0 get the same tidy-up once.

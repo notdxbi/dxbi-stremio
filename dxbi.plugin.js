@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.37.1
+ * @version 2.37.2
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.37.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.37.2"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -3824,6 +3824,28 @@
     video.src = url;
     video.addEventListener("ended", finish, { once: true });
     video.addEventListener("error", () => { if (!done) fallback(); }, { once: true });
+    // Some graphics drivers (seen on NVIDIA under Linux) "play" AV1 but hand back empty frames, so the
+    // intro was 4 seconds of black. Once the name should be on screen, look at one small frame; if
+    // it's empty, show the light version instead.
+    const probe = () => {
+      if (done || video.currentTime < 0.7) return;
+      video.removeEventListener("timeupdate", probe);
+      try {
+        const c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 72;
+        const g = c.getContext("2d", { willReadFrequently: true });
+        g.drawImage(video, 0, 0, 128, 72);
+        const d = g.getImageData(0, 0, 128, 72).data;
+        let brightest = 0;
+        for (let i = 0; i < d.length; i += 4) brightest = Math.max(brightest, d[i], d[i + 1], d[i + 2]);
+        if (brightest < 40) {
+          video.pause();
+          fallback();
+        }
+      } catch (_) { /* can't read the frame: leave the film playing */ }
+    };
+    video.addEventListener("timeupdate", probe);
     el.append(video);
     video.play().catch(() => {
       // Sound not allowed? Try silently, then give up gracefully
