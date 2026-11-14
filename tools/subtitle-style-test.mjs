@@ -30,6 +30,10 @@ for (const name of names) {
     const values = choose(name);
     assert.ok(Object.keys(values).length >= 7, `${name} must reach mpv`);
     assert.match(styles.get("dx-sub-style").textContent, /text-shadow:/);
+    // addon and dropped subtitles are drawn in the page in both players: beside the <video> in the
+    // browser player, and on their own in Stremio's video layer with mpv (no <video> there)
+    assert.match(styles.get("dx-sub-style").textContent, /video ~ div:not\(\[class\]\) > div/);
+    assert.match(styles.get("dx-sub-style").textContent, /\[class\*="video-container"\] > \[class\] > div:not\(\[class\]\) > div/);
     for (const prop of ["sub-font", "sub-font-size", "sub-scale", "sub-pos", "sub-delay", "sub-ass-override"]) assert.equal(values[prop], undefined);
 }
 assert.equal(choose("yellow")["sub-color"], "#FFFFD84D");
