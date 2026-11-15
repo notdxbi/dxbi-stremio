@@ -7933,6 +7933,7 @@
   .dx-sub2 span { display: inline-block; max-width: 90%; padding: .1em .3em; white-space: pre-wrap; color: #ffe39a; font: 600 3.4vmin/1.3 Inter, system-ui, sans-serif !important; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 2px 6px rgba(0,0,0,.85); }
   html.dx-hdr-subs #app [class*="player-container"] video::cue,
   html.dx-hdr-subs #app [class*="player-container"] video ~ div:not([class]) > div,
+  html.dx-hdr-subs #app [class*="player-container"] [class*="video-container"] > [class] > div:not([class]) > div,
   html.dx-hdr-subs .dx-enhance-cue { color: #bdbdbd !important; }
   html.dx-hdr-subs .dx-sub2 span { color: #c4b27a !important; }
 
@@ -7972,7 +7973,9 @@
   // ---- Subtitle styles. Embedded tracks are the video's own cues (::cue, which the upscaler's
   // subtitle layer copies); addon subtitles are lines Stremio draws in an unclassed <div> next to
   // the video with inline styles, so they need !important too. Their size stays Stremio's.
-
+  // With mpv (the dx.bi app on Windows) there's no <video> beside that <div>: mpv draws the file's
+  // own subtitles, Stremio still draws addon and dropped ones in the page, so they're found by
+  // where they sit in Stremio's video layer instead.
   const SUB_PRESETS = {
     netflix: "color: #fff; background: transparent; font-weight: 600; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 2px 6px rgba(0,0,0,.85);",
     outline: "color: #fff; background: transparent; font-weight: 700; text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 6px #000;",
@@ -7988,6 +7991,11 @@
     georgia: { family: "Georgia", css: "Georgia, 'Times New Roman', serif" },
     mono: { family: "monospace", css: "'JetBrains Mono', ui-monospace, monospace" },
   };
+
+  const SUB_HTML_CUES = [
+    '#app [class*="player-container"] video ~ div:not([class]) > div',
+    '#app [class*="player-container"] [class*="video-container"] > [class] > div:not([class]) > div',
+  ].join(", ");
 
   // mpv equivalents of the browser presets. Use its native outline, shadow and box rendering;
   // size, position, font selection and the original-ASS preference remain under their own controls.
@@ -8034,7 +8042,7 @@
       document.head.append(el);
     }
     el.textContent = `#app [class*="player-container"] video::cue { ${decl} }\n` +
-      `#app [class*="player-container"] video ~ div:not([class]) > div { ${decl} }` +
+      `${SUB_HTML_CUES} { ${decl} }` +
       (font.css ? `\n.dx-sub2 span { font-family: ${font.css} !important; }` : "");
   }
   // Stremio turns subtitles on whenever its "Subtitles language" is set (English by default), and
