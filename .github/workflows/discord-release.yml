@@ -21,7 +21,30 @@ on:
 jobs:
   post:
     runs-on: ubuntu-latest
+    timeout-minutes: 150
     steps:
+      # The release is published before the apps are built and attached (10-30 minutes later): the
+      # post waits until every download it links to is really there, so nobody clicks a dead link
+      # or installs the old version. After two hours without them it gives up and posts nothing
+      # (run this workflow by hand with "send" to post it then).
+      - name: Wait for every download
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          want="dxbi-Setup-x64.exe dxbi-mac-arm64.dmg dxbi-mac-x64.dmg dxbi-linux-x86_64.AppImage dxbi-tv.apk dxbi.ipa dxbi-mobile.apk"
+          for i in $(seq 1 120); do
+            have=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '[.assets[] | select(.state == "uploaded") | .name] | join(" ")')
+            missing=""
+            for f in $want; do case " $have " in *" $f "*) ;; *) missing="$missing $f" ;; esac; done
+            if [ -z "$missing" ]; then echo "all downloads are up"; exit 0; fi
+            echo "waiting for:$missing"
+            sleep 60
+          done
+          echo "Still missing after two hours:$missing"
+          exit 1
       - name: Build and send the post
         env:
           GH_TOKEN: ${{ github.token }}
