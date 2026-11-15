@@ -206,6 +206,17 @@ object Downloads {
      * player gets). [quiet]: no "Downloading…" message (a whole season says it once). False when it
      * can't be downloaded or already is.
      */
+    /**
+     * A message on screen from any thread. [add] is called from the page's bridge and from
+     * background coroutines (a torrent picked to download), and a Toast made off the main thread
+     * crashed the app ("Can't toast on a thread that has not called Looper.prepare()").
+     */
+    fun toast(context: Context, text: String, long: Boolean = false) {
+        val app = context.applicationContext
+        val show = { Toast.makeText(app, text, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show() }
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) show() else android.os.Handler(android.os.Looper.getMainLooper()).post(show)
+    }
+
     fun add(context: Context, json: String, quiet: Boolean = false): Boolean {
         val app = context.applicationContext
         manager(app)
@@ -220,7 +231,7 @@ object Downloads {
         val url = stream.optString("url")
         if (url.isEmpty() || stream.optBoolean("torrent")) {
             // (a torrent the page started playing: its address only lasts while it plays)
-            Toast.makeText(app, "Couldn't download that one. Try Download again from the stream's ⋮ menu.", Toast.LENGTH_LONG).show()
+            toast(app, "Couldn't download that one. Try Download again from the stream's ⋮ menu.", long = true)
             return false
         }
         // (a stream played through the page names its title in its player address:
@@ -236,10 +247,10 @@ object Downloads {
         val id = (if (metaId.isNotEmpty()) "$metaId:$videoId" else "${stream.optString("hash").hashCode()}-$videoId").replace(Regex("[^\\w:.-]"), "_")
         val old = _items.value.firstOrNull { it.id == id }
         if (old != null && !old.failed) {
-            if (!quiet) Toast.makeText(app, if (old.done) "Already downloaded" else "Already downloading", Toast.LENGTH_SHORT).show()
+            if (!quiet) toast(app, if (old.done) "Already downloaded" else "Already downloading")
             return false
         }
-        if (!quiet) Toast.makeText(app, "Downloading ${listOf(stream.optString("title"), stream.optString("subtitle")).filter { it.isNotEmpty() }.joinToString(" · ")}", Toast.LENGTH_SHORT).show()
+        if (!quiet) toast(app, "Downloading ${listOf(stream.optString("title"), stream.optString("subtitle")).filter { it.isNotEmpty() }.joinToString(" · ")}")
         prefs.edit().remove("watched:$id").remove("pos:$id").apply()
         thread(name = "dxbi-download-prepare") {
             stream.optJSONObject("headers")?.takeIf { it.length() > 0 }?.let { prefs.edit().putString("headers:$url", it.toString()).apply() }

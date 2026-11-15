@@ -211,7 +211,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
     }
 
     val episode = details?.videos?.firstOrNull { it.id == details.videoId }
-    val episodeLine = episode?.let { if (it.episode == null) it.title else "S${it.season} E${it.episode} · ${it.title}" }
+    val episodeLine = episode?.let { episodeLabel(it) }
 
     val info: LazyListScope.(Boolean) -> Unit = { withEpisodes ->
         item {
@@ -271,7 +271,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
             item { SeasonBar(seasons, shown, details.videos, ::savedOf, downloader.busy, { season = it }) { ids -> downloadVideos(ids, "${seasonName(shown)} · ${ids.size} episode${if (ids.size == 1) "" else "s"}") } }
             items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
                 Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) },
-                    download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), "S${v.season} E${v.episode} · ${v.title}") } }) { start(v.id) }
+                    download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), episodeLabel(v)) } }) { start(v.id) }
             }
         }
     }
@@ -297,7 +297,7 @@ fun DetailScreen(stremio: Stremio, type: String, id: String, preview: Title?, pl
                             LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
                                 items(details.videos.filter { it.season == shown }, key = { it.id }) { v ->
                                     Episode(v, resumeHere = v.id == nextVideo(details)?.id, inProgress = v.id == details.resumeVideoId && details.resumeMs > 0, onWatched = { watched, upTo -> stremio.setWatched(v.id, watched, upTo) },
-                                        download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), "S${v.season} E${v.episode} · ${v.title}") } }) { start(v.id) }
+                                        download = { if (!v.upcoming) DownloadIcon(savedOf(v.id)) { downloadVideos(listOf(v.id), episodeLabel(v)) } }) { start(v.id) }
                                 }
                             }
                         } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Dx.Accent) }
@@ -575,7 +575,7 @@ private fun Episode(v: Video, resumeHere: Boolean, inProgress: Boolean, onWatche
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("${v.episode ?: ""}. ${v.title.ifEmpty { "Episode ${v.episode ?: ""}" }}", color = Dx.Text, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(if (v.episode == null) v.title.ifEmpty { "Episode" } else "${v.episode}. ${v.title.ifEmpty { "Episode ${v.episode}" }}", color = Dx.Text, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val note = when {
                     v.upcoming -> v.released?.take(10)?.let { "Coming $it" } ?: "Coming soon"
                     resumeHere -> if (inProgress) "Continue watching" else "Up next"
@@ -689,5 +689,15 @@ private fun ReviewsSection(r: Reviews) {
             text = { LazyColumn(Modifier.heightIn(max = 460.dp)) { item { Text(review.text, color = Dx.Text, style = MaterialTheme.typography.bodyMedium) } } },
             confirmButton = { androidx.compose.material3.TextButton(onClick = { reading = null }) { Text("Close") } },
         )
+    }
+}
+
+/** "S1 E2 · Title", leaving out whatever the addon didn't number */
+internal fun episodeLabel(v: com.notdxbi.dxbi.tv.phone.Video): String {
+    val code = listOfNotNull(v.season?.let { "S$it" }, v.episode?.let { "E$it" }).joinToString(" ")
+    return when {
+        code.isEmpty() -> v.title
+        v.title.isEmpty() -> code
+        else -> "$code · ${v.title}"
     }
 }

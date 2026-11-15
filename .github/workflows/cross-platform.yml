@@ -67,6 +67,8 @@ jobs:
         run: node tools/starter-addons-test.mjs
       - name: Times follow the device's clock
         run: node tools/device-clock-test.mjs
+      - name: Anime links
+        run: node tools/anime-links-test.mjs
       - name: Dropped subtitles keep their encoding and reach the player
         run: node tools/subtitle-drop-test.mjs
 

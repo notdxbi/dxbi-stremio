@@ -16,7 +16,21 @@ function newMpvSocket(): string {
     const name = `dxbi-mpv-${randomBytes(6).toString('hex')}`;
     return process.platform === 'win32' ? `\\\\.\\pipe\\${name}` : join(tmpdir(), `${name}.sock`);
 }
-const VLC_HTTP_PORT = 9090;
+// A free port picked for each launch (9090 is often another program's), and VLC is kept from handing
+// the link to a VLC already open, which has no web remote: dx.bi then never heard where you were
+let vlcHttpPort = 9090;
+
+function freePort(): Promise<number> {
+    return new Promise((resolve) => {
+        const server = net.createServer();
+        server.once('error', () => resolve(9090));
+        server.listen(0, VLC_HTTP_HOST, () => {
+            const address = server.address();
+            const port = typeof address === 'object' && address ? address.port : 9090;
+            server.close(() => resolve(port));
+        });
+    });
+}
 // VLC's web remote can browse files: a fresh password each launch, and only reachable from this computer
 const VLC_HTTP_HOST = '127.0.0.1';
 const VLC_HTTP_PASSWORD = randomBytes(18).toString('base64url');
@@ -116,7 +130,7 @@ async function getMpvStatus(socketPath: string): Promise<ExternalPlayerStatus | 
 async function getVlcStatus(): Promise<ExternalPlayerStatus | null> {
     try {
         const auth = Buffer.from(`:${VLC_HTTP_PASSWORD}`).toString('base64');
-        const res = await fetch(`http://${VLC_HTTP_HOST}:${VLC_HTTP_PORT}/requests/status.json`, {
+        const res = await fetch(`http://${VLC_HTTP_HOST}:${vlcHttpPort}/requests/status.json`, {
             headers: { Authorization: `Basic ${auth}` }
         });
         if (!res.ok) return null;
@@ -205,6 +219,7 @@ export const externalPlayerController = {
             }
 
             const mpvSocket = newMpvSocket();
+            if (player === 'vlc') vlcHttpPort = await freePort();
             const args = player === 'mpv'
                 ? [
                     `--input-ipc-server=${mpvSocket}`,
@@ -213,7 +228,8 @@ export const externalPlayerController = {
                     streamUrl,
                 ]
                 : [
-                    '--extraintf=http', `--http-host=${VLC_HTTP_HOST}`, `--http-password=${VLC_HTTP_PASSWORD}`, `--http-port=${VLC_HTTP_PORT}`,
+                    '--no-one-instance', '--no-playlist-enqueue',
+                    '--extraintf=http', `--http-host=${VLC_HTTP_HOST}`, `--http-password=${VLC_HTTP_PASSWORD}`, `--http-port=${vlcHttpPort}`,
                     // closes at the end like mpv, so the end of the video is the end of watching
                     '--play-and-exit',
                     ...(options.startSeconds ? [`--start-time=${options.startSeconds}`] : []),
