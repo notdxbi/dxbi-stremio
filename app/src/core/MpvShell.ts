@@ -45,7 +45,7 @@ function keepInSwitcher(win: BrowserWindow): void {
 }
 const DEBUG = process.env.DXBI_MPV_DEBUG === "1";
 
-// ---- Merged window (patched build, Windows) ----
+// ---- Merged window (Windows) ----
 //
 // Discord, OBS and the like record one window. With the picture in a separate window behind dx.bi,
 // sharing the dx.bi window showed the HUD over a see-through hole (black). Merged, mpv draws straight
