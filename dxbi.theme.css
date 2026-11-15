@@ -4120,7 +4120,7 @@ html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder
     visibility: hidden;
 }
 
-[data-dxv] > :not(.dxv-row):not([class*="menu-container"]) {
+[data-dxv] > :not(.dxv-row):not([class*="menu-container"]):not(.dxd-stream) {
     position: absolute !important;
     width: 1px !important;
     height: 1px !important;
@@ -4775,6 +4775,19 @@ html.dx-tv {
     z-index: 2;
 }
 
+/* A dark band between the ring and the control: the white ring stays plain to see on white
+   buttons and on bright artwork */
+.dx-tv #app :is(a, button, input, [tabindex]):not([class*="meta-item-link"]):focus-visible {
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.85) !important;
+}
+
+/* Where a box around it would cut the ring off (the plugin's ringRoom marks those), the ring is
+   drawn just inside the control, with the dark band inside it */
+.dx-tv #app [data-dx-ring-in]:focus-visible {
+    outline-offset: -3px !important;
+    box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.7) !important;
+}
+
 /* controls drawn square get softened corners, so their ring isn't boxy */
 .dx-tv #app :is([class*="nav-tab-button"], [class*="horizontal-nav-bar"] [class*="button-container"], [class*="horizontal-nav-bar"] [class*="submit-button-container"], [class*="label-container"]):focus-visible {
     border-radius: var(--dx-radius-s);
@@ -4815,9 +4828,50 @@ html.dx-tv {
     transform: none !important;
 }
 
+/* the ring in the highlight colour with a dark band inside it, so it still shows on white or very
+   bright artwork */
 .dx-tv #app [class*="meta-item-container"]:focus-within [class*="poster-container"]::after,
 .dx-tv body #app [class*="discover-content"] [class*="meta-item-container"].selected:focus-within:not(.hovered):not(.active) [class*="poster-container"]::after {
-    box-shadow: inset 0 0 0 3px var(--dx-focus, #fff);
+    box-shadow: inset 0 0 0 3px var(--dx-focus, #fff), inset 0 0 0 6px rgba(0, 0, 0, 0.8);
+}
+
+/* TV title page: the genre and cast names, the IMDb score and the like / library buttons sit in
+   boxes that clip what spills out, which cut their rings off. Those boxes still clip, a ring's
+   width further out; the round buttons get a round ring just inside their own space. */
+.dx-tv #app [class*="metadetails-container"] :is([class*="links-container"], [class*="runtime-release-info-container"]),
+.dx-tv #app [class*="meta-row"] [class*="header-container"],
+.dx-tv #app [class*="user-info-content"],
+.dx-tv #app [class*="user-info-content"] [class*="email-logout-container"],
+.dx-tv #app [class*="user-info-content"] [class*="buttons-container"],
+.dx-tv #app [class*="session-actions"] {
+    overflow: clip !important;
+    overflow-clip-margin: 8px;
+}
+
+.dx-tv #app [class*="metadetails-container"] [class*="meta-info-container"] {
+    padding-left: 8px !important;
+    margin-left: -8px !important;
+}
+
+.dx-tv #app [class*="metadetails-container"] [class*="action-buttons-container"] [class*="group-container"] {
+    overflow: visible !important;
+}
+
+.dx-tv #app [class*="metadetails-container"] [class*="group-container"] > [class*="icon-container"]:focus-visible {
+    border-radius: 50% !important;
+    outline-offset: -5px !important;
+    box-shadow: inset 0 0 0 8px rgba(0, 0, 0, 0.55) !important;
+}
+
+.dx-tv #app [class*="streams-list-container"] [class*="streams-container"] {
+    padding-top: 7px !important;
+}
+
+/* TV: the row the remote moves into settles just under the top bar (60px), heading and all (the
+   plugin's keyNav scrolls the row to its start) */
+.dx-tv #app :is([class*="board-row"], [class*="search-row"], [class*="meta-row-container"]),
+.dx-tv .dxe-airing {
+    scroll-margin-top: 72px;
 }
 
 /* TV: a stick's graphics chip redraws whatever moves or is blurred, every frame, and the remote
@@ -4849,7 +4903,7 @@ html.dx-tv {
    plugin reads it), but squeezed into a 1px box its long file names wrapped a letter to a line:
    thousands of lines laid out again whenever the list changed, the freeze while streams arrive.
    On a TV it isn't laid out at all, and rows out of view aren't drawn until they're near. */
-.dx-tv [data-dxv] > :not(.dxv-row):not([class*="menu-container"]) {
+.dx-tv [data-dxv] > :not(.dxv-row):not([class*="menu-container"]):not(.dxd-stream) {
     display: none !important;
 }
 

@@ -274,6 +274,7 @@ class PlayerActivity : AppCompatActivity() {
         playerView.player = exo
         val accent = try { Color.parseColor(stream.optString("accent")) } catch (_: Exception) { Color.parseColor("#E50914") }
         zoom = PictureZoom(playerView)
+        subtitlesOnScreen()
         val next = stream.optJSONObject("next")
         nextTitle = next?.optString("title").orEmpty()
         nextArt = next?.optString("thumbnail").orEmpty()
@@ -576,6 +577,43 @@ class PlayerActivity : AppCompatActivity() {
             seekFlash.text = text
             seekFlash.visibility = View.VISIBLE
             handler.postDelayed(hideFlash, forMs)
+        }
+    }
+
+    /**
+     * Media3 draws subtitles inside the picture's frame, so zooming in (or Fill, or removing black
+     * bars) scaled them with the picture and pushed them off the screen. They're drawn over the
+     * player instead, over the part of the picture that's on screen: under the video as before,
+     * and never past the screen's edges whatever the zoom. Re-measured only when the frame moves.
+     */
+    private fun subtitlesOnScreen() {
+        val subs = playerView.subtitleView ?: return
+        val overlay = playerView.overlayFrameLayout ?: return
+        val frame = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame) ?: return
+        if (subs.parent !== overlay) {
+            (subs.parent as? android.view.ViewGroup)?.removeView(subs)
+            overlay.addView(subs, android.widget.FrameLayout.LayoutParams(0, 0))
+        }
+        var last = android.graphics.Rect()
+        playerView.viewTreeObserver.addOnPreDrawListener {
+            // the frame as drawn (scaled about its centre, then moved), within the player
+            val cx = frame.left + frame.width / 2f + frame.translationX
+            val cy = frame.top + frame.height / 2f + frame.translationY
+            val hw = frame.width * frame.scaleX / 2f
+            val hh = frame.height * frame.scaleY / 2f
+            val shown = android.graphics.Rect(
+                maxOf(0, (cx - hw).toInt()), maxOf(0, (cy - hh).toInt()),
+                minOf(playerView.width, (cx + hw).toInt()), minOf(playerView.height, (cy + hh).toInt()),
+            )
+            if (shown.width() <= 0 || shown.height() <= 0 || shown == last) return@addOnPreDrawListener true
+            last = shown
+            subs.layoutParams = (subs.layoutParams as android.widget.FrameLayout.LayoutParams).apply {
+                width = shown.width()
+                height = shown.height()
+                leftMargin = shown.left
+                topMargin = shown.top
+            }
+            false // drawn on the next frame, at the new size
         }
     }
 

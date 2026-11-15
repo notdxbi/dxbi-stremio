@@ -25,6 +25,8 @@
   // ---------------------------------------------------------------------------
   const loadable = (l) => (!l ? "None" : l.type);
   const linksOf = (links, category) => (links || []).filter((l) => l.category === category).map((l) => l.name);
+  // The first of these that is a whole number (0 counts: specials), else null
+  const epNum = (...xs) => { for (const x of xs) { const n = typeof x === "string" ? (x.trim() ? Number(x) : NaN) : x; if (Number.isInteger(n) && n >= 0) return n; } return null; };
   const imdbOf = (links) => {
     const l = (links || []).find((x) => x.category === "imdb");
     return l ? l.name : null;
@@ -145,8 +147,9 @@
           videos: (m.videos || []).map((v) => ({
             id: v.id,
             title: v.title || v.name || "",
-            season: v.season == null ? null : v.season,
-            episode: v.episode == null ? null : v.episode,
+            // (some addons and Cinemeta entries give the episode as "number", or only in the id)
+            season: epNum(v.season, v.seriesInfo && v.seriesInfo.season, (/:(\d+):\d+$/.exec(v.id || "") || [])[1]),
+            episode: epNum(v.episode, v.number, v.seriesInfo && v.seriesInfo.episode, (/:\d+:(\d+)$/.exec(v.id || "") || [])[1]),
             thumbnail: v.thumbnail || null,
             released: v.released || null,
             overview: v.overview || v.description || null,

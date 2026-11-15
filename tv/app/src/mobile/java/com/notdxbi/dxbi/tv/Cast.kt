@@ -133,7 +133,7 @@ object Cast {
     }
 
     private fun fail(context: Context, message: String) {
-        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        Downloads.toast(context, message, long = true)
         PlaybackBus.closed(0, 0, ended = false, error = null)
     }
 }

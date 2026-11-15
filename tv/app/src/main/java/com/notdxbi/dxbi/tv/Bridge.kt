@@ -80,6 +80,33 @@ class Bridge(private val activity: MainActivity) {
         activity.runOnUiThread { Toast.makeText(activity, text, Toast.LENGTH_LONG).show() }
     }
 
+    /**
+     * The phone's question for a torrent with no streaming server: the page's own dialogs sit under
+     * the phone app's screens, where nobody sees them. The page hears the answer through
+     * __dxbiTv.torrentAnswer: 0 play it on this phone, 1 always do that, 2 cancel.
+     */
+    @JavascriptInterface
+    fun askTorrent(token: String) {
+        if (!allowed(token)) return
+        activity.runOnUiThread {
+            var answered = false
+            val answer = { n: Int ->
+                if (!answered) {
+                    answered = true
+                    activity.js("window.__dxbiTv && window.__dxbiTv.torrentAnswer && window.__dxbiTv.torrentAnswer($n)")
+                }
+            }
+            android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Play this torrent on your phone?")
+                .setMessage("There's no streaming server, so this phone can download it itself while it plays (it connects to other people sharing the file).\n\nDebrid streams (Real-Debrid, TorBox…) play without this.")
+                .setPositiveButton("Play") { _, _ -> answer(0) }
+                .setNeutralButton("Always") { _, _ -> answer(1) }
+                .setNegativeButton("Cancel") { _, _ -> answer(2) }
+                .setOnDismissListener { answer(2) }
+                .show()
+        }
+    }
+
     /** The phone app's screens: what dxbi-engine.js has to tell them (src/mobile's phone/Engine.kt) */
     @JavascriptInterface
     fun engine(token: String, json: String) {

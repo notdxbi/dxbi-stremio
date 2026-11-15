@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.37.3
+
+- **Smoother, cleaner TV navigation.** The ring around what the remote is on now has a dark edge inside it, so it's plain to see on white or very bright artwork. It's no longer cut off on cast and genre names, the IMDb score, the like and library buttons, See All, the calendar, Settings and filter buttons: where a box would cut it, the ring is drawn just inside instead. Moving up and down Home, each row settles just under the top bar with its heading in sight, instead of leaving the row above half under the bar.
+- **The TV stream list no longer freezes while streams arrive.** Thanks to @EskimoDev (#106).
+- **Subtitle style and font reach addon subtitles in the mpv player** on Windows (OpenSubtitles and dropped files). Thanks to @EskimoDev (#105).
+- **The download arrow is back on each stream.** The clean stream rows hid it, so *Choose the source myself* pointed at a button that wasn't there. (#100)
+- **MyAnimeList and AniList buttons on anime pages.** They open the title on those sites, to set its status, episodes and score. (#101)
+- **Downloading a torrent no longer closes the phone app.** It crashed every time a torrent was picked to download.
+- **Phones ask before playing a torrent.** With no streaming server, a torrent now asks *Play this torrent on your phone?* (Play, Always, or Cancel) instead of only explaining what's missing.
+- **Zooming no longer pushes subtitles off the screen** on TV and phones. They keep their size and stay on the visible part of the picture.
+- **HDR keeps its colours on Macs.** One video that failed to play used to send every later HDR video through the converter, which washes the colours out. Macs now play them directly, and only the video that fails is converted.
+- **VLC keeps your place more reliably.** dx.bi now opens its own VLC window on a free port, so an open VLC or another program on port 9090 can't stop it reading where you are.
+- Problem reports from the app include the end of mpv's own log (links and keys removed), so "Stream failed to load" says why.
+- Episodes without a number no longer show "Snull Enull" or ". Title" on phones.
+
 ## 2.37.2
 
 - **The intro shows on every computer.** On some graphics cards (seen with NVIDIA on Linux) the intro film played as four seconds of black, most noticeably on dx.bi on the web. dx.bi now checks the picture as the name should appear, and if the film comes out blank it shows the animated DX.BI instead. Everyone else still gets the film.

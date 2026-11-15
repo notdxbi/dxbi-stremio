@@ -21,6 +21,8 @@
     control: (command) => bridge.control(TOKEN, JSON.stringify(command)),
     findServers: () => bridge.findServers(TOKEN),
     torrentUrl: (json) => (bridge.torrentUrl ? bridge.torrentUrl(TOKEN, json) : ""),
+    // (an older app has no question to ask: null)
+    askTorrent: () => (bridge.askTorrent ? new Promise((resolve) => { tv.torrentAnswer = (n) => { tv.torrentAnswer = null; resolve(n); }; bridge.askTorrent(TOKEN); }) : Promise.resolve(null)),
     deviceInfo: () => { try { return JSON.parse(bridge.deviceInfo ? bridge.deviceInfo(TOKEN) : "{}"); } catch (_) { return {}; } },
     utcOffset: () => { try { return bridge.utcOffset ? bridge.utcOffset(TOKEN) : null; } catch (_) { return null; } },
   };
@@ -664,12 +666,18 @@
       let onTv = playHereOnce === hash || readSettings(PLUGIN.replace(/\.plugin\.js$/, "")).tvTorrents === true;
       playHereOnce = null;
       // The phone app's screens cover the page, so the question below would be asked where nobody
-      // can see it (the video just never started): say what's needed instead
+      // can see it (the video just never started): the app asks instead
       if (!onTv && PHONE) {
-        handoff = null;
-        if (location.hash === hash) history.back();
-        toast("This is a torrent, and it needs a streaming server. Pick a debrid stream, set a streaming server in Profile → Playback, or turn on dx.bi settings → Player → Play torrents on this phone.", 9000);
-        return;
+        const choice = await native.askTorrent();
+        if ((choice === 0 || choice === 1) && location.hash === hash) {
+          onTv = true;
+          if (choice === 1) native.saveSetting(PLUGIN.replace(/\.plugin\.js$/, ""), "tvTorrents", "true");
+        } else {
+          handoff = null;
+          if (location.hash === hash) history.back();
+          if (choice === null) toast("This is a torrent, and it needs a streaming server. Pick a debrid stream, set a streaming server in Profile → Playback, or turn on dx.bi settings → Player → Play torrents on this phone.", 9000);
+          return;
+        }
       }
       if (!onTv) {
         const choice = await dialog({

@@ -223,7 +223,7 @@ class Stremio(context: Context, val engine: Engine, private val scope: Coroutine
             }.getOrNull()
             val stream = answer?.optJSONObject("stream")
             if (stream != null) com.notdxbi.dxbi.tv.Downloads.add(app, stream.toString())
-            else android.widget.Toast.makeText(app, answer?.optString("error")?.ifEmpty { null } ?: "Couldn't download that one. Try again.", android.widget.Toast.LENGTH_LONG).show()
+            else com.notdxbi.dxbi.tv.Downloads.toast(app, answer?.optString("error")?.ifEmpty { null } ?: "Couldn't download that one. Try again.", long = true)
             return@launch
         }
         Phone.nextTarget = when {

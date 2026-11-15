@@ -1,5 +1,7 @@
 import { execFile } from "child_process";
-import { ipcMain } from "electron";
+import { app, ipcMain } from "electron";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 import { IPC_CHANNELS } from "../constants";
 import { getLogger } from "../utils/logger";
 
@@ -14,6 +16,27 @@ const logger = getLogger("DeviceClock");
 export default class DeviceClock {
     public static initIPC(): void {
         ipcMain.handle(IPC_CHANNELS.DEVICE_UTC_OFFSET, () => this.offset());
+        ipcMain.handle(IPC_CHANNELS.MPV_LOG_TAIL, () => this.mpvLogTail());
+    }
+
+    // The end of mpv's log, for problem reports: why a stream "failed to load" is only written
+    // there. Addresses keep only their host, and long hex runs (keys, tokens, hashes) are hidden.
+    public static mpvLogTail(): string {
+        try {
+            const file = join(app.getPath("userData"), "mpv.log");
+            if (!existsSync(file)) return "";
+            const text = readFileSync(file, "utf8");
+            const lines = text.split(/\r?\n/).filter((l) => /\b(error|fail|warn|cannot|could not|unable|denied|refused|timed out|end-file|http|tls|ssl)\b/i.test(l));
+            return lines.slice(-25).map((l) => l
+                .replace(/\b(https?|rtmp|rtsp|ftp):\/\/([^/\s'"]+)[^\s'"]*/gi, "$1://$2/…")
+                .replace(/[0-9a-f]{32,}/gi, "[hex]")
+                .replace(/[A-Za-z]:\\Users\\[^\\\s]+/g, "C:\\Users\\[user]")
+                .replace(/\/(home|Users)\/[^/\s]+/g, "/$1/[user]")
+                .slice(0, 300)).join("\n");
+        } catch (err) {
+            logger.warn(`Couldn't read mpv.log: ${err}`);
+            return "";
+        }
     }
 
     public static async offset(): Promise<number | null> {
