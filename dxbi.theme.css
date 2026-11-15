@@ -4845,6 +4845,19 @@ html.dx-tv {
     contain-intrinsic-size: auto 380px;
 }
 
+/* TV: the stream list. Stremio's own text in each row stays in the page under dx.bi's row (the
+   plugin reads it), but squeezed into a 1px box its long file names wrapped a letter to a line:
+   thousands of lines laid out again whenever the list changed, the freeze while streams arrive.
+   On a TV it isn't laid out at all, and rows out of view aren't drawn until they're near. */
+.dx-tv [data-dxv] > :not(.dxv-row):not([class*="menu-container"]) {
+    display: none !important;
+}
+
+.dx-tv #app [class*="streams-list-container"] [class*="streams-container"] > [data-dxv] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 5.5rem;
+}
+
 .dx-tv #app [class*="meta-row"] > [class*="meta-items-container"] {
     -webkit-mask-image: none !important;
     mask-image: none !important;
