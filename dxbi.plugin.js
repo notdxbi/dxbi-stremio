@@ -7936,20 +7936,26 @@
   .dx-hide-btn.is-on { background: #fff; border-color: #fff; color: #000; }
   .dx-hide-btn svg { width: 1.25rem; height: 1.25rem; flex: none; }
   .dx-hide-btn span { font: 700 .95rem/1 Inter, system-ui, sans-serif !important; }
-  .dxm-servers { display: flex; flex-direction: column; gap: .35rem; margin: .2rem 1rem .9rem; padding: .7rem; border-radius: .8rem; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07); }
-  .dxm-head { display: flex; align-items: baseline; gap: .6rem; padding: 0 .3rem .2rem; }
-  .dxm-head b { color: #fff; font: 800 .95rem Inter, system-ui, sans-serif !important; }
+  /* anime has its own look (same as dxbi.zip/anime): sakura pink into violet; movies keep the accent */
+  .dxm-servers, .dxm-player { --dxm-grad: linear-gradient(120deg, #ff4d8d 0%, #c86bff 55%, #8b7bff 100%); }
+  .dxm-servers { display: flex; flex-direction: column; gap: .35rem; margin: .2rem 1rem .9rem; padding: .7rem; border-radius: .9rem; background: radial-gradient(120% 140% at 100% 0%, rgba(155,123,255,.16), transparent 60%), rgba(18,16,28,.72); border: 1px solid rgba(196,180,255,.16); box-shadow: 0 12px 34px -16px rgba(155,123,255,.5); }
+  .dxm-head { display: flex; align-items: baseline; gap: .6rem; padding: 0 .3rem .2rem; white-space: nowrap; }
+  .dxm-head b, .dxm-head i { flex: none; }
+  .dxm-head small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .dxm-head b { background: var(--dxm-grad); -webkit-background-clip: text; background-clip: text; color: transparent; font: 800 .95rem Inter, system-ui, sans-serif !important; }
+  .dxm-head i { margin-left: auto; color: #b9a6ff; font: 700 .72rem "Hiragino Sans", "Noto Sans JP", Inter, sans-serif !important; font-style: normal; letter-spacing: .12em; }
   .dxm-head small { color: rgba(255,255,255,.45); font: 500 .76rem Inter, system-ui, sans-serif !important; }
-  .dxm-row { display: flex; align-items: center; gap: .9rem; width: 100%; padding: .6rem .7rem; border: 0; border-radius: .6rem; background: rgba(255,255,255,.05); color: #fff; text-align: left; cursor: pointer; transition: background-color .15s; }
-  .dxm-row:hover, .dxm-row:focus-visible { background: rgba(255,255,255,.13); }
-  .dxm-tag { flex: none; min-width: 3.2rem; padding: .35rem .5rem; border-radius: .4rem; background: var(--dx-accent, #e50914); color: #fff; text-align: center; font: 800 .8rem Inter, system-ui, sans-serif !important; letter-spacing: .04em; text-transform: uppercase; }
+  .dxm-row { display: flex; align-items: center; gap: .9rem; width: 100%; padding: .6rem .7rem; border: 0; border-radius: .6rem; background: rgba(196,180,255,.06); color: #fff; text-align: left; cursor: pointer; transition: background-color .15s; }
+  .dxm-row:hover, .dxm-row:focus-visible { background: rgba(196,180,255,.15); box-shadow: inset 0 0 0 1px rgba(255,77,141,.35); }
+  .dxm-tag { flex: none; min-width: 3.2rem; padding: .35rem .5rem; border-radius: .4rem; background: var(--dxm-grad); color: #fff; text-align: center; font: 800 .8rem Inter, system-ui, sans-serif !important; letter-spacing: .04em; text-transform: uppercase; }
   .dxm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .15rem; }
   .dxm-main strong { font: 700 .92rem Inter, system-ui, sans-serif !important; }
   .dxm-main small { color: rgba(255,255,255,.5); font: 500 .78rem Inter, system-ui, sans-serif !important; }
-  .dxm-go { flex: none; width: 2.2rem; height: 2.2rem; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,.1); }
+  .dxm-go { flex: none; width: 2.2rem; height: 2.2rem; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(196,180,255,.12); }
+  .dxm-row:hover .dxm-go { background: var(--dxm-grad); }
   .dxm-go svg { width: 1rem; height: 1rem; fill: currentColor; }
-  .dxm-player { position: fixed; inset: 0; z-index: 100003; display: flex; flex-direction: column; background: #000; font-family: Inter, system-ui, sans-serif; }
-  .dxm-bar { flex: none; display: flex; align-items: center; gap: .7rem; height: 3.6rem; padding: 0 1rem; padding-right: calc(1rem + var(--dx-window-buttons, 0px)); background: #0b0b0d; border-bottom: 1px solid rgba(255,255,255,.07); color: #fff; }
+  .dxm-player { position: fixed; inset: 0; z-index: 100003; display: flex; flex-direction: column; background: #07060c; font-family: Inter, system-ui, sans-serif; }
+  .dxm-bar { flex: none; display: flex; align-items: center; gap: .7rem; height: 3.6rem; padding: 0 1rem; padding-right: calc(1rem + var(--dx-window-buttons, 0px)); background: linear-gradient(90deg, rgba(255,77,141,.10), rgba(139,123,255,.08) 60%, transparent), #0b0a12; border-bottom: 1px solid rgba(196,180,255,.14); color: #fff; }
   .dxm-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .dxm-title b { font: 800 1rem Inter, system-ui, sans-serif !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dxm-title small { color: rgba(255,255,255,.55); font: 500 .8rem Inter, system-ui, sans-serif !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -7957,7 +7963,7 @@
   .dxm-btn { height: 2.4rem; padding: 0 .9rem; display: inline-flex; align-items: center; gap: .4rem; border: 0; border-radius: .5rem; background: rgba(255,255,255,.08); color: #fff; font: 700 .85rem Inter, system-ui, sans-serif !important; cursor: pointer; white-space: nowrap; }
   .dxm-langs .dxm-btn { height: 1.9rem; background: transparent; color: rgba(255,255,255,.65); }
   .dxm-btn:hover, .dxm-btn:focus-visible { background: rgba(255,255,255,.16); color: #fff; }
-  .dxm-btn.is-on, .dxm-btn.is-primary { background: var(--dx-accent, #e50914); color: #fff; }
+  .dxm-btn.is-on, .dxm-btn.is-primary { background: var(--dxm-grad); color: #fff; }
   .dxm-btn svg { width: 1.1rem; height: 1.1rem; }
   .dxm-frame { flex: 1; min-height: 0; position: relative; }
   .dxm-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
@@ -15277,7 +15283,7 @@
       }
       const at = this.episodeOf(t.sel);
       const label = at && !at.movie ? `Episode ${t.ep}` : "Movie";
-      const html = `<div class="dxm-head"><b>Streaming servers</b><small>Free · no sign-in or addons needed</small></div>${Object.entries(this.LANGS).map(([lang, [short, long]]) =>
+      const html = `<div class="dxm-head"><b>Streaming servers</b><small>Free · no sign-in or addons needed</small><i lang="ja">アニメ</i></div>${Object.entries(this.LANGS).map(([lang, [short, long]]) =>
         `<button class="dxm-row" data-lang="${lang}"><span class="dxm-tag">${short}</span><span class="dxm-main"><strong>${esc(long)}</strong><small>${esc(label)} · Plays right here</small></span><span class="dxm-go" aria-hidden="true">${ICONS.play}</span></button>`).join("")}`;
       if (!box) {
         box = document.createElement("div");
