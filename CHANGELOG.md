@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.37.4
+
+- Small fixes and improvements.
+
 ## 2.37.3
 
 - **Smoother, cleaner TV navigation.** The ring around what the remote is on now has a dark edge inside it, so it's plain to see on white or very bright artwork. It's no longer cut off on cast and genre names, the IMDb score, the like and library buttons, See All, the calendar, Settings and filter buttons: where a box would cut it, the ring is drawn just inside instead. Moving up and down Home, each row settles just under the top bar with its heading in sight, instead of leaving the row above half under the bar.
