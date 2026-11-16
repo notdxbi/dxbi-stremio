@@ -307,6 +307,10 @@ function ensureStyle(): void {
     #enhanced .dxn-page .button, #enhanced .dxn-page [class*="button-DNmYL"] { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; height: 2.6rem; padding: 0 1.3rem; border-radius: 2.7rem; background: rgba(255,255,255,.08); color: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
     #enhanced .dxn-page .button:hover, #enhanced .dxn-page [class*="button-DNmYL"]:hover { background: rgba(255,255,255,.14); }
     #enhanced .dxn-page .dxbi-about { margin: 0 0 1rem !important; }
+    /* Themes / Plugins: "Browse community…" and "Open folder" sit side by side above the list */
+    #enhanced .dxn-page[data-page="themes"] > .dx-btnrow, #enhanced .dxn-page[data-page="plugins"] > .dx-btnrow { display: inline-flex; background: none; padding: 0; min-height: 0; margin: .9rem .5rem 1rem 0 !important; }
+    #enhanced .dxn-page > .dx-btnrow [class*="content-"] { max-width: none; }
+    #enhanced .dxn-page [id^="browse"][id$="Btn"] { background: var(--dx-accent, var(--primary-accent-color, #7b5bf5)) !important; color: #fff !important; }
     /* plugin & theme cards */
     #enhanced .dxn-page [class*="addon-container"] { display: flex; align-items: center; gap: 1.2rem; padding: 1rem 1.1rem; margin: 0 0 .6rem !important; border-radius: 1.1rem; background: rgba(255,255,255,.05); cursor: default; }
     #enhanced .dxn-page [class*="info-container"] { flex: 1; min-width: 0; }

@@ -11,7 +11,7 @@ import { getAboutCategoryTemplate } from "../../../components/about-category/abo
 import { STORAGE_KEYS, SELECTORS, FILE_EXTENSIONS } from "../../../constants";
 import { getThemeIcon, getPluginIcon, getAboutIcon } from "../../../utils/icons";
 import { getTransparencyStatus } from "../titleBar";
-import { setupBrowseModsButton } from "../mod/modBrowser";
+import { setupBrowseModsButton, browseMods } from "../mod/modBrowser";
 import {
     setupCheckUpdatesButton,
     setupCheckUpdatesOnStartupToggle,
@@ -110,6 +110,14 @@ function fillSections(): void {
     const themesList = readdirSync(properties.themesPath).filter(f => f.endsWith(FILE_EXTENSIONS.THEME));
     const pluginsList = readdirSync(properties.pluginsPath).filter(f => f.endsWith(FILE_EXTENSIONS.PLUGIN));
 
+    // In the redesigned Settings, the community marketplace is right where people add things
+    if (newSettings.isNewLayout()) {
+        settingsBuilder.addButton("Browse community themes", "browseThemesBtn", SELECTORS.THEMES_CATEGORY);
+        settingsBuilder.addButton("Browse community plugins", "browsePluginsBtn", SELECTORS.PLUGINS_CATEGORY);
+        for (const id of ["browseThemesBtn", "browsePluginsBtn"]) {
+            Helpers.waitForElm(`#${id}`).then((b) => b.addEventListener("click", () => { browseMods(); })).catch(() => { /* page left */ });
+        }
+    }
     settingsBuilder.addButton("Open Themes Folder", "openthemesfolderBtn", SELECTORS.THEMES_CATEGORY);
     settingsBuilder.addButton("Open Plugins Folder", "openpluginsfolderBtn", SELECTORS.PLUGINS_CATEGORY);
     

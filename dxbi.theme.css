@@ -4120,6 +4120,19 @@ html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder
     visibility: hidden;
 }
 
+/* A title can have 500 streams but only a handful are on screen: off-screen rows skip style and
+   layout until they scroll into view (this cut the title page's longest freeze by most of a second).
+   A hovered or focused row renders fully, so its menu is never clipped. */
+[data-dxv] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 96px;
+}
+
+[data-dxv]:hover,
+[data-dxv]:focus-within {
+    content-visibility: visible;
+}
+
 [data-dxv] > :not(.dxv-row):not([class*="menu-container"]):not(.dxd-stream) {
     position: absolute !important;
     width: 1px !important;

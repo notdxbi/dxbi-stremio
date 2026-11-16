@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.38.0
+
+Stremio redesigned its Settings and title pages on 16 November. This release puts everything dx.bi adds back in place on the new pages, and makes big stream lists faster.
+
+- **dx.bi's settings are back.** Stremio's new Settings page left nowhere for them, so every dx.bi option, theme and plugin had disappeared. Settings now has a **dx.bi** group in its menu: **Customise** (all of dx.bi's options in their groups, with search, applied as you change them), **Themes**, **Plugins** and **App** (updates, Discord, mpv, graphics, external player and cache folder). It's styled like Stremio's own pages.
+- **Plugins you add work as before.** Switch them on and off, and the gear opens each plugin's own settings. **Browse community plugins** and **Browse community themes** sit at the top of their pages, next to Open folder.
+- **Title pages keep dx.bi's extras on Stremio's new layout:** the clean stream list with sort and filters, Reviews with Rotten Tomatoes and Metacritic scores, Ends at, Hide, MyAnimeList and AniList buttons, and Download for a film, a stream, an episode or a whole season.
+- **Big stream lists load as fast as Stremio's own.** A title with 500 streams used to freeze for about a second while dx.bi tidied every row; now rows off screen are left until you scroll to them and unchanged rows aren't redone. On The Shawshank Redemption (500 streams) the list is ready in 1.3 s instead of 2.1 s, and filters apply instantly. Playback starts as quickly as in Stremio.
+- **Anime plays in the app from free streaming servers.** Anime episodes get Sub and Dub rows at the top of the stream list, which play inside dx.bi with no sign-in, addon or debrid. (Settings → dx.bi → Customise → Anime streaming servers.)
+
 ## 2.37.3
 
 - **Smoother, cleaner TV navigation.** The ring around what the remote is on now has a dark edge inside it, so it's plain to see on white or very bright artwork. It's no longer cut off on cast and genre names, the IMDb score, the like and library buttons, See All, the calendar, Settings and filter buttons: where a box would cut it, the ring is drawn just inside instead. Moving up and down Home, each row settles just under the top bar with its heading in sight, instead of leaving the row above half under the bar.

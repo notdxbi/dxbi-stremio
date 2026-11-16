@@ -104,7 +104,7 @@ export const settingsBuilder = {
             if (!element) return;
 
             const optionDiv = document.createElement("div");
-            optionDiv.classList.add(CLASSES.OPTION);
+            optionDiv.classList.add(CLASSES.OPTION, "dx-btnrow");
 
             const contentDiv = document.createElement("div");
             contentDiv.classList.add(CLASSES.CONTENT);
