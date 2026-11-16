@@ -11,7 +11,7 @@ import { getAboutCategoryTemplate } from "../../../components/about-category/abo
 import { STORAGE_KEYS, SELECTORS, FILE_EXTENSIONS } from "../../../constants";
 import { getThemeIcon, getPluginIcon, getAboutIcon } from "../../../utils/icons";
 import { getTransparencyStatus } from "../titleBar";
-import { setupBrowseModsButton } from "../mod/modBrowser";
+import { setupBrowseModsButton, browseMods } from "../mod/modBrowser";
 import {
     setupCheckUpdatesButton,
     setupCheckUpdatesOnStartupToggle,
@@ -26,6 +26,7 @@ import {
 import { type ExternalPlayer } from "../../../interfaces/ExternalPlayerTypes";
 import { modController } from "../mod/modController";
 import { gpuRendererAPI } from "../../api/gpuRenderer";
+import * as newSettings from "./newSettings";
 
 function writeAbout(): void {
     Helpers.waitForElm(SELECTORS.ABOUT_CATEGORY).then(async () => {
@@ -52,24 +53,71 @@ function writeAbout(): void {
 // connected, built the section again and listed every plugin twice.)
 let building = false;
 
+let newLayoutWatch: MutationObserver | null = null;
+
 export function checkSettings() {
     if (!location.href.includes("#/settings")) {
         building = false;
+        newLayoutWatch?.disconnect();
+        newLayoutWatch = null;
+        newSettings.leave();
+        return;
+    }
+    // Stremio's redesigned Settings (Nov 2026): dx.bi gets its own menu group and pages
+    if (newSettings.isNewLayout()) {
+        ensureNewLayout();
         return;
     }
     if (building || document.getElementById("enhanced")) return;
     building = true;
+    // The page may not be drawn yet: once it is, use whichever layout Stremio shows
+    Helpers.waitForElm('#app [class*="settings-content"] [class*="pane-"], [class^="sections-container-"]').then(() => {
+        if (newSettings.isNewLayout()) { building = false; ensureNewLayout(); return; }
+        buildOldLayout();
+    }, () => { building = false; });
+}
+
+function ensureNewLayout(): void {
+    newSettings.ensure(fillSections);
+    // Stremio re-renders its menu and pane as you move between its pages: put dx.bi back each time
+    if (!newLayoutWatch) {
+        const content = document.querySelector('#app [class*="settings-content"]');
+        if (!content) return;
+        let queued = false;
+        newLayoutWatch = new MutationObserver(() => {
+            if (queued) return;
+            queued = true;
+            requestAnimationFrame(() => { queued = false; if (location.href.includes("#/settings") && newSettings.isNewLayout()) newSettings.ensure(fillSections); });
+        });
+        // (class changes too: Stremio re-marks its fallback page as selected after each navigation)
+        newLayoutWatch.observe(content, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    }
+}
+
+function buildOldLayout(): void {
     Helpers.waitForElm("#enhanced").then(() => { building = false; }, () => { building = false; });
 
-    const themesList = readdirSync(properties.themesPath).filter(f => f.endsWith(FILE_EXTENSIONS.THEME));
-    const pluginsList = readdirSync(properties.pluginsPath).filter(f => f.endsWith(FILE_EXTENSIONS.PLUGIN));
-    
     logger.info("Adding 'dx.bi' sections...");
     settingsBuilder.addSection("enhanced", "dx.bi");
     settingsBuilder.addCategory("Themes", "enhanced", getThemeIcon());
     settingsBuilder.addCategory("Plugins", "enhanced", getPluginIcon());
     settingsBuilder.addCategory("About", "enhanced", getAboutIcon());
-    
+    fillSections();
+}
+
+/** Themes, Plugins and About contents (the same for both layouts; they find their category by #enhanced > div:nth-child). */
+function fillSections(): void {
+    const themesList = readdirSync(properties.themesPath).filter(f => f.endsWith(FILE_EXTENSIONS.THEME));
+    const pluginsList = readdirSync(properties.pluginsPath).filter(f => f.endsWith(FILE_EXTENSIONS.PLUGIN));
+
+    // In the redesigned Settings, the community marketplace is right where people add things
+    if (newSettings.isNewLayout()) {
+        settingsBuilder.addButton("Browse community themes", "browseThemesBtn", SELECTORS.THEMES_CATEGORY);
+        settingsBuilder.addButton("Browse community plugins", "browsePluginsBtn", SELECTORS.PLUGINS_CATEGORY);
+        for (const id of ["browseThemesBtn", "browsePluginsBtn"]) {
+            Helpers.waitForElm(`#${id}`).then((b) => b.addEventListener("click", () => { browseMods(); })).catch(() => { /* page left */ });
+        }
+    }
     settingsBuilder.addButton("Open Themes Folder", "openthemesfolderBtn", SELECTORS.THEMES_CATEGORY);
     settingsBuilder.addButton("Open Plugins Folder", "openpluginsfolderBtn", SELECTORS.PLUGINS_CATEGORY);
     
@@ -110,7 +158,7 @@ export function checkSettings() {
     });
     
     modController.bindTogglePluginListener();
-    modController.scrollListener();
+    if (!newSettings.isNewLayout()) modController.scrollListener(); // old layout's scrolling nav only
     modController.bindPluginOptionsListeners();
     modController.bindFolderButtons();
 }

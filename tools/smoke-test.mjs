@@ -163,7 +163,7 @@ async function main() {
   // A title page (Sintel, an open movie) and search, to exercise the page-specific modules
   await evaluate("location.hash = '#/detail/movie/tt1727587'; true");
   try {
-    await waitFor("the title page", () => evaluate("location.hash.startsWith('#/detail') && !!document.querySelector('[class*=\"meta-details-container\"], [class*=\"metadetails-container\"], [class*=\"meta-preview-container\"]')"), 45000);
+    await waitFor("the title page", () => evaluate("location.hash.startsWith('#/detail') && !!document.querySelector('[class*=\"meta-details-container\"], [class*=\"metadetails-container\"], [class*=\"meta-preview-container\"], [class*=\"details-\"] > [class*=\"content-\"] > section[class*=\"panel-\"]')"), 45000);
     pass("title page rendered");
   } catch (e) {
     fail(`title page missing: ${e.message}`);

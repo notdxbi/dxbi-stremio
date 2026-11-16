@@ -4120,6 +4120,19 @@ html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder
     visibility: hidden;
 }
 
+/* A title can have 500 streams but only a handful are on screen: off-screen rows skip style and
+   layout until they scroll into view (this cut the title page's longest freeze by most of a second).
+   A hovered or focused row renders fully, so its menu is never clipped. */
+[data-dxv] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 96px;
+}
+
+[data-dxv]:hover,
+[data-dxv]:focus-within {
+    content-visibility: visible;
+}
+
 [data-dxv] > :not(.dxv-row):not([class*="menu-container"]):not(.dxd-stream) {
     position: absolute !important;
     width: 1px !important;
@@ -4223,7 +4236,7 @@ html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder
     color: #46d369;
 }
 
-.dxq-play {
+.dxq-play:not([data-dx-native]) {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
@@ -4238,17 +4251,17 @@ html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder
     transition: background-color 0.15s;
 }
 
-.dxq-play:hover,
-.dxq-play:focus-visible {
+.dxq-play:not([data-dx-native]):hover,
+.dxq-play:not([data-dx-native]):focus-visible {
     background: rgba(255, 255, 255, 0.78);
 }
 
-.dxq-play svg {
+.dxq-play:not([data-dx-native]) svg {
     width: 1.4rem;
     height: 1.4rem;
 }
 
-.dxq-play span {
+.dxq-play:not([data-dx-native]) span {
     font: 700 1rem/1 Inter, system-ui, sans-serif !important;
 }
 
@@ -4310,6 +4323,69 @@ html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder
 
 #app [class*="streams-container"].dx-sortable > [data-dx-hide] {
     display: none !important;
+}
+
+/* Stremio's title page from November 2026: streams sit in addon groups inside a panel. The same
+   clean rows, and while sorted the groups run as one list (their headings hidden) */
+#app section[class*="streams-"] [class*="group-"] > [data-dxv] {
+    position: relative;
+    margin: 0;
+    padding: 0.9rem 1.1rem !important;
+    display: flex !important;
+    align-items: center;
+    height: auto !important;
+    min-height: 5.5rem;
+    border-radius: 0;
+    border-bottom: 1px solid var(--dx-line);
+    background: none;
+    --dxv-tile: rgba(255, 255, 255, 0.09);
+}
+
+#app section[class*="streams-"] [class*="group-"] > [data-dxv]:hover,
+#app section[class*="streams-"] [class*="group-"] > [data-dxv]:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    transform: none;
+    --dxv-tile: var(--dx-accent);
+}
+
+html[data-dx-rows] section[class*="streams-"] [class*="group-"] > a[class*="stream-"]:not([data-dxv]) {
+    visibility: hidden;
+}
+
+#app [class*="groups-"].dx-sortable {
+    display: flex !important;
+    flex-direction: column;
+}
+
+#app [class*="groups-"].dx-sortable > [class*="group-"] {
+    display: contents;
+}
+
+#app [class*="groups-"].dx-sortable.dx-sorted [class*="group-label"] {
+    display: none;
+}
+
+#app [class*="groups-"].dx-sortable > :not([class*="group-"]) {
+    order: 99999;
+}
+
+#app [class*="groups-"].dx-sortable [data-dx-hide] {
+    display: none !important;
+}
+
+/* the new panel's addon tabs and episode rows in dx.bi's accent */
+#app section[class*="panel-"] [role="tab"][class*="selected-"] [class*="label-"],
+#app section[class*="panel-"] [role="tab"][class*="selected-"] [class*="count-"] {
+    color: #fff;
+}
+
+#app section[class*="panel-"] [role="tablist"] [class*="indicator-"] {
+    background: var(--dx-accent) !important;
+}
+
+.dx-tv #app section[class*="streams-"] [class*="group-"] > [data-dxv] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 5.5rem;
 }
 
 .dx-streambar {
@@ -4462,6 +4538,16 @@ html[data-dx-rows] [class*="streams-list-container"] [class*="stream-placeholder
     border-color: rgba(255, 255, 255, 0.25);
     color: #fff;
     font-weight: 700;
+}
+
+/* the newer title page sets its own size on spans in its panel: keep the menu's */
+.dx-sb-menu .dx-sb-label,
+.dx-sb-menu .dx-sb-n {
+    font-size: inherit !important;
+}
+
+.dx-sb-menu .dx-sb-n {
+    font-size: 0.72rem !important;
 }
 
 .dx-sb-check {

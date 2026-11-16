@@ -204,7 +204,7 @@ export function setupCacheFolder(): void {
         <div tabindex="0" title="Put the cache back in its usual place" class="button-DNmYL button-container-zVLH6 button" style="flex:1; min-width:0;" id="dxbiCacheReset">Default</div>
     </div>
 </div>
-<p style="color:rgb(204, 204, 204);">Videos you stream are cached in <b id="dxbiCachePath" style="word-break: break-all;">…</b>. Pick another folder, such as one on a bigger drive, and new streams are cached there (in a <i>stremio-cache</i> folder inside it). The cache size is in Settings → Streaming. Anything already cached stays in the old folder until you delete it.</p>
+<p class="dxbi-note" style="color:rgb(204, 204, 204);">Videos you stream are cached in <b id="dxbiCachePath" style="word-break: break-all;">…</b>. Pick another folder, such as one on a bigger drive, and new streams are cached there (in a <i>stremio-cache</i> folder inside it). The cache size is in Settings → Streaming. Anything already cached stays in the old folder until you delete it.</p>
 <br/>`;
         heading.insertAdjacentHTML("beforebegin", html);
         const label = document.getElementById("dxbiCachePath");
