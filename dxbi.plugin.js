@@ -7965,7 +7965,15 @@
   .dxm-btn:hover, .dxm-btn:focus-visible { background: rgba(255,255,255,.16); color: #fff; }
   .dxm-btn.is-on, .dxm-btn.is-primary { background: var(--dxm-grad); color: #fff; }
   .dxm-btn svg { width: 1.1rem; height: 1.1rem; }
-  .dxm-frame { flex: 1; min-height: 0; position: relative; }
+  .dxm-body { flex: 1; min-height: 0; display: flex; }
+  .dxm-frame { flex: 1; min-width: 0; min-height: 0; position: relative; }
+  .dxm-comments { flex: none; width: min(26rem, 38vw); display: flex; flex-direction: column; border-left: 1px solid rgba(196,180,255,.14); background: radial-gradient(120% 60% at 100% 0%, rgba(155,123,255,.14), transparent 60%), #0e0c17; color: #fff; }
+  .dxm-comments[hidden] { display: none; }
+  .dxm-comments-head { flex: none; display: flex; flex-direction: column; gap: .15rem; padding: .9rem 1rem .6rem; border-bottom: 1px solid rgba(196,180,255,.1); }
+  .dxm-comments-head b { background: var(--dxm-grad); -webkit-background-clip: text; background-clip: text; color: transparent; font: 800 1rem Inter, system-ui, sans-serif !important; }
+  .dxm-comments-head small { color: rgba(255,255,255,.5); font: 500 .76rem Inter, system-ui, sans-serif !important; }
+  .dxm-comments iframe { flex: 1; width: 100%; border: 0; background: transparent; color-scheme: dark; padding: 0 .4rem; box-sizing: border-box; }
+  @media (max-width: 900px) { .dxm-body { flex-direction: column; } .dxm-comments { width: auto; height: 45%; border-left: 0; border-top: 1px solid rgba(196,180,255,.14); } }
   .dxm-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
   .dxm-next { position: absolute; right: 1.5rem; bottom: 5.5rem; display: flex; align-items: center; gap: .6rem; padding: .7rem .8rem .7rem 1.1rem; border-radius: .7rem; background: rgba(20,20,24,.95); box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #fff; font: 600 .92rem Inter, system-ui, sans-serif; }
   .dxm-next[hidden] { display: none; }
@@ -15341,9 +15349,13 @@
           <button class="dxm-btn" data-act="close" title="Back (Esc)">${ICONS.chevronLeft}<span>Back</span></button>
           <div class="dxm-title"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div>
           <div class="dxm-langs">${Object.entries(this.LANGS).map(([k, [short]]) => `<button class="dxm-btn${k === lang ? " is-on" : ""}" data-lang="${k}">${short}</button>`).join("")}</div>
+          <button class="dxm-btn${this.commentsOn() ? " is-on" : ""}" data-act="comments" title="Comments" aria-pressed="${this.commentsOn()}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg><span>Comments</span></button>
           ${next ? `<button class="dxm-btn" data-act="next" title="Next episode">${ICONS.nextEp}<span>Next episode</span></button>` : ""}
         </div>
-        <div class="dxm-frame"><iframe src="${esc(this.url(t, lang, from))}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+        <div class="dxm-body">
+          <div class="dxm-frame"><iframe src="${esc(this.url(t, lang, from))}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+          <aside class="dxm-comments"${this.commentsOn() ? "" : " hidden"}><div class="dxm-comments-head"><b>Comments</b><small>${esc(at && !at.movie ? `Episode ${t.ep}` : name)} · shared with dxbi.zip/anime</small></div></aside>
+        </div>
         <div class="dxm-next" hidden><span></span><button class="dxm-btn is-primary" data-act="next">Play now</button><button class="dxm-btn" data-act="stay">Cancel</button></div>`;
       el.addEventListener("click", (e) => {
         const b = e.target.closest("button");
@@ -15352,6 +15364,7 @@
         else if (b.dataset.act === "close") this.close();
         else if (b.dataset.act === "next") this.playNext();
         else if (b.dataset.act === "stay") this.cancelNext();
+        else if (b.dataset.act === "comments") this.toggleComments(b);
       });
       // Stremio's own shortcuts stay out of it while the player is up
       for (const type of ["keydown", "keyup", "keypress"]) el.addEventListener(type, (e) => { e.stopPropagation(); if (type === "keydown" && e.key === "Escape") this.close(); });
@@ -15360,7 +15373,38 @@
       document.body.append(el);
       this.session = { t, lang, el, sel, next, marked: false, timer: null, time: 0, duration: 0 };
       document.documentElement.classList.add("dx-anime-servers");
+      if (this.commentsOn()) this.loadComments();
       el.querySelector('[data-act="close"]').focus();
+    },
+
+    // ---- comments: the same Disqus thread as the episode's page on dxbi.zip/anime, in a page of
+    // dxbi.zip's own (Disqus never runs in Stremio's page, where the sign-in lives)
+    commentsOn() {
+      try { return localStorage.getItem("dxbi.animeServers.comments") === "1"; } catch (_) { return false; }
+    },
+
+    toggleComments(btn) {
+      const s = this.session;
+      if (!s) return;
+      const panel = s.el.querySelector(".dxm-comments");
+      const on = panel.hidden;
+      panel.hidden = !on;
+      btn.classList.toggle("is-on", on);
+      btn.setAttribute("aria-pressed", String(on));
+      try { localStorage.setItem("dxbi.animeServers.comments", on ? "1" : "0"); } catch (_) { /* fine */ }
+      if (on) this.loadComments();
+    },
+
+    loadComments() {
+      const s = this.session;
+      const panel = s && s.el.querySelector(".dxm-comments");
+      if (!panel || panel.querySelector("iframe")) return;
+      const t = s.t;
+      const q = new URLSearchParams({ [t.kind === "ani" ? "al" : "mal"]: t.id, ep: String(t.ep), t: (s.sel.meta && s.sel.meta.name) || "" });
+      const f = document.createElement("iframe");
+      f.src = `https://dxbi.zip/anime/comments.html?${q}`;
+      f.title = "Comments";
+      panel.append(f);
     },
 
     close() {

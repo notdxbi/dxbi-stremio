@@ -1,5 +1,6 @@
 // dx.bi — Copyright (C) 2026 dx.bi. GNU General Public License, version 3 or later (see LICENSE).
 import { BrowserWindow, shell } from "electron";
+import { join } from "path";
 import { URLS } from "../constants";
 
 /**
@@ -22,6 +23,14 @@ function isAdEmbed(url: string): boolean {
     return AD_EMBED_HOSTS.some((h) => host === h || host.endsWith("." + h));
 }
 
+// Comment sign-in (anime comments are Disqus): its pop-up has to stay a real child window, as
+// Disqus's page talks to the window that opened it once you're signed in
+function isSignIn(url: string): boolean {
+    let host = "";
+    try { host = new URL(url).hostname; } catch { return false; }
+    return host === "disqus.com" || host.endsWith(".disqus.com");
+}
+
 /** One of those players is on the page: nothing it opens is a link anyone asked for. */
 function adEmbedShowing(win: BrowserWindow): boolean {
     try {
@@ -38,6 +47,16 @@ function adEmbedShowing(win: BrowserWindow): boolean {
 export function keepOnStremio(win: BrowserWindow): void {
     const home = new URL(URLS.STREMIO_WEB).origin;
     win.webContents.setWindowOpenHandler(({ url }) => {
+        if (isSignIn(url)) {
+            return {
+                action: "allow",
+                overrideBrowserWindowOptions: {
+                    width: 520, height: 700, autoHideMenuBar: true, title: "Sign in",
+                    // none of the main window's preload: this window is someone else's page
+                    webPreferences: { preload: join(__dirname, "..", "preload", "blank.js"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+                },
+            };
+        }
         // the anime player covers the whole window, so a new window while it's up is its ad
         if (!adEmbedShowing(win)) openOutside(url);
         return { action: "deny" };
