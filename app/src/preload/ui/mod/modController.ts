@@ -6,6 +6,7 @@ import helpers from '../../../utils/Helpers';
 import { getLogger } from "../../../utils/logger";
 import { STORAGE_KEYS, SELECTORS, CLASSES, FILE_EXTENSIONS } from "../../../constants";
 import { settingsAPI } from "../../api/settings";
+import { isNewLayout } from "../settings/newSettings";
 import { pluginOptionsModal } from "../../../components/plugin-settings-modal/pluginSettingsModal";
 import PluginSettingSchema from "../../../interfaces/PluginSettingSchema";
 
@@ -124,6 +125,12 @@ export const modController = {
 
                     const pluginName = btnId.replace('-settings', '');
                     const pluginBaseName = pluginName.split(FILE_EXTENSIONS.PLUGIN)[0]; 
+
+                    // In Stremio's redesigned Settings, dx.bi's own options have their own page
+                    if (pluginBaseName === 'dxbi' && isNewLayout()) {
+                        location.hash = '#/settings/dxbi-customise';
+                        return;
+                    }
 
                     const schema = await settingsAPI.getRegisteredSettings(pluginBaseName);
                     if (!schema) {
