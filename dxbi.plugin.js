@@ -15371,7 +15371,12 @@
       this.escape = (e) => { if (e.key === "Escape" && !document.fullscreenElement) { e.stopPropagation(); e.preventDefault(); this.close(); } };
       document.addEventListener("keydown", this.escape, true);
       document.body.append(el);
-      this.session = { t, lang, el, sel, next, marked: false, timer: null, time: 0, duration: 0 };
+      this.session = { t, lang, el, sel, next, marked: false, timer: null, time: 0, duration: 0, ep: at && !at.movie ? t.ep : null, tickAt: 0 };
+      // time updates stop while paused: that's how a pause shows
+      this.session.watch = setInterval(() => {
+        const ss = this.session;
+        if (ss && ss.presenceState === "playing" && performance.now() - ss.tickAt > 1600) this.presence("paused");
+      }, 1000);
       document.documentElement.classList.add("dx-anime-servers");
       if (this.commentsOn()) this.loadComments();
       el.querySelector('[data-act="close"]').focus();
@@ -15407,11 +15412,30 @@
       panel.append(f);
     },
 
+    // The app's Discord status: what's on, playing or paused (its preload listens; JSON because
+    // objects don't cross into the preload's world)
+    presence(state) {
+      const s = this.session;
+      if (!s && state !== "closed") return;
+      const detail = state === "closed" ? { state } : {
+        state,
+        name: (s.sel.meta && s.sel.meta.name) || "",
+        ep: s.ep || null,
+        poster: (s.sel.meta && s.sel.meta.poster) || "",
+        time: s.time || 0,
+        duration: s.duration || 0,
+      };
+      if (s) { s.presenceState = state; s.presenceAt = performance.now(); s.presenceTime = s.time || 0; }
+      try { window.dispatchEvent(new CustomEvent("dxbi-anime-presence", { detail: JSON.stringify(detail) })); } catch (_) { /* fine */ }
+    },
+
     close() {
       const s = this.session;
       if (!s) return;
       if (s.time > 5) this.savePosition(s.sel.videoId, s.time, s.duration);
       clearInterval(s.timer);
+      clearInterval(s.watch);
+      this.presence("closed");
       s.el.remove();
       document.removeEventListener("keydown", this.escape, true);
       document.documentElement.classList.remove("dx-anime-servers");
@@ -15429,8 +15453,15 @@
       const time = Number(d.event === "time" ? d.time : d.type === "watching-log" ? d.currentTime : NaN);
       const duration = Number(d.duration);
       if (isFinite(time) && time >= 0) {
+        const moved = Math.abs(time - s.time) > 0.01;
         s.time = time;
         if (isFinite(duration) && duration > 0) s.duration = duration;
+        if (moved) {
+          s.tickAt = performance.now();
+          // say "playing" when it starts or resumes, and again after a jump so Discord's clock is right
+          const expected = s.presenceTime + (performance.now() - (s.presenceAt || 0)) / 1000;
+          if (s.presenceState !== "playing" || Math.abs(expected - time) > 4) this.presence("playing");
+        }
         if (Math.floor(time) % 10 === 0) this.savePosition(s.sel.videoId, time, s.duration);
         if (s.duration && time > s.duration * 0.9) this.markWatched(s);
       }

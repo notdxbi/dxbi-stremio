@@ -23,16 +23,46 @@ export const discordTracker = {
         window.addEventListener('hashchange', discordTracker.handleNavigation);
         window.removeEventListener('dxbi-discord-ready', discordTracker.handleNavigation);
         window.addEventListener('dxbi-discord-ready', discordTracker.handleNavigation);
+        window.removeEventListener('dxbi-anime-presence', discordTracker.onAnime);
+        window.addEventListener('dxbi-anime-presence', discordTracker.onAnime);
         discordTracker.handleNavigation();
     },
 
     stop: () => {
+        window.removeEventListener('dxbi-anime-presence', discordTracker.onAnime);
+        discordTracker._animeActive = false;
         window.removeEventListener('hashchange', discordTracker.handleNavigation);
         window.removeEventListener('dxbi-discord-ready', discordTracker.handleNavigation);
     },
 
+    // the plugin's anime player (it isn't Stremio's player): it says what's on, the page doesn't
+    _animeActive: false,
+    // detail is a JSON string: objects don't cross from the page's world into this one
+    onAnime: (e: Event) => {
+        let d: { state?: string; name?: string; ep?: number | null; poster?: string; time?: number; duration?: number } = {};
+        try { d = JSON.parse(String((e as CustomEvent).detail || "{}")); } catch { return; }
+        if (d.state === "closed") {
+            discordTracker._animeActive = false;
+            discordTracker.handleNavigation();
+            return;
+        }
+        if (!d.name) return;
+        discordTracker._animeActive = true;
+        const name = String(d.name).slice(0, 120);
+        const ep = d.ep ? `E${d.ep}` : "";
+        const poster = typeof d.poster === "string" && /^https:\/\//.test(d.poster) ? d.poster : undefined;
+        const time = Math.max(0, Number(d.time) || 0);
+        if (d.state === "playing") {
+            const start = Math.floor(Date.now() / 1000) - Math.floor(time);
+            const end = Number(d.duration) > 0 ? start + Math.floor(Number(d.duration)) : undefined;
+            DiscordPresence.setPlaying(name, ep ? `Watching ${ep}` : "Watching", start, end, poster);
+        } else if (d.state === "paused") {
+            const at = Helpers.formatTime(time);
+            DiscordPresence.setPaused(name, ep ? `Paused at ${at} in ${ep}` : `Paused at ${at}`, poster);
+        }
+    },
     handleNavigation: () => {
-        if (discordTracker._externalPlayerActive) return;
+        if (discordTracker._externalPlayerActive || discordTracker._animeActive) return;
         discordTracker._checkWatching();
         discordTracker._checkExploring();
         discordTracker._checkMainMenu();
