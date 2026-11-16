@@ -15234,9 +15234,16 @@
       return next && !next.upcoming ? next : null;
     },
 
+    // Where stream lists live: Stremio's older title page, or the one from November 2026
+    // (section.streams-… panel > body-… > groups-…)
+    streamList() {
+      return document.querySelector('[class*="metadetails-content"] [class*="streams-list-container"]')
+        || document.querySelector('section[class*="streams-"][class*="panel-"] > [class*="body-"]');
+    },
+
     ensure() {
       if (currentRoute() !== "detail") return;
-      const list = document.querySelector('[class*="metadetails-content"] [class*="streams-list-container"]');
+      const list = this.streamList();
       const old = list && list.querySelector(":scope > .dxm-servers");
       if (!this.on || !list) {
         if (old) old.remove();
@@ -15267,7 +15274,7 @@
     },
 
     place() {
-      const list = document.querySelector('[class*="metadetails-content"] [class*="streams-list-container"]');
+      const list = this.streamList();
       if (!list) return;
       let box = list.querySelector(":scope > .dxm-servers");
       const t = this.target;
@@ -15294,8 +15301,9 @@
         box._html = html;
         box.innerHTML = html;
       }
-      // above the streams themselves (after the episode picker and dx.bi's sort bar)
-      const streams = list.querySelector(':scope > [class*="streams-container"]');
+      // above the streams themselves (after the episode picker and dx.bi's sort bar); in the newer
+      // panel, at the top of its body, above the addon groups
+      const streams = list.querySelector(':scope > [class*="streams-container"]') || [...list.children].find((c) => c !== box);
       if (streams && box.nextElementSibling !== streams) list.insertBefore(box, streams);
       else if (!streams && box.parentNode !== list) list.append(box);
     },
