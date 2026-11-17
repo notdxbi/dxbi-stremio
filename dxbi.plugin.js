@@ -3655,7 +3655,8 @@
       }
       // Next Episode (series only) — uses Stremio's own "play next" shortcut
       const parts = (location.hash || "").split("/");
-      const isSeries = decodeURIComponent(parts[5] || "") === "series";
+      // (hidden on a finale, where Stremio has no next episode and the shortcut does nothing)
+      const isSeries = decodeURIComponent(parts[5] || "") === "series" && nextEpisode.has();
       const next = row && row.querySelector(":scope > .dx-next");
       if (row && isSeries && !next) {
         const b = document.createElement("div");
@@ -3665,9 +3666,7 @@
         b.innerHTML = ICONS.nextEp;
         b.addEventListener("click", (e) => {
           e.stopPropagation();
-          const opts = { key: "N", code: "KeyN", shiftKey: true, bubbles: true };
-          document.dispatchEvent(new KeyboardEvent("keydown", opts));
-          document.dispatchEvent(new KeyboardEvent("keyup", opts));
+          pressNextEpisode();
         });
         row.append(b);
       } else if (next && !isSeries) {
@@ -8245,6 +8244,45 @@
     return decodeURIComponent((location.hash || "").split("/")[5] || "") === "series";
   }
 
+  // Whether Stremio knows an episode after this one (its player state's nextVideo). Unknown until
+  // the player state loads; null on a season/series finale, where Stremio's "play next" does nothing.
+  const nextEpisode = {
+    key: null,
+    video: undefined, // undefined: not known yet, null: none, else Stremio's nextVideo
+
+    has() {
+      this.ensure();
+      return !!this.video;
+    },
+
+    ensure() {
+      if (currentRoute() !== "player" || !isSeriesRoute()) {
+        this.key = null;
+        this.video = undefined;
+        return;
+      }
+      if (this.key !== location.hash) this.load(location.hash);
+    },
+
+    async load(hash) {
+      this.key = hash;
+      this.video = undefined;
+      const { getState } = core();
+      for (let i = 0; i < 20 && getState; i++) {
+        let s = null;
+        try { s = await getState("player"); } catch (_) { /* not ready */ }
+        if (this.key !== hash) return;
+        const sel = s && s.selected;
+        if (sel && sel.streamRequest && sel.metaRequest && s.metaItem && s.metaItem.type === "Ready") {
+          this.video = s.nextVideo || null;
+          player.ensure();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    },
+  };
+
   function pressNextEpisode() {
     // Stremio's own "play next" shortcut
     const opts = { key: "N", code: "KeyN", shiftKey: true, bubbles: true };
@@ -9161,7 +9199,8 @@
         root.append(this.btn);
       }
       this.current = seg;
-      const label = seg.type === "credits" && isSeriesRoute() ? "Next Episode" : SKIP_LABEL[seg.type];
+      // on a finale there's no next episode, so the credits button just skips them
+      const label = seg.type === "credits" && isSeriesRoute() && nextEpisode.has() ? "Next Episode" : SKIP_LABEL[seg.type];
       if (this.btn.dataset.label !== label) {
         this.btn.dataset.label = label;
         this.btn.innerHTML = `<span>${label}</span>${ICONS.nextEp}`;
@@ -9177,7 +9216,7 @@
     go(seg) {
       const v = this.video;
       if (!v) return;
-      if (seg.type === "credits" && isSeriesRoute()) {
+      if (seg.type === "credits" && isSeriesRoute() && nextEpisode.has()) {
         pressNextEpisode();
       } else {
         const dur = isFinite(v.duration) ? v.duration : null;
