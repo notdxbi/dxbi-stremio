@@ -199,8 +199,11 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Phones turn freely; TVs stay landscape
-        if (phone) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        // Phones play full screen sideways, like Netflix (either way round), unless the viewer chose
+        // dx.bi settings → Player → Turn with my phone; TVs stay landscape
+        if (phone) requestedOrientation =
+            if (getSharedPreferences("phone-cache", MODE_PRIVATE).getBoolean("playerTurns", false)) ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {

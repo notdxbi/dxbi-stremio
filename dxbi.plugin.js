@@ -4284,7 +4284,10 @@
       const rest = items.filter((x) => x !== picked && x.d.source !== "CAM" && !x.d.pending && (torrents || !x.torrent) && x.d.res <= limit);
       const out = [];
       while (rest.length && out.length < 2) {
-        const next = this.best(rest);
+        // A stream that wouldn't play is often one this device can't decode: Dolby Vision (the hardest
+        // to decode, and only a few phones and TVs can) waits until nothing else is left
+        const plain = rest.filter((x) => !x.d.dv);
+        const next = this.best(plain.length ? plain : rest);
         rest.splice(rest.indexOf(next), 1);
         if (!next.hint.infoHash || next.hint.infoHash !== picked.hint.infoHash) out.push(next);
       }
@@ -4341,7 +4344,8 @@
       bar.hidden = false;
       list.classList.add("dx-sortable");
       // Nothing new since the last pass (same rows, same choices): the order and filters already hold
-      const key = `${items.length}|${JSON.stringify(this.state)}|${settings.streamRows}|${bar.firstChild ? 1 : 0}`;
+      // (the open menu counts: opening one changes nothing else, and was skipped here in 2.38.0-2.38.1)
+      const key = `${items.length}|${JSON.stringify(this.state)}|${settings.streamRows}|${bar.firstChild ? 1 : 0}|${this.open || ""}`;
       if (this.lastList === list && this.lastKey === key && this.lastFirst === items[0] && this.lastLast === items[items.length - 1]) return;
       const rows = items.map((el) => [el, this.data(el)]);
       this.apply(list, rows, bar);
@@ -4433,7 +4437,7 @@
       // restore the user's full saved preferences (we only narrowed them for this title)
       Object.assign(this.state, saved);
 
-      const sig = JSON.stringify([f, active, s.sort, s.instant, s.hdr, shown, rows.length]);
+      const sig = JSON.stringify([f, active, s.sort, s.instant, s.hdr, shown, rows.length, this.open]);
       if (sig !== this.sig || !bar.firstChild) {
         this.sig = sig;
         this.renderBar(bar, f, active, shown, rows.length);
