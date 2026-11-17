@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.38.2
+
+- **Stream filters open again.** On title pages, the Sort, Quality, Language, Source and Provider buttons above the streams did nothing when clicked since 2.38.0. They open their menus again (dx.bi app and the Stremio Enhanced plugin).
+- **TVs no longer seem to freeze when you come back to Home.** When Stremio has a new version, it shows a "Reload the user interface" bar at the bottom of the screen. On a TV the remote got stuck on that bar after watching something, so pressing Down did nothing. dx.bi TV and the phone apps now hide the bar, and Stremio's new version loads the next time you open dx.bi.
+- **Phones play videos full screen.** Videos now start sideways and fill the screen, like Netflix. If you'd rather turn the player with your phone, switch on dx.bi settings → Player → **Turn with my phone**.
+- **A better second try when a stream won't play.** When *Just press Play* moves on from a stream that wouldn't play, it now tries Dolby Vision releases last, because many phones and TVs can't decode them.
+- **Windows: the video shows when you share the dx.bi window** in Discord or record it in OBS. The picture used to come out black. Thanks to @nxdii (#109).
+- **No Next episode button on a finale.** The player only shows Next episode when there is one, and the end-credits button just skips the credits on the last episode. Thanks to @EskimoDev (#111).
+
 ## 2.38.1
 
 - **The anime streaming servers are gone.** The Sub and Dub rows that 2.38.0 put at the top of anime stream lists, their player and their setting have been removed. Anime plays from your addons as before.

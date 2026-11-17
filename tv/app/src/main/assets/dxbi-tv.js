@@ -168,7 +168,11 @@
   // ---------------------------------------------------------------------------
   // Dialogs (alerts, prompts, settings): plain page elements, so the remote's arrows and OK work
   // ---------------------------------------------------------------------------
+  // Stremio's "A new version of Stremio is available · Reload the user interface" bar: on a remote it
+  // took the focus coming back to Home (Down then did nothing, so the TV looked frozen), and OK on it
+  // reloaded everything. Hidden: Stremio's new version is used from the next start instead.
   const STYLE = `
+    div[class*="web-update-banner-"] { display: none !important; }
     .dxtv-modal { position: fixed; inset: 0; z-index: 2147483600; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.72); font-family: Inter, system-ui, sans-serif; }
     .dxtv-sheet { width: min(640px, 86vw); max-height: 84vh; overflow: auto; padding: 28px 30px; border-radius: 14px; background: #1c1c1c; color: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.6); }
     .dxtv-sheet h2 { margin: 0 0 10px; font-size: 24px; font-weight: 700; }
