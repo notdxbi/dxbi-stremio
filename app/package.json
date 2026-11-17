@@ -1,6 +1,6 @@
 {
 	"name": "dxbi",
-	"version": "2.38.1",
+	"version": "2.38.2",
 	"description": "dx.bi: a Netflix-style streaming app for your Stremio addons.",
 	"main": "./dist/main.js",
 	"scripts": {

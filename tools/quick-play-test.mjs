@@ -74,6 +74,8 @@ const labels = (list) => Array.from(list, (x) => x.label);
 assert.deepEqual(labels(streamChoice.spares([spareA, spareB, uncached, cam], spareA)), [spareB.label], "never a download or a cam");
 assert.deepEqual(labels(streamChoice.spares([spareA, sameRelease, spareB], spareA)), [spareB.label], "not the same release again");
 assert.equal(streamChoice.spares([cached4k, cachedDv, cached1080, remux, spareB], cached4k).length, 2, "two tries at most");
+assert.deepEqual(labels(streamChoice.spares([cached4k, cachedDv, cached1080], cached4k)), [cached1080.label, cachedDv.label], "Dolby Vision is the last resort");
+assert.deepEqual(labels(streamChoice.spares([cached4k, cachedDv], cached4k)), [cachedDv.label], "but still tried when it's all there is");
 console.log("PASS a failed pick moves on to a different safe release");
 
 const upscaled = item("[RD+] Torrentio\n4k", "Breaking Bad. S01. 2008 2160P.Ai Upscaled.BluRay.60FPS.H265");

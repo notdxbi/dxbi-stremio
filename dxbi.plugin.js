@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.38.1
+ * @version 2.38.2
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.38.1"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.38.2"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -3655,7 +3655,8 @@
       }
       // Next Episode (series only) — uses Stremio's own "play next" shortcut
       const parts = (location.hash || "").split("/");
-      const isSeries = decodeURIComponent(parts[5] || "") === "series";
+      // (hidden on a finale, where Stremio has no next episode and the shortcut does nothing)
+      const isSeries = decodeURIComponent(parts[5] || "") === "series" && nextEpisode.has();
       const next = row && row.querySelector(":scope > .dx-next");
       if (row && isSeries && !next) {
         const b = document.createElement("div");
@@ -3665,9 +3666,7 @@
         b.innerHTML = ICONS.nextEp;
         b.addEventListener("click", (e) => {
           e.stopPropagation();
-          const opts = { key: "N", code: "KeyN", shiftKey: true, bubbles: true };
-          document.dispatchEvent(new KeyboardEvent("keydown", opts));
-          document.dispatchEvent(new KeyboardEvent("keyup", opts));
+          pressNextEpisode();
         });
         row.append(b);
       } else if (next && !isSeries) {
@@ -4284,7 +4283,10 @@
       const rest = items.filter((x) => x !== picked && x.d.source !== "CAM" && !x.d.pending && (torrents || !x.torrent) && x.d.res <= limit);
       const out = [];
       while (rest.length && out.length < 2) {
-        const next = this.best(rest);
+        // A stream that wouldn't play is often one this device can't decode: Dolby Vision (the hardest
+        // to decode, and only a few phones and TVs can) waits until nothing else is left
+        const plain = rest.filter((x) => !x.d.dv);
+        const next = this.best(plain.length ? plain : rest);
         rest.splice(rest.indexOf(next), 1);
         if (!next.hint.infoHash || next.hint.infoHash !== picked.hint.infoHash) out.push(next);
       }
@@ -4341,7 +4343,8 @@
       bar.hidden = false;
       list.classList.add("dx-sortable");
       // Nothing new since the last pass (same rows, same choices): the order and filters already hold
-      const key = `${items.length}|${JSON.stringify(this.state)}|${settings.streamRows}|${bar.firstChild ? 1 : 0}`;
+      // (the open menu counts: opening one changes nothing else, and was skipped here in 2.38.0-2.38.1)
+      const key = `${items.length}|${JSON.stringify(this.state)}|${settings.streamRows}|${bar.firstChild ? 1 : 0}|${this.open || ""}`;
       if (this.lastList === list && this.lastKey === key && this.lastFirst === items[0] && this.lastLast === items[items.length - 1]) return;
       const rows = items.map((el) => [el, this.data(el)]);
       this.apply(list, rows, bar);
@@ -4433,7 +4436,7 @@
       // restore the user's full saved preferences (we only narrowed them for this title)
       Object.assign(this.state, saved);
 
-      const sig = JSON.stringify([f, active, s.sort, s.instant, s.hdr, shown, rows.length]);
+      const sig = JSON.stringify([f, active, s.sort, s.instant, s.hdr, shown, rows.length, this.open]);
       if (sig !== this.sig || !bar.firstChild) {
         this.sig = sig;
         this.renderBar(bar, f, active, shown, rows.length);
@@ -8241,6 +8244,45 @@
     return decodeURIComponent((location.hash || "").split("/")[5] || "") === "series";
   }
 
+  // Whether Stremio knows an episode after this one (its player state's nextVideo). Unknown until
+  // the player state loads; null on a season/series finale, where Stremio's "play next" does nothing.
+  const nextEpisode = {
+    key: null,
+    video: undefined, // undefined: not known yet, null: none, else Stremio's nextVideo
+
+    has() {
+      this.ensure();
+      return !!this.video;
+    },
+
+    ensure() {
+      if (currentRoute() !== "player" || !isSeriesRoute()) {
+        this.key = null;
+        this.video = undefined;
+        return;
+      }
+      if (this.key !== location.hash) this.load(location.hash);
+    },
+
+    async load(hash) {
+      this.key = hash;
+      this.video = undefined;
+      const { getState } = core();
+      for (let i = 0; i < 20 && getState; i++) {
+        let s = null;
+        try { s = await getState("player"); } catch (_) { /* not ready */ }
+        if (this.key !== hash) return;
+        const sel = s && s.selected;
+        if (sel && sel.streamRequest && sel.metaRequest && s.metaItem && s.metaItem.type === "Ready") {
+          this.video = s.nextVideo || null;
+          player.ensure();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    },
+  };
+
   function pressNextEpisode() {
     // Stremio's own "play next" shortcut
     const opts = { key: "N", code: "KeyN", shiftKey: true, bubbles: true };
@@ -9157,7 +9199,8 @@
         root.append(this.btn);
       }
       this.current = seg;
-      const label = seg.type === "credits" && isSeriesRoute() ? "Next Episode" : SKIP_LABEL[seg.type];
+      // on a finale there's no next episode, so the credits button just skips them
+      const label = seg.type === "credits" && isSeriesRoute() && nextEpisode.has() ? "Next Episode" : SKIP_LABEL[seg.type];
       if (this.btn.dataset.label !== label) {
         this.btn.dataset.label = label;
         this.btn.innerHTML = `<span>${label}</span>${ICONS.nextEp}`;
@@ -9173,7 +9216,7 @@
     go(seg) {
       const v = this.video;
       if (!v) return;
-      if (seg.type === "credits" && isSeriesRoute()) {
+      if (seg.type === "credits" && isSeriesRoute() && nextEpisode.has()) {
         pressNextEpisode();
       } else {
         const dur = isFinite(v.duration) ? v.duration : null;

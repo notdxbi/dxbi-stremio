@@ -319,6 +319,14 @@ class Stremio(context: Context, val engine: Engine, private val scope: Coroutine
         cache.edit().putBoolean("playInOtherApp", on).apply()
     }
 
+    /** dx.bi settings → Player → Turn with my phone (off: the player is always full screen, sideways) */
+    val playerTurns = MutableStateFlow(cache.getBoolean("playerTurns", false))
+
+    fun setPlayerTurns(on: Boolean) {
+        playerTurns.value = on
+        cache.edit().putBoolean("playerTurns", on).apply()
+    }
+
     /** dx.bi settings → Library in the tab bar: a Library tab beside Home, Discover… (off: it's under Profile) */
     val libraryTab = MutableStateFlow(cache.getBoolean("libraryTab", false))
 

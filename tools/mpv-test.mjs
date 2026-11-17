@@ -236,6 +236,10 @@ $ex = [S]::GetWindowLongPtr($script:target, -20).ToInt64()
   try {
     const state = await waitFor("mpv to play", () => evaluate(`(() => { const v = ${V}; return v && v.readyState === 4 && v.currentTime > 2 ? { t: v.currentTime, w: v.videoWidth, h: v.videoHeight, cls: v.className } : null })()`), 60000);
     pass(`playing in mpv: ${state.w}×${state.h}, ${state.t.toFixed(1)} s in (${state.cls})`);
+    // mpv's picture is a child of the dx.bi window itself (what Discord records)
+    for (let i = 0; i < 30 && !appLog.includes("Merged window: found mpv's picture"); i++) await new Promise((r) => setTimeout(r, 200));
+    if (appLog.includes("Merged window: found mpv's picture")) pass("merged window: mpv draws inside the dx.bi window");
+    else fail("merged window: mpv's picture isn't inside the dx.bi window");
   } catch (e) {
     fail(e.message);
     console.log("  page's view of mpv: " + JSON.stringify(await evaluate(`({ mpv: window.__dxbiMpvState, debug: window.__dxbiMpvDebug, proxy: !!${V}, body: document.body.getAttribute("style"), hash: location.hash.slice(0, 12), container: !!document.querySelector('[class*="player-container"]') })`)).slice(0, 1500));
