@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.38.0
+ * @version 2.38.1
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.38.0"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.38.1"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -136,7 +136,6 @@
     quickPlayQuality: "best",
     quickPlayFallback: "best",
     streamRows: true,
-    animeServers: true,
     watchedTitles: "show",
     librarySort: true,
     convertVideo: "auto",
@@ -208,7 +207,6 @@
     { key: "quickPlayQuality", type: "select", label: "Highest quality to pick", defaultValue: DEFAULTS.quickPlayQuality, options: [{ label: "Best available", value: "best" }, { label: "4K", value: "2160" }, { label: "1080p", value: "1080" }, { label: "720p", value: "720" }] },
     { key: "quickPlayFallback", type: "select", label: "If my usual stream is missing", defaultValue: DEFAULTS.quickPlayFallback, options: [{ label: "Play the next best", value: "best" }, { label: "Show me the list", value: "ask" }] },
     { key: "streamRows", type: "toggle", label: "Clean stream list", description: "Shows each stream as a simple row: quality, source, size and whether it's ready to play.", defaultValue: DEFAULTS.streamRows },
-    { key: "animeServers", type: "toggle", label: "Anime streaming servers", description: "Anime episodes get Sub and Dub rows from free streaming servers at the top of the stream list. They play right inside dx.bi: no sign-in, addon or debrid needed.", defaultValue: DEFAULTS.animeServers },
     { key: "builtInTheme", type: "toggle", label: "dx.bi look built in", description: `Use the dx.bi theme without installing it separately. Steps aside by itself when you apply another theme in Settings → ${SETTINGS_SECTION} → Themes.`, defaultValue: DEFAULTS.builtInTheme },
     { key: "videoRowsOnly", type: "toggle", label: "Only movie, series & anime rows on Home", description: "Hides rows from addons that list other things, like a debrid account's downloads or YouTube channels. They stay in Discover.", defaultValue: DEFAULTS.videoRowsOnly },
     { key: "billboard", type: "toggle", label: "Billboard on Home", description: "Large rotating feature banner at the top of Home.", defaultValue: DEFAULTS.billboard },
@@ -444,7 +442,7 @@
     ["Look", ["liteMode", "accent", "posterAccent", "focusColour", "builtInTheme", "crispPosters", "ratings", "animeTitles", "wideContinue"]],
     ["Home", ["myList", "forYou", "videoRowsOnly", "billboard", "billboardSource", "billboardInterval", "newEpisodes", "airingRow", "whoIsWatching"]],
     ["Hover cards & trailers", ["previews", "trailers", "trailerDelay"]],
-    ["Browsing & library", ["watchedTitles", "librarySort", "streamRows", "animeServers", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey", "profileSync"]],
+    ["Browsing & library", ["watchedTitles", "librarySort", "streamRows", "streamTools", "addonTools", "watchStats", "reviews", "tmdbKey", "mdblistKey", "profileSync"]],
     ["Player", ["quickPlay", "quickPlayMemory", "quickPlayQuality", "quickPlayFallback", "tvTorrents", "playerExtras", "remainingTime", "playerClock", "seekPreviews", "enhance", "pictureSound", "streamStats", "rememberPlayback", "playerKeys", "pip", "externalPlayer", "convertVideo"]],
     ["Subtitles", ["subtitleStyle", "subtitleFont", "subtitleCustomFont", "subtitlesStart", "hdrSubtitles"]],
     ["Episodes & skipping", ["skipButtons", "autoSkip", "upNext", "preloadNext", "fillerGuide", "skipFiller"]],
@@ -7778,7 +7776,7 @@
       ? [updateRoute, brandTitle, () => addonTools.ensure(), () => watchParty.ensure(), communitySync]
       : [updateRoute, brandTitle, () => player.ensure(), () => playerClock.ensure(), () => { convert.ensure().catch(() => { /* player state not ready */ }); }, () => convert.confirmHevc(), () => externalDefault.ensure(), () => placeholder.ensure(), () => playbackHelp.ensure(), () => scrub.ensure(), () => enhance.ensure(), () => watchParty.ensure(), () => skip.ensure(), () => tune.ensure(), () => streamInfo.ensure(), () => addonTools.ensure(), communitySync];
     steps.push(() => { titleColour.ensure().catch(() => { /* next sync */ }); }, () => webSettings.ensure());
-    if (currentRoute() === "detail") steps.push(() => streamTools.ensure(), () => streamRows.ensure(), () => quickPlay.ensure(), () => webTorrents.ensure(), () => animeServers.ensure());
+    if (currentRoute() === "detail") steps.push(() => streamTools.ensure(), () => streamRows.ensure(), () => quickPlay.ensure(), () => webTorrents.ensure());
     if (!IN_TV) steps.push(() => downloads.ensure());
     steps.push(() => { quickPlay.note().catch(() => { /* next sync */ }); });
     steps.push(() => reviews.ensure(), () => hideButton.ensure(), () => { endsAt.ensure().catch(() => { /* next sync */ }); }, () => { calendarFill.ensure().catch(() => { /* next sync */ }); }, () => { restrict.guard().catch(() => { /* next sync */ }); });
@@ -7794,7 +7792,7 @@
   const mo = new MutationObserver((records) => {
     for (const r of records) {
       // Ignore changes we made ourselves
-      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dxm-servers, .dxm-player, .dx-ends, .dx-cal-item, .dxe-report, .dxl-empty, .dxw-settings")) continue;
+      if (r.target.closest && r.target.closest(".dx-hero, .dx-preview, .dx-row-pages, .dxe-airing, .dxe-upnext, .dxe-playhelp, .dxe-placeholder, .dxe-skip, .dxe-trailer, .dx-wide-art, .dx-player-title, .dx-player-flash, .dx-streambar, .dx-stream-empty, .dx-scrub, .dx-enhance-subs, .dx-player-toast, .dxp-nav-btn, .dxp-player-btn, .dxt-panel, .dx-sub2, .dxl-tools, .dxe-theatre, .dx-scores, .dx-reviews-btn, .dx-hide-btn, .dxe-kids-block, .dxe-toast, .dx-ends, .dx-cal-item, .dxe-report, .dxl-empty, .dxw-settings")) continue;
       scheduleSync();
       // Library's watched filters hide titles in the same frame Stremio draws them (a whole sync
       // later, the wrong titles were on screen for a moment)
@@ -8048,34 +8046,6 @@
   .dx-hide-btn:not([data-dx-native]).is-on { background: #fff; border-color: #fff; color: #000; }
   .dx-hide-btn:not([data-dx-native]) svg { width: 1.25rem; height: 1.25rem; flex: none; }
   .dx-hide-btn:not([data-dx-native]) span { font: 700 .95rem/1 Inter, system-ui, sans-serif !important; }
-  .dxm-servers { display: flex; flex-direction: column; gap: .35rem; margin: .2rem 1rem .9rem; padding: .7rem; border-radius: .8rem; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07); }
-  .dxm-head { display: flex; align-items: baseline; gap: .6rem; padding: 0 .3rem .2rem; }
-  .dxm-head b { color: #fff; font: 800 .95rem Inter, system-ui, sans-serif !important; }
-  .dxm-head small { color: rgba(255,255,255,.45); font: 500 .76rem Inter, system-ui, sans-serif !important; }
-  .dxm-row { display: flex; align-items: center; gap: .9rem; width: 100%; padding: .6rem .7rem; border: 0; border-radius: .6rem; background: rgba(255,255,255,.05); color: #fff; text-align: left; cursor: pointer; transition: background-color .15s; }
-  .dxm-row:hover, .dxm-row:focus-visible { background: rgba(255,255,255,.13); }
-  .dxm-tag { flex: none; min-width: 3.2rem; padding: .35rem .5rem; border-radius: .4rem; background: var(--dx-accent, #e50914); color: #fff; text-align: center; font: 800 .8rem Inter, system-ui, sans-serif !important; letter-spacing: .04em; text-transform: uppercase; }
-  .dxm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .15rem; }
-  .dxm-main strong { font: 700 .92rem Inter, system-ui, sans-serif !important; }
-  .dxm-main small { color: rgba(255,255,255,.5); font: 500 .78rem Inter, system-ui, sans-serif !important; }
-  .dxm-go { flex: none; width: 2.2rem; height: 2.2rem; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,.1); }
-  .dxm-go svg { width: 1rem; height: 1rem; fill: currentColor; }
-  .dxm-player { position: fixed; inset: 0; z-index: 100003; display: flex; flex-direction: column; background: #000; font-family: Inter, system-ui, sans-serif; }
-  .dxm-bar { flex: none; display: flex; align-items: center; gap: .7rem; height: 3.6rem; padding: 0 1rem; padding-right: calc(1rem + var(--dx-window-buttons, 0px)); background: #0b0b0d; border-bottom: 1px solid rgba(255,255,255,.07); color: #fff; }
-  .dxm-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .dxm-title b { font: 800 1rem Inter, system-ui, sans-serif !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dxm-title small { color: rgba(255,255,255,.55); font: 500 .8rem Inter, system-ui, sans-serif !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dxm-langs { display: flex; gap: .3rem; padding: .25rem; border-radius: .6rem; background: rgba(255,255,255,.06); }
-  .dxm-btn { height: 2.4rem; padding: 0 .9rem; display: inline-flex; align-items: center; gap: .4rem; border: 0; border-radius: .5rem; background: rgba(255,255,255,.08); color: #fff; font: 700 .85rem Inter, system-ui, sans-serif !important; cursor: pointer; white-space: nowrap; }
-  .dxm-langs .dxm-btn { height: 1.9rem; background: transparent; color: rgba(255,255,255,.65); }
-  .dxm-btn:hover, .dxm-btn:focus-visible { background: rgba(255,255,255,.16); color: #fff; }
-  .dxm-btn.is-on, .dxm-btn.is-primary { background: var(--dx-accent, #e50914); color: #fff; }
-  .dxm-btn svg { width: 1.1rem; height: 1.1rem; }
-  .dxm-frame { flex: 1; min-height: 0; position: relative; }
-  .dxm-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
-  .dxm-next { position: absolute; right: 1.5rem; bottom: 5.5rem; display: flex; align-items: center; gap: .6rem; padding: .7rem .8rem .7rem 1.1rem; border-radius: .7rem; background: rgba(20,20,24,.95); box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #fff; font: 600 .92rem Inter, system-ui, sans-serif; }
-  .dxm-next[hidden] { display: none; }
-  @media (max-width: 640px) { .dxm-bar .dxm-btn span { display: none; } .dxm-servers { margin: .2rem .5rem .8rem; } }
   .dxe-toast { position: fixed; left: 50%; bottom: 2.5rem; z-index: 100004; transform: translateX(-50%); display: flex; align-items: center; gap: 1.2rem; padding: .85rem 1rem .85rem 1.3rem; border-radius: .6rem; background: rgba(24,24,28,.97); box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #fff; font: 500 .95rem Inter, system-ui, sans-serif; }
   .dxe-toast button { padding: .45rem .9rem; border: 0; border-radius: .4rem; background: #fff; color: #000; font: 700 .85rem Inter, system-ui, sans-serif; cursor: pointer; }
   .dxe-kids-block { position: fixed; inset: 0; z-index: 100002; display: flex; align-items: center; justify-content: center; background: #0b0b0d; color: #fff; font-family: Inter, system-ui, sans-serif; text-align: center; }
@@ -15228,338 +15198,6 @@
       for (const type of ["keydown", "keyup", "keypress"]) modal.addEventListener(type, (e) => { e.stopPropagation(); if (e.key === "Escape") close(); });
       document.body.append(modal);
       modal.querySelector('[data-act="app"]').focus();
-    },
-  };
-
-  // ---------------------------------------------------------------------------
-  // Anime streaming servers: anime episodes also play, sub or dub, from a hosted anime library in a
-  // player inside dx.bi (no sign-in, addon or debrid needed). Its links only answer as an embed on a
-  // web page (Stremio's page is one, in the app too), looked up by MyAnimeList or AniList id + episode.
-  // Kitsu ids go through Kitsu's MyAnimeList mapping; IMDb/TMDB anime through Wikidata/AniList, with
-  // later seasons found as AniList sequels (or numbered on from season 1 when MyAnimeList keeps the
-  // whole run as one entry, like One Piece).
-  // ---------------------------------------------------------------------------
-  const animeServers = {
-    ORIGIN: "https://megaplay.buzz",
-    LANGS: { sub: ["Sub", "Japanese audio, English subtitles"], dub: ["Dub", "English audio"] },
-    key: "",
-    target: null,
-    pending: null,
-    session: null,
-
-    get on() {
-      return !!settings.animeServers && !IN_TV;
-    },
-
-    url(t, lang, from) {
-      const path = t.kind === "ani" ? `ani/${t.id}/${t.ep}` : `mal/${t.id}/${t.ep}`;
-      return `${this.ORIGIN}/stream/${path}/${lang}${from > 5 ? `?time=${Math.floor(from)}` : ""}`;
-    },
-
-    // The title and episode the stream list is showing, and its videos (for the next episode)
-    async selection() {
-      const s = await core().getState("meta_details").catch(() => null);
-      const sel = s && s.selected;
-      const metaPath = sel && sel.metaPath;
-      if (!metaPath || !metaPath.id) return null;
-      const content = s.metaItem && s.metaItem.content;
-      const meta = content && content.type === "Ready" ? content.content : null;
-      const videoId = String((sel.streamPath && sel.streamPath.id) || metaPath.id);
-      return { type: metaPath.type, metaId: String(metaPath.id), videoId, meta };
-    },
-
-    episodeOf(sel) {
-      if (sel.type === "movie" || sel.videoId === sel.metaId) return { season: 1, episode: 1, movie: true };
-      const v = sel.meta && Array.isArray(sel.meta.videos) ? sel.meta.videos.find((x) => x.id === sel.videoId) : null;
-      const parts = sel.videoId.split(":");
-      const episode = v && Number.isInteger(v.episode) ? v.episode : parseInt(parts[parts.length - 1], 10);
-      const season = v && Number.isInteger(v.season) ? v.season : parts.length > 3 ? parseInt(parts[parts.length - 2], 10) : 1;
-      return Number.isInteger(episode) && episode > 0 ? { season, episode, movie: false } : null;
-    },
-
-    // { kind: "mal"|"ani", id, ep } for this episode, or null when it isn't anime we can place
-    async resolve(sel) {
-      const at = this.episodeOf(sel);
-      if (!at || at.season < 1) return null; // specials have no MyAnimeList numbering to follow
-      const [prefix, raw] = sel.metaId.split(":");
-      if (prefix === "kitsu" && /^\d+$/.test(raw || "")) {
-        // a Kitsu entry is one season already: its episode numbers are MyAnimeList's
-        const mal = await skip.malId(raw).catch(() => null);
-        return mal ? { kind: "mal", id: String(mal), ep: at.episode } : null;
-      }
-      if (prefix === "mal" && /^\d+$/.test(raw || "")) return { kind: "mal", id: raw, ep: at.episode };
-      if (prefix === "anilist" && /^\d+$/.test(raw || "")) return { kind: "ani", id: raw, ep: at.episode };
-      if (!/^tt\d+$/.test(sel.metaId) && prefix !== "tmdb") return null;
-      const genres = ((sel.meta && sel.meta.genres) || []).map((g) => String(g).toLowerCase());
-      if (!genres.includes("anime") && !genres.includes("animation")) return null;
-      const info = await reviews.load({ key: `${sel.type}:${sel.metaId}`, type: sel.type, id: sel.metaId }).catch(() => null);
-      const ids = info && info.ids;
-      if (!ids || (!ids.mal && !ids.anilist)) return null;
-      if (at.movie || at.season === 1) return ids.mal ? { kind: "mal", id: ids.mal, ep: at.episode } : { kind: "ani", id: ids.anilist, ep: at.episode };
-      if (!ids.mal) return null;
-      return this.laterSeason(sel, ids.mal, at);
-    },
-
-    async anilist(mal) {
-      const key = `animeServers:al:${mal}`;
-      const cached = readCached(key);
-      if (cached !== undefined) return cached;
-      const query = "query($m:Int){Media(idMal:$m,type:ANIME){id episodes format relations{edges{relationType node{id idMal type format}}}}}";
-      const r = await fetch("https://graphql.anilist.co", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ query, variables: { m: Number(mal) } }),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!r.ok && r.status !== 404) throw new Error(`AniList ${r.status}`); // rate limited: not cached
-      const m = (((await r.json()).data || {}).Media) || null;
-      const out = m ? {
-        episodes: m.episodes || null,
-        sequel: ((m.relations && m.relations.edges) || [])
-          .filter((e) => e.relationType === "SEQUEL" && e.node && e.node.type === "ANIME" && e.node.idMal && ["TV", "TV_SHORT", "ONA"].includes(e.node.format))
-          .map((e) => String(e.node.idMal))[0] || null,
-      } : null;
-      writeCached(key, out);
-      return out;
-    },
-
-    async laterSeason(sel, mal, at) {
-      const videos = (sel.meta && Array.isArray(sel.meta.videos) ? sel.meta.videos : []).filter((v) => Number.isInteger(v.season) && v.season > 0);
-      const count = (s) => videos.filter((v) => v.season === s).length;
-      const first = await this.anilist(mal);
-      if (!first) return null;
-      // MyAnimeList keeps the whole run as one entry (ongoing, or longer than season 1): count on
-      if (!first.episodes || first.episodes > count(1) + 1) {
-        let before = 0;
-        for (let s = 1; s < at.season; s++) before += count(s);
-        return { kind: "mal", id: mal, ep: before + at.episode };
-      }
-      let id = mal;
-      let entry = first;
-      for (let s = 2; s <= at.season; s++) {
-        if (!entry || !entry.sequel) return null;
-        id = entry.sequel;
-        entry = s < at.season ? await this.anilist(id) : entry;
-      }
-      return { kind: "mal", id, ep: at.episode };
-    },
-
-    // The episode after this one, in the order the title lists them
-    nextVideo(sel) {
-      const videos = (sel.meta && Array.isArray(sel.meta.videos) ? sel.meta.videos : [])
-        .filter((v) => v && v.id && Number.isInteger(v.episode) && (v.season || 0) > 0)
-        .slice().sort((a, b) => (a.season - b.season) || (a.episode - b.episode));
-      const i = videos.findIndex((v) => v.id === sel.videoId);
-      const next = i >= 0 ? videos[i + 1] : null;
-      return next && !next.upcoming ? next : null;
-    },
-
-    // Where stream lists live: Stremio's older title page, or the one from November 2026
-    // (section.streams-… panel > body-… > groups-…)
-    streamList: () => dpage.streamPanel(),
-
-    ensure() {
-      if (currentRoute() !== "detail") return;
-      const list = this.streamList();
-      const old = list && list.querySelector(":scope > .dxm-servers");
-      if (!this.on || !list) {
-        if (old) old.remove();
-        return;
-      }
-      if (!this.wired) {
-        this.wired = true;
-        ensureExtrasStyle();
-        window.addEventListener("message", (e) => this.onMessage(e));
-      }
-      this.selection().then((sel) => {
-        if (!sel) return;
-        if (sel.videoId !== this.key) {
-          this.key = sel.videoId;
-          this.target = null;
-          this.place(); // the last episode's rows go until this one's are known
-          const key = sel.videoId;
-          this.pending = this.resolve(sel).catch(() => null).then((t) => {
-            if (this.key !== key) return;
-            this.target = t ? { ...t, sel } : null;
-            this.place();
-          });
-        } else if (this.target) {
-          this.target.sel = sel;
-          this.place();
-        }
-      }).catch(() => { /* next sync */ });
-    },
-
-    place() {
-      const list = this.streamList();
-      if (!list) return;
-      let box = list.querySelector(":scope > .dxm-servers");
-      const t = this.target;
-      if (!t || !this.on) {
-        if (box) box.remove();
-        return;
-      }
-      const at = this.episodeOf(t.sel);
-      const label = at && !at.movie ? `Episode ${t.ep}` : "Movie";
-      const html = `<div class="dxm-head"><b>Streaming servers</b><small>Free · no sign-in or addons needed</small></div>${Object.entries(this.LANGS).map(([lang, [short, long]]) =>
-        `<button class="dxm-row" data-lang="${lang}"><span class="dxm-tag">${short}</span><span class="dxm-main"><strong>${esc(long)}</strong><small>${esc(label)} · Plays right here</small></span><span class="dxm-go" aria-hidden="true">${ICONS.play}</span></button>`).join("")}`;
-      if (!box) {
-        box = document.createElement("div");
-        box.className = "dxm-servers";
-        box.addEventListener("click", (e) => {
-          const row = e.target.closest(".dxm-row");
-          if (!row || !this.target) return;
-          e.preventDefault();
-          e.stopPropagation();
-          this.open(this.target, row.dataset.lang);
-        });
-      }
-      if (box._html !== html) {
-        box._html = html;
-        box.innerHTML = html;
-      }
-      // above the streams themselves (after the episode picker and dx.bi's sort bar); in the newer
-      // panel, at the top of its body, above the addon groups
-      const streams = list.querySelector(':scope > [class*="streams-container"]') || [...list.children].find((c) => c !== box);
-      if (streams && box.nextElementSibling !== streams) list.insertBefore(box, streams);
-      else if (!streams && box.parentNode !== list) list.append(box);
-    },
-
-    // ---- the player --------------------------------------------------------------------------
-    positions() {
-      try { return JSON.parse(localStorage.getItem("dxbi.animeServers.pos") || "{}") || {}; } catch (_) { return {}; }
-    },
-
-    savePosition(videoId, time, duration) {
-      try {
-        const all = this.positions();
-        if (duration && time > duration - 90) delete all[videoId];
-        else all[videoId] = { t: Math.floor(time), at: Date.now() };
-        const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 60);
-        localStorage.setItem("dxbi.animeServers.pos", JSON.stringify(Object.fromEntries(keep)));
-      } catch (_) { /* private window: no resume */ }
-    },
-
-    open(t, lang) {
-      this.close();
-      try { localStorage.setItem("dxbi.animeServers.lang", lang); } catch (_) { /* fine */ }
-      for (const v of document.querySelectorAll("video")) { try { v.pause(); } catch (_) { /* fine */ } }
-      const sel = t.sel;
-      const at = this.episodeOf(sel);
-      const name = (sel.meta && sel.meta.name) || "";
-      const video = sel.meta && Array.isArray(sel.meta.videos) ? sel.meta.videos.find((v) => v.id === sel.videoId) : null;
-      const sub = at && !at.movie ? `S${at.season} E${at.episode}${video && video.title ? ` · ${video.title}` : ""}` : "";
-      const next = this.nextVideo(sel);
-      const from = (this.positions()[sel.videoId] || {}).t || 0;
-      const el = document.createElement("div");
-      el.className = "dxm-player";
-      el.setAttribute("role", "dialog");
-      el.setAttribute("aria-label", name || "Player");
-      el.innerHTML = `
-        <div class="dxm-bar">
-          <button class="dxm-btn" data-act="close" title="Back (Esc)">${ICONS.chevronLeft}<span>Back</span></button>
-          <div class="dxm-title"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div>
-          <div class="dxm-langs">${Object.entries(this.LANGS).map(([k, [short]]) => `<button class="dxm-btn${k === lang ? " is-on" : ""}" data-lang="${k}">${short}</button>`).join("")}</div>
-          ${next ? `<button class="dxm-btn" data-act="next" title="Next episode">${ICONS.nextEp}<span>Next episode</span></button>` : ""}
-        </div>
-        <div class="dxm-frame"><iframe src="${esc(this.url(t, lang, from))}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
-        <div class="dxm-next" hidden><span></span><button class="dxm-btn is-primary" data-act="next">Play now</button><button class="dxm-btn" data-act="stay">Cancel</button></div>`;
-      el.addEventListener("click", (e) => {
-        const b = e.target.closest("button");
-        if (!b) return;
-        if (b.dataset.lang && b.dataset.lang !== lang) this.open(t, b.dataset.lang);
-        else if (b.dataset.act === "close") this.close();
-        else if (b.dataset.act === "next") this.playNext();
-        else if (b.dataset.act === "stay") this.cancelNext();
-      });
-      // Stremio's own shortcuts stay out of it while the player is up
-      for (const type of ["keydown", "keyup", "keypress"]) el.addEventListener(type, (e) => { e.stopPropagation(); if (type === "keydown" && e.key === "Escape") this.close(); });
-      this.escape = (e) => { if (e.key === "Escape" && !document.fullscreenElement) { e.stopPropagation(); e.preventDefault(); this.close(); } };
-      document.addEventListener("keydown", this.escape, true);
-      document.body.append(el);
-      this.session = { t, lang, el, sel, next, marked: false, timer: null, time: 0, duration: 0 };
-      document.documentElement.classList.add("dx-anime-servers");
-      el.querySelector('[data-act="close"]').focus();
-    },
-
-    close() {
-      const s = this.session;
-      if (!s) return;
-      if (s.time > 5) this.savePosition(s.sel.videoId, s.time, s.duration);
-      clearInterval(s.timer);
-      s.el.remove();
-      document.removeEventListener("keydown", this.escape, true);
-      document.documentElement.classList.remove("dx-anime-servers");
-      this.session = null;
-    },
-
-    onMessage(e) {
-      const s = this.session;
-      if (!s || e.origin !== this.ORIGIN) return;
-      const frame = s.el.querySelector("iframe");
-      if (!frame || e.source !== frame.contentWindow) return;
-      let d = e.data;
-      if (typeof d === "string") { try { d = JSON.parse(d); } catch (_) { return; } }
-      if (!d || typeof d !== "object") return;
-      const time = Number(d.event === "time" ? d.time : d.type === "watching-log" ? d.currentTime : NaN);
-      const duration = Number(d.duration);
-      if (isFinite(time) && time >= 0) {
-        s.time = time;
-        if (isFinite(duration) && duration > 0) s.duration = duration;
-        if (Math.floor(time) % 10 === 0) this.savePosition(s.sel.videoId, time, s.duration);
-        if (s.duration && time > s.duration * 0.9) this.markWatched(s);
-      }
-      if (d.event === "complete") {
-        this.markWatched(s);
-        this.savePosition(s.sel.videoId, s.duration || 1e9, s.duration || 1);
-        if (s.next) this.countdown(s);
-      }
-    },
-
-    // Same as ticking the episode off in Stremio: the library and Continue Watching move on
-    markWatched(s) {
-      if (s.marked) return;
-      s.marked = true;
-      const video = s.sel.meta && Array.isArray(s.sel.meta.videos) ? s.sel.meta.videos.find((v) => v.id === s.sel.videoId) : null;
-      const { dispatch } = core();
-      if (!dispatch) return;
-      try {
-        if (video) dispatch({ action: "MetaDetails", args: { action: "MarkVideoAsWatched", args: [video, true] } }, "meta_details");
-        else dispatch({ action: "MetaDetails", args: { action: "MarkAsWatched", args: true } }, "meta_details");
-      } catch (err) { log("anime servers: couldn't mark watched", err); }
-    },
-
-    countdown(s) {
-      const bar = s.el.querySelector(".dxm-next");
-      if (!bar || s.timer) return;
-      let left = 8;
-      const tick = () => {
-        bar.querySelector("span").textContent = `Next episode in ${left}…`;
-        if (left-- <= 0) this.playNext();
-      };
-      bar.hidden = false;
-      tick();
-      s.timer = setInterval(tick, 1000);
-    },
-
-    cancelNext() {
-      const s = this.session;
-      if (!s) return;
-      clearInterval(s.timer);
-      s.timer = -1; // no second countdown for this episode
-      s.el.querySelector(".dxm-next").hidden = true;
-    },
-
-    async playNext() {
-      const s = this.session;
-      if (!s || !s.next) return;
-      const { lang, next } = s;
-      const sel = { ...s.sel, videoId: next.id };
-      this.close();
-      // the page follows along, so Back lands on the episode that was playing
-      if (next.deepLinks && next.deepLinks.metaDetailsStreams) location.hash = next.deepLinks.metaDetailsStreams.replace(/^#/, "");
-      const t = await this.resolve(sel).catch(() => null);
-      if (t) this.open({ ...t, sel }, lang);
     },
   };
 
