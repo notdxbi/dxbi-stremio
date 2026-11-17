@@ -45,6 +45,61 @@ function keepInSwitcher(win: BrowserWindow): void {
 }
 const DEBUG = process.env.DXBI_MPV_DEBUG === "1";
 
+// ---- Merged window (Windows) ----
+//
+// Discord, OBS and the like record one window. With the picture in a separate window behind dx.bi,
+// sharing the dx.bi window showed the HUD over a see-through hole (black). Merged, mpv draws straight
+// into the dx.bi window (--wid = dx.bi), under the transparent page, as ynoTV does with WebView2: one
+// window holds both picture and interface. mpv handles the rest itself in --wid mode: it disables its
+// own child window (clicks fall through to the page) and resizes it with the parent.
+//
+// Switch back to the old two-window way without rebuilding: create an empty file named
+// "split_video_window" in %APPDATA%\dxbi (or set DXBI_MERGED=0), then restart dx.bi.
+const splitFlag = () => join(app.getPath("userData"), "split_video_window");
+function mergedWanted(): boolean {
+    if (process.platform !== "win32") return false;
+    if (process.env.DXBI_MERGED === "0") return false;
+    if (process.env.DXBI_MERGED === "1") return true;
+    return !existsSync(splitFlag());
+}
+
+interface Win32 {
+    FindWindowExW: (parent: bigint, after: bigint, cls: string, title: string | null) => bigint | number;
+    SetParent: (child: bigint, parent: bigint) => bigint | number;
+    SetWindowPos: (hwnd: bigint, after: bigint, x: number, y: number, cx: number, cy: number, flags: number) => number;
+    ShowWindow: (hwnd: bigint, cmd: number) => number;
+    GetClientRect: (hwnd: bigint, rect: { left: number; top: number; right: number; bottom: number }) => number;
+}
+let win32: Win32 | null | undefined;
+function user32(): Win32 | null {
+    if (win32 !== undefined) return win32;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const koffi = require("koffi");
+        const lib = koffi.load("user32.dll");
+        const RECT = koffi.struct("DXBI_RECT", { left: "long", top: "long", right: "long", bottom: "long" });
+        win32 = {
+            FindWindowExW: lib.func("intptr_t __stdcall FindWindowExW(intptr_t parent, intptr_t after, const char16_t *cls, const char16_t *title)"),
+            SetParent: lib.func("intptr_t __stdcall SetParent(intptr_t child, intptr_t parent)"),
+            SetWindowPos: lib.func("int __stdcall SetWindowPos(intptr_t hwnd, intptr_t after, int x, int y, int cx, int cy, uint32_t flags)"),
+            ShowWindow: lib.func("int __stdcall ShowWindow(intptr_t hwnd, int cmd)"),
+            GetClientRect: lib.func("int __stdcall GetClientRect(intptr_t hwnd, _Out_ DXBI_RECT *rect)"),
+        };
+        void RECT;
+    } catch (err) {
+        logger.warn(`user32 unavailable, merged window off: ${err}`);
+        win32 = null;
+    }
+    return win32;
+}
+function hwndOf(win: BrowserWindow): bigint {
+    const buf = win.getNativeWindowHandle();
+    return buf.length >= 8 ? buf.readBigInt64LE(0) : BigInt(buf.readInt32LE(0));
+}
+const HWND_BOTTOM = BigInt(1);
+const SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_ASYNCWINDOWPOS = 0x4000;
+const SW_HIDE = 0, SW_SHOWNA = 8;
+
 // Hyprland (a tiling Wayland compositor) needs the video window placed through its own IPC: see hyprFollow
 const HYPRLAND = process.platform === "linux" && !!process.env.HYPRLAND_INSTANCE_SIGNATURE;
 const VIDEO_TITLE = "dxbi-video";
@@ -141,6 +196,10 @@ export default class MpvShell {
     private static queue: string[] = [];
     private static playing = false;
     private static taskbarPreview: TaskbarPreview | null = null;
+    /** mpv draws into the dx.bi window itself (see "Merged window" above) */
+    private static merged = false;
+    private static mpvChild: bigint | null = null; // mpv's own child window, in merged mode
+    private static findTimer: NodeJS.Timeout | null = null;
 
     // Settings → dx.bi → "Play videos with mpv" switched off: the browser player instead
     private static offFlag = () => join(app.getPath("userData"), "use_browser_player");
@@ -227,6 +286,9 @@ export default class MpvShell {
         this.videoWindow.loadURL("about:blank");
         this.videoWindow.setIgnoreMouseEvents(true);
 
+        this.merged = mergedWanted() && !!user32();
+        if (this.merged) return this.setupMerged(mainWindow);
+
         // The dx.bi window always stays above the video window, and still gets its own taskbar button
         mainWindow.setParentWindow(this.videoWindow);
         if (HYPRLAND) useCustomFullScreen(mainWindow, (on) => { void this.hyprFullScreen(on); });
@@ -255,12 +317,86 @@ export default class MpvShell {
         this.startMpv();
     }
 
+    // Merged: dx.bi is an ordinary top-level window (its own taskbar button, live Alt+Tab, Task View
+    // and Discord pictures), so no owner pairing, no still-frame taskbar preview and nothing to follow.
+    // The video window stays, hidden, for picture-in-picture only.
+    private static setupMerged(mainWindow: BrowserWindow): void {
+        logger.info("Merged window: mpv draws into the dx.bi window");
+        const resize = () => this.fitMpvChild();
+        for (const event of ["resize", "maximize", "unmaximize", "restore", "enter-full-screen", "leave-full-screen"] as const) {
+            mainWindow.on(event as any, resize);
+        }
+        mainWindow.on("enter-full-screen", () => this.sendVisibility());
+        mainWindow.on("leave-full-screen", () => this.sendVisibility());
+        mainWindow.on("restore", () => { if (this.pip) this.setPip(false); });
+        mainWindow.on("closed", () => this.shutdown());
+        app.on("before-quit", () => this.shutdown());
+        this.startMpv();
+    }
+
+    // mpv makes its child window once it's started: found by class (it's the only "mpv" window in dx.bi)
+    private static findMpvChild(): void {
+        const api = user32(), main = this.mainWindow;
+        if (!api || !main || main.isDestroyed() || this.findTimer) return;
+        let tries = 0;
+        this.findTimer = setInterval(() => {
+            const parent = this.pip && this.videoWindow && !this.videoWindow.isDestroyed() ? this.videoWindow : main;
+            if (parent.isDestroyed()) return this.stopFind();
+            const found = BigInt(api.FindWindowExW(hwndOf(parent), BigInt(0), "mpv", null));
+            if (found) {
+                this.mpvChild = found;
+                this.stopFind();
+                logger.info("Merged window: found mpv's picture");
+                this.fitMpvChild();
+                this.showMpvChild(this.playing);
+            } else if (++tries > 100) {
+                logger.warn("Merged window: mpv's picture window never appeared");
+                this.stopFind();
+            }
+        }, 100);
+    }
+
+    private static stopFind(): void {
+        if (this.findTimer) clearInterval(this.findTimer);
+        this.findTimer = null;
+    }
+
+    // Bottom of the page's children (the page always paints over it) and the size of the client area.
+    // mpv resizes itself with its parent too; this covers the cases its hook misses.
+    private static fitMpvChild(): void {
+        const api = user32(), child = this.mpvChild;
+        if (!api || !child) return;
+        const parent = this.pip ? this.videoWindow : this.mainWindow;
+        if (!parent || parent.isDestroyed()) return;
+        const rect = { left: 0, top: 0, right: 0, bottom: 0 };
+        if (!api.GetClientRect(hwndOf(parent), rect)) return;
+        api.SetWindowPos(child, HWND_BOTTOM, 0, 0, rect.right, rect.bottom, SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+    }
+
+    // Hidden while nothing plays, as the video window was: a see-through theme shows what's behind dx.bi
+    private static showMpvChild(on: boolean): void {
+        const api = user32(), child = this.mpvChild;
+        if (!api || !child) return;
+        api.ShowWindow(child, on ? SW_SHOWNA : SW_HIDE);
+        if (on) api.SetWindowPos(child, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+    // Moves mpv's picture between dx.bi and the picture-in-picture window (same process and thread
+    // as dx.bi, so mpv's resize hook keeps following it)
+    private static moveMpvChild(to: BrowserWindow): void {
+        const api = user32(), child = this.mpvChild;
+        if (!api || !child || to.isDestroyed()) return;
+        api.SetParent(child, hwndOf(to));
+        this.fitMpvChild();
+        this.showMpvChild(this.playing);
+    }
+
     // Back from full screen, the picture went missing on some PCs: the dx.bi window showed the desktop
     // through where the video should be (a blue wallpaper). Windows treats a window that covers the
     // whole screen specially, and the video window didn't come back from that. It's put back behind
     // dx.bi and shown afresh.
     private static reseat(): void {
-        if (HYPRLAND) return; // hyprFullScreen puts both windows back itself
+        if (HYPRLAND || this.merged) return; // hyprFullScreen puts both windows back itself
         setTimeout(() => {
             const main = this.mainWindow, video = this.videoWindow;
             if (!main || !video || main.isDestroyed() || video.isDestroyed() || this.pip || isFullScreen(main)) return;
@@ -274,6 +410,7 @@ export default class MpvShell {
 
     private static followMainWindow(): void {
         if (!this.mainWindow || !this.videoWindow || this.mainWindow.isDestroyed() || this.pip) return;
+        if (this.merged) return this.fitMpvChild();
         if (HYPRLAND) return this.hyprFollow(); // in full screen it only checks dx.bi wasn't dragged off
         this.videoWindow.setBounds(this.mainWindow.getContentBounds());
     }
@@ -384,7 +521,9 @@ export default class MpvShell {
     private static startMpv(): void {
         const path = this.mpvPath();
         if (!path || !this.videoWindow) return;
-        const handle = this.videoWindow.getNativeWindowHandle();
+        // Merged: mpv draws into the dx.bi window itself
+        const target = this.merged && this.mainWindow ? this.mainWindow : this.videoWindow;
+        const handle = target.getNativeWindowHandle();
         const wid = process.platform === "win32" && handle.length >= 8 ? handle.readBigUInt64LE(0).toString() : handle.readUInt32LE(0).toString();
         const pipe = process.platform === "win32" ? `\\\\.\\pipe\\dxbi-mpv-${process.pid}` : join(app.getPath("temp"), `dxbi-mpv-${process.pid}.sock`);
 
@@ -428,9 +567,11 @@ export default class MpvShell {
             logger.warn(`mpv exited (${code})`);
             this.mpv = null;
             this.socket = null;
+            this.mpvChild = null;
             this.setPlaying(false);
         });
         this.connect(pipe, 0);
+        if (this.merged) this.findMpvChild();
     }
 
     private static connect(pipe: string, attempt: number): void {
@@ -511,6 +652,12 @@ export default class MpvShell {
         if (!playing) this.taskbarPreview?.setPlaying(false);
         if (HYPRLAND) this.hyprWatchPlayback(playing);
         if (!playing && this.pip) this.setPip(false);
+        if (this.merged) {
+            if (!this.mpvChild) this.findMpvChild();
+            this.showMpvChild(playing);
+            this.fitMpvChild();
+            return;
+        }
         if (!this.videoWindow || !this.mainWindow) return;
         if (playing && !this.mainWindow.isMinimized()) {
             this.followMainWindow();
@@ -613,19 +760,25 @@ export default class MpvShell {
             const area = screen.getDisplayMatching(main.getBounds()).workArea;
             const width = Math.round(area.width * 0.28);
             const height = Math.round(width * 9 / 16);
-            main.setParentWindow(null); // the video window no longer drags dx.bi along
+            if (!this.merged) main.setParentWindow(null); // the video window no longer drags dx.bi along
             video.setAlwaysOnTop(true, "floating");
             video.setBounds({ x: area.x + area.width - width - 24, y: area.y + area.height - height - 24, width, height });
             video.showInactive();
+            if (this.merged) this.moveMpvChild(video); // the picture goes into the little window
             this.showHandle();
             main.minimize();
         } else {
             this.hideHandle();
             video.setAlwaysOnTop(false);
             if (main.isMinimized()) main.restore();
-            main.setParentWindow(video);
-            this.followMainWindow();
-            if (this.playing) video.showInactive();
+            if (this.merged) {
+                video.hide();
+                this.moveMpvChild(main); // the picture comes back into dx.bi
+            } else {
+                main.setParentWindow(video);
+                this.followMainWindow();
+                if (this.playing) video.showInactive();
+            }
         }
         this.signal("dxbi-pip", { active: on });
     }
@@ -795,6 +948,8 @@ export default class MpvShell {
     }
 
     private static shutdown(): void {
+        this.stopFind();
+        this.mpvChild = null;
         this.taskbarPreview?.dispose();
         this.taskbarPreview = null;
         this.hyprWatchPlayback(false);
