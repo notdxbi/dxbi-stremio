@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.38.1
+
+- **The anime streaming servers are gone.** The Sub and Dub rows that 2.38.0 put at the top of anime stream lists, their player and their setting have been removed. Anime plays from your addons as before.
+
 ## 2.38.0
 
 Stremio redesigned its Settings and title pages on 16 November. This release puts everything dx.bi adds back in place on the new pages, and makes big stream lists faster.
