@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.38.3
+
+- **Discord shows what you're watching.** Your status used to say "Watching dx.bi". It now names the show, like "Watching Breaking Bad S1 E1", or just the film's name for a movie. The season and episode stay on your profile card too, paused or playing (dx.bi app).
+
 ## 2.38.2
 
 - **Stream filters open again.** On title pages, the Sort, Quality, Language, Source and Provider buttons above the streams did nothing when clicked since 2.38.0. They open their menus again (dx.bi app and the Stremio Enhanced plugin).

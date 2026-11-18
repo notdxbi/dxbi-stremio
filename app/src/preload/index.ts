@@ -146,12 +146,14 @@ window.addEventListener("load", () => {
 
             if (metaDetails.type === "series" && seriesInfoDetails) {
                 const isKitsu = metaDetails.id.startsWith("kitsu:");
-                const stateStr = `Watching ${!isKitsu ? `S${seriesInfoDetails.season} E${seriesInfoDetails.episode}` : `E${seriesInfoDetails.episode}`}`;
-                
+                const title = DiscordPresence.title(metaDetails.name, seriesInfoDetails.season, seriesInfoDetails.episode, isKitsu);
+
+                const ep = !isKitsu ? `S${seriesInfoDetails.season} E${seriesInfoDetails.episode}` : `E${seriesInfoDetails.episode}`;
+
                 if (state === "playing") {
-                    DiscordPresence.setPlaying(metaDetails.name, stateStr, startTimestamp, endTimestamp, metaDetails.poster);
+                    DiscordPresence.setPlaying(title, `Watching ${ep}`, startTimestamp, endTimestamp, metaDetails.poster);
                 } else if (state == "paused") {
-                    DiscordPresence.setPaused(metaDetails.name, stateStr, metaDetails.poster);
+                    DiscordPresence.setPaused(title, `Paused in ${ep}`, metaDetails.poster);
                 }
 
             } else if (metaDetails.type === "movie") {
@@ -159,7 +161,7 @@ window.addEventListener("load", () => {
                 if (state === "playing") {
                     DiscordPresence.setPlaying(metaDetails.name, 'Watching', startTimestamp, endTimestamp, metaDetails.poster);
                 } else if (state === "paused") {
-                    DiscordPresence.setPaused(metaDetails.name, "Watching", metaDetails.poster);
+                    DiscordPresence.setPaused(metaDetails.name, "Paused", metaDetails.poster);
                 }
             }
         });

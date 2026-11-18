@@ -2,6 +2,7 @@ import { Client as DiscordClient } from '@xhayper/discord-rpc';
 import { getLogger } from '../utils/logger';
 import { ActivityType } from 'discord-api-types/v10';
 import type { SetActivity } from '@xhayper/discord-rpc/dist/structures/ClientUser';
+import { StatusDisplayType } from '@xhayper/discord-rpc/dist/structures/ClientUser';
 import { DISCORD } from '../constants';
 
 class DiscordPresence {
@@ -99,6 +100,14 @@ class DiscordPresence {
         this.dropClient();
     }
 
+    /** "Show S1 E1" (anime from Kitsu has no seasons: "Show E1"); the status line shows this. */
+    public static title(name: string, season?: number, episode?: number, kitsu = false): string {
+        const ep = episode == null ? '' : kitsu || season == null ? ` E${episode}` : ` S${season} E${episode}`;
+        // Discord allows 128 characters; shorten the name, never the episode
+        const room = 128 - ep.length;
+        return (name.length > room ? name.slice(0, room - 1).trimEnd() + '…' : name) + ep;
+    }
+
     public static setPlaying(
         details: string,
         state: string,
@@ -116,7 +125,9 @@ class DiscordPresence {
             smallImageKey: DISCORD.PLAY_IMAGE,
             smallImageText: "Playing",
             instance: false,
-            type: ActivityType.Watching
+            type: ActivityType.Watching,
+            // the member list / profile line reads "Watching <show>" instead of "Watching dx.bi"
+            statusDisplayType: StatusDisplayType.DETAILS
         });
     }
 
@@ -129,7 +140,9 @@ class DiscordPresence {
             smallImageKey: DISCORD.PAUSE_IMAGE,
             smallImageText: "Paused",
             instance: false,
-            type: ActivityType.Watching
+            type: ActivityType.Watching,
+            // the member list / profile line reads "Watching <show>" instead of "Watching dx.bi"
+            statusDisplayType: StatusDisplayType.DETAILS
         });
     }
 

@@ -72,11 +72,11 @@ export const discordTracker = {
                 if (metaDetails.type === "series") {
                     const { episode, season } = playerState.seriesInfoDetails!;
                     const isKitsu = metaDetails.id.startsWith("kitsu:");
-                    const stateStr = `Watching ${!isKitsu ? `S${season} E${episode}` : `E${episode}`}`;
+                    const ep = !isKitsu ? `S${season} E${episode}` : `E${episode}`;
 
                     DiscordPresence.setPlaying(
-                        metaDetails.name,
-                        stateStr,
+                        DiscordPresence.title(metaDetails.name, season, episode, isKitsu),
+                        `Watching ${ep}`,
                         startTimestamp,
                         endTimestamp,
                         metaDetails.poster
@@ -102,11 +102,11 @@ export const discordTracker = {
                 if (pausedMeta.type === "series") {
                     const { episode, season } = currentState.seriesInfoDetails!;
                     const isKitsu = pausedMeta.id.startsWith("kitsu:");
-                    const stateStr = `Paused at ${formattedTime} in ${!isKitsu ? `S${season} E${episode}` : `E${episode}`}`;
+                    const ep = !isKitsu ? `S${season} E${episode}` : `E${episode}`;
 
                     DiscordPresence.setPaused(
-                        pausedMeta.name,
-                        stateStr,
+                        DiscordPresence.title(pausedMeta.name, season, episode, isKitsu),
+                        `Paused at ${formattedTime} in ${ep}`,
                         pausedMeta.poster
                     );
                 } else {
