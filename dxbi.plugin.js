@@ -43,6 +43,8 @@
     const original = console[level];
     if (original && !original.__dxbi) {
       const wrapped = function (...args) {
+        // (Stremio says this on every start in an Android WebView, where there's no Chromecast API: not a problem)
+        if (args.some((a) => /window\.cast api not available/i.test(a instanceof Error ? a.message : String(a)))) return original.apply(this, args);
         try { remember(recent.errors, `${level}: ${args.map((a) => (a instanceof Error ? a.message : typeof a === "string" ? a : (() => { try { return JSON.stringify(a); } catch (_) { return String(a); } })())).join(" ")}`); } catch (_) { /* never in the way */ }
         return original.apply(this, args);
       };
@@ -17149,6 +17151,8 @@
   let phoneStreams = null;
   const api = {
     settings,
+    // (dx.bi TV and the phone apps write what their own player did here, so it's in Report a problem)
+    note: (text) => log(text),
     sync,
     downloads,
     sfx,

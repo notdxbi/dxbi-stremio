@@ -255,3 +255,20 @@ for (const [name, text] of [["dxbi.plugin.js", plugin], ["dxbi-tv.js", tv]]) {
   assert.doesNotMatch(text, /defineProperty\(window,\s*["']core["']/, `${name} doesn't redefine window.core`);
 }
 console.log("PASS Stremio's core events reach the engine");
+
+// 6. What the native player did reaches Report a problem: dxbi-tv.js writes it through the plugin's api.note,
+// describing the stream without its address (a report KIZWQ4 had nothing after "ready")
+assert.match(plugin, /\n    note: \(text\) => log\(text\),/, "the plugin's api offers note()");
+assert.match(tv, /note\(`playing in dx\.bi's player: /, "dxbi-tv.js notes each stream it hands to the native player");
+assert.match(tv, /note\(`player closed at /, "dxbi-tv.js notes how the native player closed");
+{
+  const describe = vm.runInNewContext(`(${block(tv, "function describeStream(stream, url, torrent, headers) {", false).replace(/^function describeStream/, "function")})`, { URL });
+  const said = describe({ title: "Movie 2160p HEVC DV TrueHD Atmos", behaviorHints: { filename: "Movie.2160p.mkv", notWebReady: true } },
+    "https://abc.download.example.com/d/SECRETKEY123/Movie.2160p.mkv?token=abc", false, { "User-Agent": "x" });
+  assert.equal(said, "http, file .mkv, host abc.download.example.com, headers User-Agent, notWebReady, hevc, dv, dts/truehd");
+  assert.doesNotMatch(said, /SECRETKEY|token/, "no path or query in the log");
+  assert.equal(describe({}, "http://127.0.0.1:11470/abc/0", true, {}), "torrent, file .?, host 127.0.0.1:11470");
+}
+// Stremio's "window.cast api not available" (every Android start) isn't counted as an error
+assert.match(plugin, /window\\\.cast api not available/, "the plugin skips Stremio's Chromecast notice in recent errors");
+console.log("PASS the native player's outcome reaches Report a problem");

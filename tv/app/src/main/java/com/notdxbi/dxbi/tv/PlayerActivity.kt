@@ -343,6 +343,11 @@ class PlayerActivity : AppCompatActivity() {
 
             override fun onPlayerError(error: PlaybackException) {
                 lastError = (if (torrent) TorrentEngine.failed() else null) ?: describe(error)
+                // A phone: a format this player can't handle may play in another app. Handed on, it
+                // closes without an error (the page would otherwise move on to another stream)
+                if (!torrent && cantHandle(error) && Phone.offerOtherApp(this@PlayerActivity, stream, lastError ?: "") { elsewhere ->
+                        finishWith(error = if (elsewhere) null else lastError)
+                    }) return
                 finishWith(error = lastError)
             }
 
@@ -684,6 +689,19 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    /** Errors about the file itself (its format or codecs), not the connection: another player may manage */
+    private fun cantHandle(error: PlaybackException): Boolean = error.errorCode in setOf(
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+    )
+
     private fun describe(error: PlaybackException): String = when (error.errorCode) {
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "the server refused it"
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
@@ -693,7 +711,7 @@ class PlayerActivity : AppCompatActivity() {
         PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ->
             // No software decoders are bundled: DTS and TrueHD audio (common in BluRay rips) only play
             // on TVs that decode them
-            "this TV can't decode its video or audio format (DTS and TrueHD audio often can't play: pick a release with AAC, AC3 or DD+ audio)"
+            "this ${if (extras != null) "phone" else "TV"} can't decode its video or audio format (DTS and TrueHD audio often can't play: pick a release with AAC, AC3 or DD+ audio)"
         PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "its file format isn't supported"
         else -> error.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')
     }
