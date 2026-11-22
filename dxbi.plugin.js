@@ -8443,6 +8443,10 @@
   // every later HEVC release for good, even on Macs that play them: that one is dropped.
   const HEVC_FAILED_KEY = "dxbi.hevcFailed2";
   const IS_MAC_OS = /Macintosh|Mac OS X/.test(navigator.userAgent) && !/iPhone|iPad/.test(navigator.userAgent);
+  // A player that isn't the browser's: the dx.bi app's mpv, or a Stremio shell's own (stremio-linux-shell,
+  // stremio-shell-ng, Enhanced's mpv preview: Stremio plays through services.shell then). They decode
+  // HEVC themselves, so converting only made those slower to start and softer (a Linux user's report)
+  const nativePlayer = () => !!(window.__dxbiNativePlayer || (window.services && window.services.shell && window.services.shell.active));
   const convert = {
     hevc: null, // can this PC decode 10-bit HEVC?
     hevcBrowser: null, // what Chromium says, before what dx.bi learnt from failures
@@ -8504,7 +8508,7 @@
         return;
       }
       // The dx.bi app's mpv player plays these formats itself: converting would only make them worse
-      if (settings.convertVideo === "off" || this.active() || window.__dxbiNativePlayer) return;
+      if (settings.convertVideo === "off" || this.active() || nativePlayer()) return;
       const key = location.hash;
       if (this.checkedFor === key || this.unconverted.has(key)) return;
       this.checkedFor = key;
@@ -8524,7 +8528,7 @@
 
     // A stream failed: try once more with conversion
     async retry() {
-      if (settings.convertVideo === "off" || this.active() || window.__dxbiNativePlayer) return false;
+      if (settings.convertVideo === "off" || this.active() || nativePlayer()) return false;
       const key = location.hash;
       if (this.retried.has(key)) return false;
       this.retried.add(key);
@@ -11361,7 +11365,7 @@
             kind: stream ? (stream.infoHash ? "torrent" : stream.url ? "url" : stream.externalUrl ? "external" : "?") : null,
             host: stream && stream.url ? redact(stream.url) : null,
             streamState: st && st.stream && st.stream.type,
-            nativePlayer: window.__dxbiNativePlayer || null,
+            nativePlayer: window.__dxbiNativePlayer || (nativePlayer() ? "shell" : null),
             converted: convert.active() ? (convert.wasGuess() ? "up front" : "after a failure") : false,
             video: video ? { time: Math.round(video.currentTime), duration: Math.round(video.duration || 0), width: video.videoWidth, height: video.videoHeight, error: video.error && video.error.code, readyState: video.readyState } : null,
           };
