@@ -16,4 +16,5 @@ object Phone {
     @UnstableApi
     fun player(host: PlayerHost, stream: JSONObject): PlayerHooks? = null
     fun install(activity: MainActivity, apk: File) = false
+    fun offerOtherApp(activity: android.app.Activity, stream: JSONObject, reason: String, close: (openedElsewhere: Boolean) -> Unit) = false
 }

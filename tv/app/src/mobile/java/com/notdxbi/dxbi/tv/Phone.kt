@@ -88,6 +88,32 @@ object Phone {
         return true
     }
 
+    /**
+     * dx.bi's player couldn't open or decode [stream]: other players (VLC, mpv, MX Player) bring their
+     * own decoders and often can, so it's offered before giving up. [close] once the viewer chose,
+     * told whether it went to another app. False when there's no address to hand on.
+     */
+    fun offerOtherApp(activity: android.app.Activity, stream: JSONObject, reason: String, close: (openedElsewhere: Boolean) -> Unit): Boolean {
+        val chooser = ExternalPlayer.chooser(stream) ?: return false
+        if (activity.isFinishing) return false
+        android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("This stream didn't play here")
+            .setMessage("dx.bi's player stopped: $reason.\n\nAnother video app (VLC, mpv or MX Player) may play it.")
+            .setPositiveButton("Open in another app") { _, _ ->
+                try {
+                    activity.startActivity(chooser)
+                    close(true)
+                } catch (_: android.content.ActivityNotFoundException) {
+                    ExternalPlayer.noApp(activity)
+                    close(false)
+                }
+            }
+            .setNegativeButton("Pick another stream") { _, _ -> close(false) }
+            .setOnCancelListener { close(false) }
+            .show()
+        return true
+    }
+
     @UnstableApi
     fun player(host: PlayerHost, stream: JSONObject): PlayerHooks? =
         if (isPhone(host.activity)) PhonePlayer(host, stream) else null

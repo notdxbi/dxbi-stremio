@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,6 +76,7 @@ import com.notdxbi.dxbi.tv.phone.Airing
 import com.notdxbi.dxbi.tv.phone.Load
 import com.notdxbi.dxbi.tv.phone.Stremio
 import com.notdxbi.dxbi.tv.phone.Title
+import com.notdxbi.dxbi.tv.phone.Viewer
 import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------------------------------
@@ -92,6 +94,8 @@ fun ProfileScreen(
     onStats: () -> Unit,
 ) {
     val account by stremio.account.collectAsState()
+    val viewers by stremio.viewers.collectAsState()
+    val viewer by stremio.viewer.collectAsState()
     val myList by stremio.myList.collectAsState()
     val continueWatching by stremio.continueWatching.collectAsState()
     var reporting by rememberSaveable { mutableStateOf(false) }
@@ -109,6 +113,8 @@ fun ProfileScreen(
                 Text(account?.email ?: "Not signed in", style = MaterialTheme.typography.titleMedium, color = Dx.Text)
             }
         }
+        // Who's watching: each viewer has their own library, progress and stats (as on the desktop and TV)
+        if (viewers.isNotEmpty()) item { WhoIsWatching(stremio, viewers, viewer) }
         if (continueWatching.isNotEmpty()) item {
             PosterRow("Continue Watching", continueWatching.map { it.title }, onOpen = onOpen)
         }
@@ -130,6 +136,74 @@ fun ProfileScreen(
             }
         }
     }
+}
+
+/** Who's watching: tap someone to switch, + to add a viewer, press and hold to remove one */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun WhoIsWatching(stremio: Stremio, viewers: List<Viewer>, current: Viewer?) {
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<Viewer?>(null) }
+    if (adding) AddViewerDialog(onAdd = { stremio.addViewer(it); adding = false }, onClose = { adding = false })
+    removing?.let { v ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove ${v.name}?") },
+            text = { Text("Their list, progress and stats on dx.bi go too. Titles in your Stremio library stay.", color = Dx.Muted) },
+            confirmButton = { TextButton(onClick = { stremio.removeViewer(v.id); removing = null }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
+    }
+    Column(Modifier.padding(bottom = 14.dp)) {
+        Text("Who's watching", color = Dx.Text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = Gutter, vertical = 6.dp))
+        LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(viewers, key = { it.id }) { v ->
+                val on = v.id == current?.id
+                Column(
+                    Modifier.width(64.dp).clip(RoundedCornerShape(10.dp)).combinedClickable(
+                        onClickLabel = "Switch to ${v.name}",
+                        onClick = { if (!on) stremio.chooseViewer(v.id) },
+                        onLongClickLabel = "Remove ${v.name}",
+                        onLongClick = { if (viewers.size > 1) removing = v },
+                    ).padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(Modifier.clip(RoundedCornerShape(12.dp)).background(if (on) Color.White else Color.Transparent).padding(2.dp)) {
+                        ViewerBadge(v.name, v.colour, 52.dp)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(v.name + if (v.kids) " (kids)" else "", color = if (on) Dx.Text else Dx.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            item(key = "add") {
+                Column(Modifier.width(64.dp).clip(RoundedCornerShape(10.dp)).clickable(onClickLabel = "Add a viewer") { adding = true }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.padding(2.dp).size(52.dp).clip(RoundedCornerShape(10.dp)).background(Dx.Raised), contentAlignment = Alignment.Center) {
+                        Text("+", color = Dx.Text, style = MaterialTheme.typography.headlineSmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Add", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddViewerDialog(onAdd: (String) -> Unit, onClose: () -> Unit) {
+    var name by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Add a viewer") },
+        text = {
+            Column {
+                Text("Someone else who watches here gets their own list, progress and stats.", color = Dx.Muted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(value = name, onValueChange = { name = it.take(20) }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onAdd(name) }) { Text("Add") } },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
 }
 
 /** Report a problem: what went wrong, sent with dx.bi's own report (as on the desktop and TV) */

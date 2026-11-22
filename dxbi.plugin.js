@@ -1,7 +1,7 @@
 /**
  * @name dx.bi
  * @description Netflix-style Stremio: billboard, carousels and hover previews, reviews and ratings, skip intro and up next, a better player, watch parties and more. The dx.bi look is built in.
- * @version 2.38.3
+ * @version 2.38.4
  * @author dx.bi
  * @updateUrl https://raw.githubusercontent.com/notdxbi/dxbi-stremio/main/dxbi.plugin.js
  */
@@ -19,7 +19,7 @@
   // Stremio Enhanced loads each plugin as <script id="<file name>">, which tells us our settings key
   const SCRIPT_ID = (document.currentScript && document.currentScript.id) || "dxbi.plugin.js";
   const PLUGIN_KEY = SCRIPT_ID.replace(/\.plugin\.js$/, "");
-  const PLUGIN_VERSION = "2.38.3"; // kept in step with @version by tools/bundle-theme.mjs
+  const PLUGIN_VERSION = "2.38.4"; // kept in step with @version by tools/bundle-theme.mjs
   // Recent messages and errors, kept for problem reports (see `report`)
   const recent = { logs: [], errors: [] };
   const remember = (list, text) => {
@@ -43,6 +43,8 @@
     const original = console[level];
     if (original && !original.__dxbi) {
       const wrapped = function (...args) {
+        // (Stremio says this on every start in an Android WebView, where there's no Chromecast API: not a problem)
+        if (args.some((a) => /window\.cast api not available/i.test(a instanceof Error ? a.message : String(a)))) return original.apply(this, args);
         try { remember(recent.errors, `${level}: ${args.map((a) => (a instanceof Error ? a.message : typeof a === "string" ? a : (() => { try { return JSON.stringify(a); } catch (_) { return String(a); } })())).join(" ")}`); } catch (_) { /* never in the way */ }
         return original.apply(this, args);
       };
@@ -8441,6 +8443,10 @@
   // every later HEVC release for good, even on Macs that play them: that one is dropped.
   const HEVC_FAILED_KEY = "dxbi.hevcFailed2";
   const IS_MAC_OS = /Macintosh|Mac OS X/.test(navigator.userAgent) && !/iPhone|iPad/.test(navigator.userAgent);
+  // A player that isn't the browser's: the dx.bi app's mpv, or a Stremio shell's own (stremio-linux-shell,
+  // stremio-shell-ng, Enhanced's mpv preview: Stremio plays through services.shell then). They decode
+  // HEVC themselves, so converting only made those slower to start and softer (a Linux user's report)
+  const nativePlayer = () => !!(window.__dxbiNativePlayer || (window.services && window.services.shell && window.services.shell.active));
   const convert = {
     hevc: null, // can this PC decode 10-bit HEVC?
     hevcBrowser: null, // what Chromium says, before what dx.bi learnt from failures
@@ -8502,7 +8508,7 @@
         return;
       }
       // The dx.bi app's mpv player plays these formats itself: converting would only make them worse
-      if (settings.convertVideo === "off" || this.active() || window.__dxbiNativePlayer) return;
+      if (settings.convertVideo === "off" || this.active() || nativePlayer()) return;
       const key = location.hash;
       if (this.checkedFor === key || this.unconverted.has(key)) return;
       this.checkedFor = key;
@@ -8522,7 +8528,7 @@
 
     // A stream failed: try once more with conversion
     async retry() {
-      if (settings.convertVideo === "off" || this.active() || window.__dxbiNativePlayer) return false;
+      if (settings.convertVideo === "off" || this.active() || nativePlayer()) return false;
       const key = location.hash;
       if (this.retried.has(key)) return false;
       this.retried.add(key);
@@ -11359,7 +11365,7 @@
             kind: stream ? (stream.infoHash ? "torrent" : stream.url ? "url" : stream.externalUrl ? "external" : "?") : null,
             host: stream && stream.url ? redact(stream.url) : null,
             streamState: st && st.stream && st.stream.type,
-            nativePlayer: window.__dxbiNativePlayer || null,
+            nativePlayer: window.__dxbiNativePlayer || (nativePlayer() ? "shell" : null),
             converted: convert.active() ? (convert.wasGuess() ? "up front" : "after a failure") : false,
             video: video ? { time: Math.round(video.currentTime), duration: Math.round(video.duration || 0), width: video.videoWidth, height: video.videoHeight, error: video.error && video.error.code, readyState: video.readyState } : null,
           };
@@ -11377,6 +11383,8 @@
     async send(description) {
       if (!REPORT_ENDPOINT) throw new Error("Reporting isn't set up in this version.");
       if (Date.now() - this.sentAt < 60000) throw new Error("A report was just sent: wait a minute before sending another.");
+      // (reports saying only "h" or "." can't be matched to a problem)
+      if (String(description || "").replace(/[^\p{L}\p{N}]/gu, "").length < 10) throw new Error("Say in a few words what went wrong and what you were doing, then send it.");
       const data = await this.collect();
       data.description = redact(String(description || "").slice(0, 1500));
       let body = JSON.stringify(data);
@@ -16051,6 +16059,15 @@
     el: null,
 
     ensure() {
+      // dx.bi's row arrows and page dots are laid out by the dx.bi theme. Without it (built-in look off,
+      // or another theme) they sat in the page as tall empty blocks under each row: hidden unless a theme
+      // styles them (:where() weighs nothing, so any theme's rule wins). Report EVUDQG
+      if (!document.getElementById("dx-base-style")) {
+        const base = document.createElement("style");
+        base.id = "dx-base-style";
+        base.textContent = ":where(.dx-arrow, .dx-row-pages) { display: none; }";
+        document.head.prepend(base);
+      }
       const link = document.getElementById("activeTheme");
       // A theme that's selected but whose file is gone (or won't load) counts as no theme
       if (link && !link.dataset.dxWatched) {
@@ -17149,6 +17166,8 @@
   let phoneStreams = null;
   const api = {
     settings,
+    // (dx.bi TV and the phone apps write what their own player did here, so it's in Report a problem)
+    note: (text) => log(text),
     sync,
     downloads,
     sfx,

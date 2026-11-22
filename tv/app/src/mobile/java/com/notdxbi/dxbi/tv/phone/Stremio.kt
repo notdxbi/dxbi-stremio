@@ -428,4 +428,17 @@ class Stremio(context: Context, val engine: Engine, private val scope: Coroutine
         dx("viewers.select", id)
         refreshExtras()
     }
+
+    /** A new viewer (their own library, progress and stats), who's then watching */
+    fun addViewer(name: String) = scope.launch {
+        val added = dx("viewers.add", name.trim().take(20)) as? JSONObject
+        added?.optString("id")?.takeIf { it.isNotEmpty() }?.let { dx("viewers.select", it) }
+        refreshExtras()
+    }
+
+    /** (never the last one: dx.bi always has someone watching) */
+    fun removeViewer(id: String) = scope.launch {
+        dx("viewers.remove", id)
+        refreshExtras()
+    }
 }

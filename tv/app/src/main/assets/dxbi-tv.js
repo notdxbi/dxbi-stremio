@@ -494,6 +494,35 @@
     });
   }
 
+  // Into dx.bi's own log, which Report a problem sends: what the native player was given and how it
+  // ended (on its own the console isn't in a report, so a stream that wouldn't play left no trace)
+  function note(text) {
+    try {
+      const dx = window.__dxbi;
+      if (dx && typeof dx.note === "function") dx.note(`[TV] ${text}`);
+      else console.info("[dx.bi TV]", text);
+    } catch (_) { /* never in the way */ }
+  }
+
+  // What kind of stream, for the log: no address, only what helps tell why one didn't play
+  function describeStream(stream, url, torrent, headers) {
+    const name = String((stream.behaviorHints && stream.behaviorHints.filename) || (url || "").split("?")[0].split("/").pop() || "");
+    const ext = (name.match(/\.(mkv|mp4|m4v|avi|webm|ts|m3u8|mpd|mov)$/i) || [])[1] || "?";
+    let host = "?";
+    try { host = new URL(url).host; } catch (_) { /* no address yet */ }
+    const tags = [
+      torrent ? "torrent" : /^(127\.0\.0\.1|localhost)/.test(host) ? "local" : "http",
+      `file .${ext.toLowerCase()}`,
+      `host ${host}`,
+      Object.keys(headers || {}).length ? `headers ${Object.keys(headers).join("/")}` : "",
+      stream.behaviorHints && stream.behaviorHints.notWebReady ? "notWebReady" : "",
+      /\b(hevc|x265|h\.?265)\b/i.test(`${stream.title || ""} ${stream.name || ""} ${name}`) ? "hevc" : "",
+      /\b(dv|dovi|dolby.?vision)\b/i.test(`${stream.title || ""} ${stream.name || ""} ${name}`) ? "dv" : "",
+      /\b(dts|truehd|atmos)\b/i.test(`${stream.title || ""} ${stream.name || ""} ${name}`) ? "dts/truehd" : "",
+    ];
+    return tags.filter(Boolean).join(", ");
+  }
+
   function dispatch(action) {
     const d = core().dispatch;
     if (!d) return;
@@ -754,6 +783,7 @@
     handoff = { hash, videoId, started: Date.now(), creditsAt: credits && credits.start > 0 ? credits.start : 0 };
     tv.partyVideo = new NativeVideo();
     partySeen = "";
+    note(`playing in dx.bi's player: ${describeStream(stream, url, torrent, headers)}`);
     native.play(JSON.stringify({
       hash,
       videoId,
@@ -928,7 +958,7 @@
       }
       handoff = null;
       const link = next && await nextLinkFor(await playerState());
-      console.info("[dx.bi TV] player closed", JSON.stringify({ videoId, timeMs, durationMs, ended, next, finished, link: link || null }));
+      note(`player closed at ${Math.round(timeMs / 1000)}/${Math.round(durationMs / 1000)} s${ended ? ", ended" : ""}${next ? ", next" : ""}${error ? `, error: ${error}` : ""}`);
       if (link) location.replace(link);
       else history.back();
       // The phone apps: its series page picks the next episode (or the one it closed on), once the
@@ -937,6 +967,7 @@
         setTimeout(() => window.__dxbiEngine.afterPlaying(videoId, finished), 1200);
       }
     } else {
+      if (error) note(`player closed (page had moved on), error: ${error}`);
       handoff = null;
     }
     // A stream dx.bi picked by itself: on to the next best before asking the viewer to choose
