@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 import Updater from "../core/Updater";
 import DiscordPresence from "../core/DiscordPresence";
 import { discordTracker } from "./ui/discordTracker";
+import { offerDiscordPresence } from "./ui/discordOffer";
 import EmbeddedSubtitles from "../utils/EmbeddedSubtitles";
 import AudioTracks from "../utils/AudioTracks";
 import { STORAGE_KEYS, IPC_CHANNELS } from "../constants";
@@ -132,7 +133,12 @@ window.addEventListener("load", () => {
     if (!isMini && localStorage.getItem(STORAGE_KEYS.DISCORD_RPC) === "true") {
         DiscordPresence.start();
         discordTracker.init();
-
+    }
+    // Discord running and presence never chosen: offered once (it's off until someone turns it on)
+    if (!isMini) offerDiscordPresence();
+    // mpv or VLC playing: the status follows them. Listened to even while presence is off, so
+    // switching it on mid-session works without a restart (each handler checks it's on)
+    if (!isMini) {
         ipcRenderer.on(IPC_CHANNELS.EXTERNAL_PLAYER_POSITION, (_, { position, state }: { position: number, state: string}) => {
             if (localStorage.getItem(STORAGE_KEYS.DISCORD_RPC) !== "true") return;
             if (!discordTracker.lastPlayerState) return;
@@ -167,6 +173,7 @@ window.addEventListener("load", () => {
         });
 
         ipcRenderer.on(IPC_CHANNELS.EXTERNAL_PLAYER_CLOSED, () => {
+            if (localStorage.getItem(STORAGE_KEYS.DISCORD_RPC) !== "true") return;
             discordTracker._externalPlayerActive = false;
             discordTracker.lastPlayerState = null;
             discordTracker.handleNavigation();

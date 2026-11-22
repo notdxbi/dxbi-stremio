@@ -59,6 +59,8 @@ export const STORAGE_KEYS = {
     ENABLED_PLUGINS: 'enabledPlugins',
     CURRENT_THEME: 'currentTheme',
     DISCORD_RPC: 'discordrichpresence',
+    // set once the Discord status has been offered (whatever the answer): never asked again
+    DISCORD_RPC_OFFERED: 'discordrichpresenceOffered',
     CHECK_UPDATES_ON_STARTUP: 'checkForUpdatesOnStartup',
     EXTERNAL_PLAYER: 'externalPlayer',
     EXTERNAL_PLAYER_VLC_PATH: 'externalPlayerVlcPath',
