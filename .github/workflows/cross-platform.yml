@@ -197,3 +197,44 @@ jobs:
           else
             echo "Already reported"
           fi
+
+  # Stremio's web app can change under dx.bi without the smoke test failing (the 19 November 2026 build
+  # added Stremio's own profiles, plans and Downloads, and people on some devices saw plain Stremio).
+  # A new build gets an issue with what to check, once per build.
+  stremio-build:
+    name: Stremio web build
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          page=$(curl -fsSL --retry 3 https://web.stremio.com/)
+          build=$(printf '%s' "$page" | grep -oE '[0-9a-f]{40}/scripts/main\.js' | head -1 | cut -c1-12)
+          if [ -z "$build" ]; then
+            echo "couldn't find the build in web.stremio.com's page" >&2
+            exit 1
+          fi
+          modified=$(curl -fsSI https://web.stremio.com/ | grep -i '^last-modified:' | cut -d' ' -f2- | tr -d '\r')
+          title="Stremio's web app changed (build $build)"
+          seen=$(gh issue list --state all --search "\"$build\" in:title" --json number --jq 'length')
+          if [ "$seen" != "0" ]; then
+            echo "Build $build already noted"
+            exit 0
+          fi
+          printf '%s\n' \
+            "web.stremio.com is serving a new build: \`$build\` (published $modified)." \
+            "" \
+            "dx.bi runs inside it on every platform. The nightly smoke test only covers Stremio Enhanced on desktop, so check:" \
+            "" \
+            "- [ ] Desktop app: Home, a title page, the player, Settings → dx.bi" \
+            "- [ ] Android phone app (emulator dxbi_phone): starts on dx.bi's own screens, sign in / guest, a title, playback handoff" \
+            "- [ ] Android TV app: Home and playback handoff" \
+            "- [ ] iPhone app (TestFlight or a CI build)" \
+            "- [ ] Browser version (notdxbi.github.io/dxbi-web) at phone and desktop sizes" \
+            "- [ ] Anything new of Stremio's on screen that clashes with dx.bi (banners, pop-ups, settings, profiles)" \
+            > body.md
+          gh issue create --title "$title" --body-file body.md
