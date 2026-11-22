@@ -86,7 +86,13 @@ jobs:
         shell: bash
         run: |
           python -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &
-          sleep 2
+          # (a fixed 2 s wasn't always enough on Windows runners: the installer's download was refused, #120)
+          for i in $(seq 1 60); do
+            curl -fs -o /dev/null http://127.0.0.1:8765/install.sh && exit 0
+            sleep 1
+          done
+          echo "the local server never answered" >&2
+          exit 1
       - name: This commit's installer (PowerShell 7)
         if: runner.os == 'Windows'
         shell: pwsh

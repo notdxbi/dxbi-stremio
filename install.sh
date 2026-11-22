@@ -23,9 +23,9 @@ fetch() {
   local name="$1" dest="$2"
   printf '  downloading %-18s' "$name"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$BASE_URL/$name" -o "$tmp/$name"
+    curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused "$BASE_URL/$name" -o "$tmp/$name"
   else
-    wget -qO "$tmp/$name" "$BASE_URL/$name"
+    wget -q --tries=4 --waitretry=2 --retry-connrefused -O "$tmp/$name" "$BASE_URL/$name"
   fi
   # sanity check: the file must be the real dx.bi mod, not an error page
   if ! head -c 400 "$tmp/$name" | grep -q "@name dx.bi"; then
