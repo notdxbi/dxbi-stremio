@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.38.4
+
+- **Phones: open a stream in another app when dx.bi's player can't play it.** Some files use formats dx.bi's player can't handle. Instead of closing with a short message, it now asks whether to open the stream in VLC, mpv or MX Player, which often can, or to pick another stream (#122).
+- **Phones: Who's watching is on the Profile screen.** Switch between the people who watch on this phone, add someone, or press and hold to remove them. Each has their own list, progress and stats.
+- **Home keeps its layout with the dx.bi look switched off.** Without the dx.bi theme, Home showed only the first row and an empty gap below it. Rows now sit as they do in Stremio (Stremio Enhanced plugin).
+- **Discord status is offered once.** Showing what you're watching on Discord is off until you switch it on, so many people only saw Discord's own "Playing dx.bi". If Discord is running, dx.bi now asks once whether to show it (dx.bi app). It still follows mpv and VLC if you switch it on mid-session.
+- **Faster, sharper playback in Stremio's desktop shells.** In stremio-linux-shell, stremio-shell-ng and other shells that play through mpv, dx.bi no longer has the streaming server convert HEVC releases. mpv plays them itself, so they start sooner and look as sharp as without dx.bi.
+- **Better problem reports.** Report a problem now includes what dx.bi's own player did on phones and TVs (the kind of file, and why it stopped), asks for a few words about the problem, and no longer counts Stremio's harmless Chromecast notice as an error.
+- **The installers try again** if a download fails partway, instead of stopping.
+
 ## 2.38.3
 
 - **Discord shows what you're watching.** Your status used to say "Watching dx.bi". It now names the show, like "Watching Breaking Bad S1 E1", or just the film's name for a movie. The season and episode stay on your profile card too, paused or playing (dx.bi app).
