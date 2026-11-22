@@ -11379,6 +11379,8 @@
     async send(description) {
       if (!REPORT_ENDPOINT) throw new Error("Reporting isn't set up in this version.");
       if (Date.now() - this.sentAt < 60000) throw new Error("A report was just sent: wait a minute before sending another.");
+      // (reports saying only "h" or "." can't be matched to a problem)
+      if (String(description || "").replace(/[^\p{L}\p{N}]/gu, "").length < 10) throw new Error("Say in a few words what went wrong and what you were doing, then send it.");
       const data = await this.collect();
       data.description = redact(String(description || "").slice(0, 1500));
       let body = JSON.stringify(data);
