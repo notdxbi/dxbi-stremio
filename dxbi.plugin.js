@@ -16053,6 +16053,15 @@
     el: null,
 
     ensure() {
+      // dx.bi's row arrows and page dots are laid out by the dx.bi theme. Without it (built-in look off,
+      // or another theme) they sat in the page as tall empty blocks under each row: hidden unless a theme
+      // styles them (:where() weighs nothing, so any theme's rule wins). Report EVUDQG
+      if (!document.getElementById("dx-base-style")) {
+        const base = document.createElement("style");
+        base.id = "dx-base-style";
+        base.textContent = ":where(.dx-arrow, .dx-row-pages) { display: none; }";
+        document.head.prepend(base);
+      }
       const link = document.getElementById("activeTheme");
       // A theme that's selected but whose file is gone (or won't load) counts as no theme
       if (link && !link.dataset.dxWatched) {

@@ -182,6 +182,23 @@ async function main() {
   await sleep(4000);
   await screenshot("settings");
 
+  // Home with the built-in look switched off (no theme at all): dx.bi's parts mustn't break Stremio's own
+  // layout. Its row arrows once sat in the page as tall empty blocks, so only the first row showed (EVUDQG)
+  await evaluate("window.StremioEnhancedAPI.saveSetting('dxbi', 'builtInTheme', false).then(() => true)");
+  await evaluate("location.hash = '#/'; true");
+  try {
+    await waitFor("Home without the built-in look", () => evaluate("!document.getElementById('dx-builtin-theme') && document.querySelectorAll('[class*=\"board-row-poster\"]').length >= 2"), 45000);
+    await sleep(3000);
+    const heights = await evaluate("JSON.stringify([...document.querySelectorAll('[class*=\"board-row-poster\"]')].slice(0, 3).map((r) => Math.round(r.getBoundingClientRect().height)))");
+    const tallest = Math.max(...JSON.parse(heights));
+    if (tallest > 0 && tallest < 560) pass(`Home rows keep their height without the dx.bi look (${heights} px)`);
+    else fail(`Home rows are stretched without the dx.bi look: ${heights} px`);
+  } catch (e) {
+    fail(`Home without the built-in look: ${e.message}`);
+  }
+  await screenshot("home-no-theme");
+  await evaluate("window.StremioEnhancedAPI.saveSetting('dxbi', 'builtInTheme', true).then(() => true)");
+
   // macOS CI runs a real streaming server: dx.bi should switch on the hardware converter it tested
   const hwProfile = process.env.DXBI_EXPECT_HW_PROFILE;
   if (hwProfile) {
